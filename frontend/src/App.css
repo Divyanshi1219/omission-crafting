@@ -1,0 +1,642 @@
+/* =========================================================
+   GLOBAL APP
+========================================================= */
+
+.app {
+  min-height: 100vh;
+  width: 100%;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
+.app.dark {
+  background: #1e1f25;
+  color: #ffffff;
+}
+
+.app.light {
+  background: #f8f9fa;
+  color: #171717;
+}
+
+
+/* =========================================================
+   NAVBAR
+========================================================= */
+
+.navbar {
+  height: 60px;
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 28px;
+
+  background: inherit;
+
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+
+  position: relative;
+  z-index: 20;
+}
+
+.app.dark .navbar {
+  border-bottom-color: rgba(0, 0, 0, 0.2);
+  background: rgba(20, 24, 32, 0.6);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+}
+
+
+/* =========================================================
+   LOGO
+========================================================= */
+
+.navbar-logo {
+  display: flex;
+  align-items: center;
+
+  font-size: 21px;
+  font-weight: 700;
+
+  letter-spacing: -0.7px;
+
+  user-select: none;
+}
+
+
+/* =========================================================
+   NAVBAR RIGHT
+========================================================= */
+
+.navbar-right {
+  display: flex;
+  align-items: center;
+
+  gap: 4px;
+}
+
+
+/* =========================================================
+   NAVBAR ICON BUTTONS
+========================================================= */
+
+.navbar-icon {
+  position: relative;
+
+  width: 40px;
+  height: 40px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid transparent;
+  border-radius: 9px;
+
+  background: transparent;
+  color: inherit;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.navbar-icon:hover {
+  background: rgba(0, 0, 0, 0.055);
+}
+
+.app.dark .navbar-icon:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.navbar-icon:active {
+  transform: scale(0.95);
+}
+
+
+/* =========================================================
+   THEME BUTTON
+========================================================= */
+
+.navbar-icon.theme-active {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.app.dark .navbar-icon.theme-active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+
+/* =========================================================
+   NOTIFICATION
+========================================================= */
+
+.notification-button {
+  position: relative;
+}
+
+.notification-dot {
+  position: absolute;
+
+  top: 8px;
+  right: 8px;
+
+  width: 6px;
+  height: 6px;
+
+  background: #ef4444;
+
+  border: 2px solid #f8f9fa;
+
+  border-radius: 50%;
+}
+
+.app.dark .notification-dot {
+  border-color: #0b0b0c;
+}
+
+
+/* =========================================================
+   USER SECTION
+========================================================= */
+
+.navbar-user {
+  height: 48px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 11px;
+
+  margin-left: 12px;
+  padding-left: 16px;
+
+  border-left: 1px solid rgba(0, 0, 0, 0.10);
+
+  cursor: pointer;
+}
+
+.app.dark .navbar-user {
+  border-left-color: rgba(255, 255, 255, 0.10);
+}
+
+
+/* =========================================================
+   USER AVATAR
+========================================================= */
+
+.user-avatar {
+  width: 42px;
+  height: 42px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+
+  background: #f5f5df;
+  color: #202020;
+
+  font-size: 14px;
+  font-weight: 600;
+
+  letter-spacing: -0.3px;
+}
+
+
+/* =========================================================
+   USER DETAILS
+========================================================= */
+
+.user-details {
+  display: flex;
+  flex-direction: column;
+
+  justify-content: center;
+
+  min-width: 65px;
+
+  line-height: 1;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+
+  letter-spacing: -0.15px;
+}
+
+.user-role {
+  margin-top: 6px;
+
+  font-size: 12px;
+
+  color: #737373;
+
+  font-weight: 400;
+}
+
+.app.dark .user-role {
+  color: #999;
+}
+
+
+/* =========================================================
+   APP BODY
+========================================================= */
+
+.app-body {
+  display: flex;
+
+  min-height: calc(100vh - 60px);
+}
+
+
+/* =========================================================
+   SIDEBAR
+========================================================= */
+
+.sidebar {
+  width: 230px;
+
+  flex-shrink: 0;
+
+  padding: 24px 12px;
+
+  box-sizing: border-box;
+
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+
+  background: transparent;
+}
+
+.app.dark .sidebar {
+  border-right-color: rgba(0, 0, 0, 0.2);
+  background: rgba(20, 24, 32, 0.6);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+}
+
+
+/* =========================================================
+   SIDEBAR MENU
+========================================================= */
+
+.sidebar-menu {
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+}
+
+
+/* =========================================================
+   SIDEBAR ITEM
+========================================================= */
+
+.sidebar-item {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+
+  width: 100%;
+
+  padding: 11px 13px;
+
+  border-radius: 9px;
+
+  color: #666;
+
+  text-decoration: none;
+
+  font-size: 14px;
+  font-weight: 500;
+
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.app.dark .sidebar-item {
+  color: #a1a1aa;
+}
+
+
+/* Hover */
+
+.sidebar-item:hover {
+  background: rgba(0, 0, 0, 0.045);
+
+  color: #171717;
+}
+
+.app.dark .sidebar-item:hover {
+  background: rgba(0, 0, 0, 0.2);
+
+  color: #ffffff;
+}
+
+
+/* Active */
+
+.sidebar-item.active {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.sidebar-accordion {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-submenu {
+  display: flex;
+  flex-direction: column;
+  padding-left: 24px;
+  gap: 2px;
+  margin-top: 4px;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sidebar-submenu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #64748b;
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.submenu-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  transition: all 0.2s ease;
+}
+
+.sidebar-submenu-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+  color: #334155;
+}
+
+.sidebar-submenu-item:hover .submenu-dot {
+  background: #94a3b8;
+}
+
+.sidebar-submenu-item.active {
+  color: #2563eb;
+  font-weight: 600;
+  background: #eff6ff;
+}
+
+.sidebar-submenu-item.active .submenu-dot {
+  background: #2563eb;
+}
+
+.app.dark .sidebar-submenu-item {
+  color: #94a3b8;
+}
+
+.app.dark .sidebar-submenu-item:hover {
+  background: rgba(0, 0, 0, 0.2);
+  color: #f1f5f9;
+}
+
+.app.dark .sidebar-submenu-item:hover .submenu-dot {
+  background: #cbd5e1;
+}
+
+.app.dark .sidebar-submenu-item.active {
+  background: #1e3a8a;
+  color: #60a5fa;
+}
+
+.app.dark .sidebar-submenu-item.active .submenu-dot {
+  background: #60a5fa;
+}
+
+.sidebar-item.active::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 15%;
+  height: 70%;
+  width: 4px;
+  background-color: #2563eb;
+  border-radius: 0 4px 4px 0;
+}
+
+.app.dark .sidebar-item.active {
+  background: rgba(0, 0, 0, 0.3);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.app.dark .sidebar-item.active::before {
+  background-color: #ffffff;
+}
+
+/* Active icon */
+
+.sidebar-item.active svg {
+  stroke-width: 2.2;
+}
+
+
+/* =========================================================
+   MAIN CONTENT
+========================================================= */
+
+.main-content {
+  flex: 1;
+
+  min-width: 0;
+
+  padding: 16px 42px 38px 42px;
+
+  box-sizing: border-box;
+}
+
+
+/* =========================================================
+   DASHBOARD PAGE
+========================================================= */
+
+.dashboard-page {
+  width: 100%;
+
+  max-width: 1600px;
+
+  margin: 0 auto;
+}
+
+
+/* =========================================================
+   PAGE HEADER
+========================================================= */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-bottom: 32px;
+}
+
+.page-header h1 {
+  margin: 0;
+
+  font-size: 28px;
+
+  line-height: 1.2;
+
+  font-weight: 650;
+
+  letter-spacing: -1px;
+}
+
+.page-header p {
+  margin: 7px 0 0;
+
+  color: #777;
+
+  font-size: 14px;
+
+  line-height: 1.5;
+}
+
+.app.dark .page-header p {
+  color: #a1a1aa;
+}
+
+
+/* =========================================================
+   DASHBOARD CONTENT
+========================================================= */
+
+.dashboard-content {
+  width: 100%;
+}
+
+
+/* =========================================================
+   SCROLLBAR
+========================================================= */
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cfcfcf;
+
+  border-radius: 20px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b8b8b8;
+}
+
+.app.dark ::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+}
+
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 900px) {
+
+  .sidebar {
+    width: 200px;
+  }
+
+  .main-content {
+    padding: 30px;
+  }
+
+  .navbar {
+    padding: 0 20px;
+  }
+
+}
+
+
+@media (max-width: 700px) {
+
+  .sidebar {
+    width: 70px;
+
+    padding: 20px 10px;
+  }
+
+  .sidebar-item {
+    justify-content: center;
+
+    padding: 12px;
+  }
+
+  .sidebar-item span {
+    display: none;
+  }
+
+  .sidebar-item {
+    gap: 0;
+  }
+
+  .main-content {
+    padding: 25px 20px;
+  }
+
+  .user-details {
+    display: none;
+  }
+
+  .navbar-user {
+    padding-left: 10px;
+  }
+
+  .navbar {
+    padding: 0 15px;
+  }
+
+}
+/* Force ALL text to be white in dark mode */
+.app.dark,
+.app.dark * {
+  color: #ffffff !important;
+}
+
