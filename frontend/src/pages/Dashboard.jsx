@@ -1,8 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import api from "../api";
 import { LayoutGrid, FileText, Users, Calendar, UserCheck, Clock, Calendar as CalendarIcon, ChevronDown, MoreHorizontal, ArrowRight, UserPlus, UserMinus, Filter } from "lucide-react";
 
 function Dashboard() {
   const [activeTab, setActiveTab] = useState("overview");
+  useEffect(() => {
+    api.get("/api/health")
+      .then((response) => {
+        console.log("Backend connected:", response.data);
+      })
+      .catch((error) => {
+        console.error("Backend connection failed:", error);
+      });
+  }, []);
 
   return (
     <div className="dashboard-page">
