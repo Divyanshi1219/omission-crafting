@@ -21,6 +21,7 @@ function Sidebar() {
 
   const orderSubMenus = [
     { name: 'Create lead', path: '/order/create-lead' },
+    { name: 'Leads', path: '/order/leads' },
     { name: 'Order', path: '/order/order' },
     { name: 'DTF Pending', path: '/order/dtf-pending' },
     { name: 'Stock', path: '/order/stock' },

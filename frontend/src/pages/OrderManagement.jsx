@@ -1,6 +1,19 @@
 import React, { useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { LayoutGrid, Plus, Trash2 } from 'lucide-react';
+import './OrderManagement.css';
+
+const ORDER_STAGES = [
+  'New',
+  'Order',
+  'DTF Pending',
+  'Stock',
+  'Printing',
+  'Quality Check',
+  'Packaging',
+  'Delivery Pending',
+  'Delivery'
+];
 
 function OrderManagement() {
   const location = useLocation();
@@ -13,6 +26,7 @@ function OrderManagement() {
   const [queryStatus, setQueryStatus] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [items, setItems] = useState([]);
+  const [selectedStage, setSelectedStage] = useState('New');
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
@@ -25,14 +39,23 @@ function OrderManagement() {
   };
 
   const handleAddItem = () => {
-    setItems([...items, { id: Date.now(), fabric: '', quantity: '', size: '', color: '' }]);
+    setItems([...items, { id: Date.now(), item: '', fabric: '', quantity: '', size: '', color: '', printingType: '', sublimationOption: '' }]);
+  };
+
+  const handleItemChange = (id, field, value) => {
+    setItems(items.map(item => {
+      if (item.id === id) {
+        return { ...item, [field]: value };
+      }
+      return item;
+    }));
   };
 
   const handleRemoveItem = (id) => {
     setItems(items.filter(item => item.id !== id));
   };
 
-  const canSubmit = query === 'order' && queryStatus === 'confirmed';
+  const canSubmit = query === 'order';
 
   if (location.pathname === '/order/create-lead') {
     return (
@@ -48,6 +71,28 @@ function OrderManagement() {
         </div>
 
         <div className="dashboard-content">
+          {/* Change Management Process Flow Chevron Tracker */}
+          <div className="change-mgmt-wrapper">
+            <div className="change-mgmt-track" role="tablist" aria-label="Order Lifecycle Stages">
+              {ORDER_STAGES.map((stage) => {
+                const isActive = selectedStage === stage;
+                return (
+                  <button
+                    key={stage}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`change-mgmt-step ${isActive ? 'active' : ''}`}
+                    onClick={() => setSelectedStage(stage)}
+                    title={`Stage: ${stage}`}
+                  >
+                    <span className="step-label">{stage}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <form className="form-container" onSubmit={handleFormSubmit} ref={formRef}>
             <div className="form-section">
               <div className="form-section-title">Lead Form</div>
@@ -67,7 +112,7 @@ function OrderManagement() {
                   </select>
                 </div>
 
-                <div className="form-group">
+                {/* <div className="form-group">
                   <label>Query Status</label>
                   <select value={queryStatus} onChange={(e) => setQueryStatus(e.target.value)}>
                     <option value="">Select status...</option>
@@ -76,7 +121,7 @@ function OrderManagement() {
                     <option value="call back">Call back</option>
                     <option value="confirmed">Confirmed</option>
                   </select>
-                </div>
+                </div> */}
 
                 <div className="form-group">
                   <label>Company Name</label>
@@ -91,6 +136,16 @@ function OrderManagement() {
                 <div className="form-group">
                   <label>Company Address</label>
                   <input type="text" />
+                </div>
+
+                <div className="form-group">
+                  <label>State</label>
+                  <input type="text" />
+                </div>
+
+                <div className="form-group">
+                  <label>Pincode *</label>
+                  <input type="text" required />
                 </div>
 
                 <div className="form-group">
@@ -133,7 +188,7 @@ function OrderManagement() {
                     name="submit" 
                     className="btn-primary" 
                     disabled={!canSubmit} 
-                    title={!canSubmit ? "Only available if Query is 'Order' and Status is 'Confirmed'" : ""}
+                    title={!canSubmit ? "Only available if Query is 'Order'" : ""}
                     style={{ padding: '10px 24px', opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
                   >
                     Submit
@@ -176,7 +231,22 @@ function OrderManagement() {
                   </div>
 
                   <div className="form-group">
+                    <label>Price Per Piece *</label>
+                    <input type="number" step="0.01" required />
+                  </div>
+
+                  <div className="form-group">
                     <label>Total Amount *</label>
+                    <input type="number" required />
+                  </div>
+
+                  <div className="form-group">
+                    <label>GST</label>
+                    <input type="number" step="0.01" />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Net Amount *</label>
                     <input type="number" required />
                   </div>
 
@@ -203,6 +273,17 @@ function OrderManagement() {
                       <option value="no">No</option>
                     </select>
                   </div>
+
+                  <div className="form-group">
+                    <label>Mode of Delivery *</label>
+                    <select required>
+                      <option value="">Select mode...</option>
+                      <option value="cash on delivery">Cash on Delivery</option>
+                      <option value="transportation">Transportation</option>
+                      <option value="courier">Courier</option>
+                      <option value="self pick up">Self Pick up</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div style={{ marginTop: '32px' }}>
@@ -213,22 +294,50 @@ function OrderManagement() {
                   {items.length > 0 && (
                     <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                       {items.map((item) => (
-                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+                          <div style={{ flex: '1 1 120px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Item *</label>
+                            <input type="text" required value={item.item || ''} onChange={(e) => handleItemChange(item.id, 'item', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                          </div>
+                          
+                          {['t-shirt', 't shirt', 'tshirt'].includes((item.item || '').toLowerCase().trim()) && (
+                            <div style={{ flex: '1 1 110px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Printing Type</label>
+                              <select value={item.printingType || ''} onChange={(e) => handleItemChange(item.id, 'printingType', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }}>
+                                <option value="">Select...</option>
+                                <option value="DTF">DTF</option>
+                                <option value="Sublimation">Sublimation</option>
+                                <option value="Embroidery">Embroidery</option>
+                              </select>
+                            </div>
+                          )}
+
+                          {['t-shirt', 't shirt', 'tshirt'].includes((item.item || '').toLowerCase().trim()) && (item.printingType || '') === 'Sublimation' && (
+                            <div style={{ flex: '1 1 70px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Option</label>
+                              <select value={item.sublimationOption || ''} onChange={(e) => handleItemChange(item.id, 'sublimationOption', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }}>
+                                <option value="">Select...</option>
+                                <option value="1/2">1/2</option>
+                                <option value="1">1</option>
+                              </select>
+                            </div>
+                          )}
+
+                          <div style={{ flex: '1 1 100px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Fabric *</label>
-                            <input type="text" required style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                            <input type="text" required value={item.fabric || ''} onChange={(e) => handleItemChange(item.id, 'fabric', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
                           </div>
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ flex: '1 1 70px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Quantity *</label>
-                            <input type="number" required style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                            <input type="number" required value={item.quantity || ''} onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
                           </div>
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ flex: '1 1 70px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Size *</label>
-                            <input type="text" required style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                            <input type="text" required value={item.size || ''} onChange={(e) => handleItemChange(item.id, 'size', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
                           </div>
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ flex: '1 1 100px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Color *</label>
-                            <input type="text" required style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                            <input type="text" required value={item.color || ''} onChange={(e) => handleItemChange(item.id, 'color', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
                           </div>
                           <button type="button" onClick={() => handleRemoveItem(item.id)} style={{ marginTop: '20px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <Trash2 size={20} />

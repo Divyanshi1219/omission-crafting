@@ -1,9 +1,27 @@
 import { useState, useEffect } from "react";
 import api from "../api";
-import { LayoutGrid, FileText, Users, Calendar, UserCheck, Clock, Calendar as CalendarIcon, ChevronDown, MoreHorizontal, ArrowRight, UserPlus, UserMinus, Filter } from "lucide-react";
+import { LayoutGrid, FileText, Users, Calendar, UserCheck, Clock, Calendar as CalendarIcon, ChevronDown, MoreHorizontal, ArrowRight, UserPlus, UserMinus, Filter, X, MapPin, Search, Plus } from "lucide-react";
+import "./EmployeeCards.css";
+
+const employees = [
+  { id: 1, name: "Noah Castell", initials: "NC", role: "Project Lead", department: "Management", openTasks: 0, completedTasks: 48, workload: 64, avatarBg: "#ffedd5", status: "online" },
+  { id: 2, name: "Priya Raman", initials: "PR", role: "Product Designer", department: "Design", openTasks: 1, completedTasks: 35, workload: 72, avatarBg: "#e2e8f0", status: "online" },
+  { id: 3, name: "Mateo Silva", initials: "MS", role: "Backend Engineer", department: "Engineering", openTasks: 2, completedTasks: 51, workload: 88, avatarBg: "#d1fae5", status: "online" },
+  { id: 4, name: "Hana Kobayashi", initials: "HK", role: "Frontend Engineer", department: "Engineering", openTasks: 1, completedTasks: 33, workload: 56, avatarBg: "#e0e7ff", status: "away" },
+  { id: 5, name: "Owen Mercer", initials: "OM", role: "Frontend Engineer", department: "Engineering", openTasks: 2, completedTasks: 42, workload: 79, avatarBg: "#fef08a", status: "online" },
+  { id: 6, name: "Sofia Sato", initials: "SS", role: "QA Engineer", department: "Engineering", openTasks: 1, completedTasks: 27, workload: 41, avatarBg: "#f3e8ff", status: "away" },
+  { id: 7, name: "Maya Kovac", initials: "MK", role: "Brand Designer", department: "Design", openTasks: 2, completedTasks: 24, workload: 50, avatarBg: "#dbeafe", status: "away" },
+  { id: 8, name: "Liam Reyes", initials: "LR", role: "Marketing Lead", department: "Marketing", openTasks: 1, completedTasks: 30, workload: 67, avatarBg: "#ffedd5", status: "away" }
+];
+
+const getWorkloadColor = (workload) => {
+  if (workload > 80) return "#d97706"; // orange
+  return "#059669"; // green
+};
 
 function Dashboard() {
   const [activeTab, setActiveTab] = useState("overview");
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   useEffect(() => {
     api.get("/api/health")
       .then((response) => {
@@ -22,7 +40,7 @@ function Dashboard() {
           <LayoutGrid size={18} /> Overview
         </button>
         <button className={`tab ${activeTab === 'case' ? 'active' : ''}`} onClick={() => setActiveTab('case')}>
-          <FileText size={18} /> Case Management
+          <FileText size={18} /> Order Management
         </button>
         <button className={`tab ${activeTab === 'employee' ? 'active' : ''}`} onClick={() => setActiveTab('employee')}>
           <Users size={18} /> Employee Management
@@ -34,7 +52,13 @@ function Dashboard() {
 
       <div className="page-header dashboard-header">
         <div>
-          <h1>Overview</h1>
+          <h1>
+            {activeTab === 'overview' && 'Overview'}
+            {activeTab === 'case' && 'Order Management'}
+            {activeTab === 'employee' && 'Employee Management'}
+            {activeTab === 'leave' && 'Leave Management'}
+          </h1>
+          {activeTab === 'employee' && <p style={{ color: '#64748b', marginTop: '4px' }}>Manage and view all employees.</p>}
         </div>
 
         <div className="date-picker">
@@ -309,6 +333,125 @@ function Dashboard() {
             </div>
           </div>
 
+        </div>
+      )}
+
+      {activeTab === 'employee' && (
+        <div className="dashboard-content">
+          <div className="employee-cards-grid">
+            {employees.map(emp => (
+              <div key={emp.id} className="employee-card">
+                <div className="emp-card-header">
+                  <div className="emp-avatar" style={{ backgroundColor: emp.avatarBg }}>
+                     {emp.initials}
+                     <span className={`emp-status ${emp.status}`}></span>
+                  </div>
+                  <h3 className="emp-name">{emp.name}</h3>
+                  <p className="emp-role">{emp.role}</p>
+                  <span className="emp-badge">{emp.department}</span>
+                </div>
+                <div className="emp-stats">
+                  <div className="emp-stat">
+                    <h4>{emp.openTasks}</h4>
+                    <p>Open leads</p>
+                  </div>
+                  <div className="emp-stat">
+                    <h4>{emp.completedTasks}</h4>
+                    <p>Completed</p>
+                  </div>
+                </div>
+                <div className="emp-workload">
+                  <div className="workload-header">
+                    <span>Workload</span>
+                    <span>{emp.workload}%</span>
+                  </div>
+                  <div className="workload-bar-bg">
+                    <div className="workload-bar-fill" style={{ width: `${emp.workload}%`, backgroundColor: getWorkloadColor(emp.workload) }}></div>
+                  </div>
+                </div>
+                <div className="emp-actions">
+                  <button className="btn-msg">Message</button>
+                  <button className="btn-profile" onClick={() => setSelectedEmployee(emp)}>Profile</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Side Panel Overlay */}
+      {activeTab === 'employee' && (
+        <div className={`side-panel-overlay ${selectedEmployee ? 'open' : ''}`} onClick={() => setSelectedEmployee(null)}></div>
+      )}
+      
+      {/* Side Panel */}
+      {activeTab === 'employee' && (
+        <div className={`side-panel ${selectedEmployee ? 'open' : ''}`}>
+          {selectedEmployee && (
+            <div className="side-panel-content">
+              <button className="close-panel-btn" onClick={() => setSelectedEmployee(null)}>
+                <X size={20} />
+              </button>
+
+              <div className="sp-header">
+                <div className="sp-avatar" style={{ backgroundColor: selectedEmployee.avatarBg }}>
+                  {selectedEmployee.initials}
+                </div>
+                <h2>{selectedEmployee.name}</h2>
+                <p>{selectedEmployee.role}</p>
+                
+                <div className="sp-meta">
+                  <span><MapPin size={14} /> Lisbon</span>
+                  <span><Users size={14} /> {selectedEmployee.department}</span>
+                  <span className="sp-online-status">
+                    <span className={`sp-dot ${selectedEmployee.status}`}></span>
+                    {selectedEmployee.status === 'online' ? 'Online' : 'Away'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="sp-stats-row">
+                <div className="sp-stat-box">
+                  <h3>{selectedEmployee.openTasks}</h3>
+                  <p>Open</p>
+                </div>
+                <div className="sp-stat-box">
+                  <h3>{selectedEmployee.completedTasks}</h3>
+                  <p>Done</p>
+                </div>
+                <div className="sp-stat-box">
+                  <h3>{selectedEmployee.workload}%</h3>
+                  <p>Load</p>
+                </div>
+              </div>
+
+              <div className="sp-tasks-section">
+                <h4>Assigned tasks</h4>
+                <div className="sp-task-list">
+                  <div className="sp-task-item">
+                    <span className="task-dot in-progress"></span>
+                    <span className="task-name">Design login & sign-up screens</span>
+                    <span className="task-status">In progress</span>
+                  </div>
+                  <div className="sp-task-item">
+                    <span className="task-dot done"></span>
+                    <span className="task-name">Monorepo cleanup</span>
+                    <span className="task-status">Done</span>
+                  </div>
+                  <div className="sp-task-item">
+                    <span className="task-dot done"></span>
+                    <span className="task-name">Dashboard analytics widgets</span>
+                    <span className="task-status">Done</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="sp-actions">
+                <button className="btn-msg">Message</button>
+                <button className="btn-assign">+ Assign task</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
