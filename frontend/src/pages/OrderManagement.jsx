@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { LayoutGrid, Plus, Trash2 } from 'lucide-react';
+import api from '../api';
 import './OrderManagement.css';
 
 const FULL_ORDER_STAGES = [
@@ -124,8 +125,11 @@ const STAGE_ROUTE_MAP = {
 function OrderManagement() {
   const location = useLocation();
   const navigate = useNavigate();
-  const pathParts = location.pathname.split('/');
-  const currentSection = pathParts[pathParts.length - 1].replace(/-/g, ' ');
+  const [searchParams] = useSearchParams();
+  const editId = searchParams.get('id');
+
+  const pathParts = location.pathname.split('/').filter(Boolean);
+  const currentSection = pathParts[pathParts.length - 1]?.replace(/-/g, ' ') || 'Order Management';
 
   const formRef = useRef(null);
 
@@ -138,6 +142,121 @@ function OrderManagement() {
   const [selectedStage, setSelectedStage] = useState('New');
   const [orderStage, setOrderStage] = useState('');
   const [subStage, setSubStage] = useState('');
+
+  const [formData, setFormData] = useState({
+    companyName: '',
+    clientName: '',
+    companyAddress: '',
+    state: '',
+    pincode: '',
+    phoneNumber: '',
+    scheduleDate: '',
+    scheduleTime: '',
+    additionalNote: '',
+    orderId: '',
+    logoName: '',
+    totalQuantity: '',
+    pricePerPiece: '',
+    totalAmount: '',
+    gst: '',
+    netAmount: '',
+    advanceAmount: '',
+    pendingAmount: '',
+    deliveryDate: '',
+    urgency: '',
+    modeOfDelivery: '',
+  });
+
+  const [leadsList, setLeadsList] = useState([]);
+
+  // Load pre-filled data when an id is in the URL
+  useEffect(() => {
+    if (location.pathname === '/order/create-lead') {
+      if (editId) {
+        api.get(`/api/leads/${editId}`)
+          .then((res) => {
+            if (res.data?.data) {
+              const d = res.data.data;
+              setQuery(d.query || '');
+              setQueryStatus(d.queryStatus || '');
+              setOrderStage(d.orderStage || '');
+              setSubStage(d.subStage || '');
+              setItems(d.items || []);
+              setFormData({
+                companyName: d.companyName || '',
+                clientName: d.clientName || '',
+                companyAddress: d.companyAddress || '',
+                state: d.state || '',
+                pincode: d.pincode || '',
+                phoneNumber: d.phoneNumber || '',
+                scheduleDate: d.scheduleDate || '',
+                scheduleTime: d.scheduleTime || '',
+                additionalNote: d.additionalNote || '',
+                orderId: d.orderId || '',
+                logoName: d.logoName || '',
+                totalQuantity: d.totalQuantity || '',
+                pricePerPiece: d.pricePerPiece || '',
+                totalAmount: d.totalAmount || '',
+                gst: d.gst || '',
+                netAmount: d.netAmount || '',
+                advanceAmount: d.advanceAmount || '',
+                pendingAmount: d.pendingAmount || '',
+                deliveryDate: d.deliveryDate || '',
+                urgency: d.urgency || '',
+                modeOfDelivery: d.modeOfDelivery || '',
+              });
+              if (d.query === 'order' || d.orderStage) {
+                setIsSubmitted(true);
+              }
+            }
+          })
+          .catch((err) => console.error('Error loading lead for edit:', err));
+      } else {
+        setQuery('');
+        setQueryStatus('');
+        setOrderStage('');
+        setSubStage('');
+        setItems([]);
+        setIsSubmitted(false);
+        setFormData({
+          companyName: '',
+          clientName: '',
+          companyAddress: '',
+          state: '',
+          pincode: '',
+          phoneNumber: '',
+          scheduleDate: '',
+          scheduleTime: '',
+          additionalNote: '',
+          orderId: '',
+          logoName: '',
+          totalQuantity: '',
+          pricePerPiece: '',
+          totalAmount: '',
+          gst: '',
+          netAmount: '',
+          advanceAmount: '',
+          pendingAmount: '',
+          deliveryDate: '',
+          urgency: '',
+          modeOfDelivery: '',
+        });
+      }
+    }
+  }, [location.pathname, editId]);
+
+  // Fetch leads list for stage and sub-stage table visibility
+  useEffect(() => {
+    if (location.pathname !== '/order/create-lead') {
+      api.get('/api/leads')
+        .then((res) => {
+          if (res.data?.data) {
+            setLeadsList(res.data.data);
+          }
+        })
+        .catch((err) => console.error('Error fetching leads:', err));
+    }
+  }, [location.pathname]);
 
   const getCurrentStages = () => {
     if (location.pathname.startsWith('/order/sample')) {
@@ -182,12 +301,16 @@ function OrderManagement() {
                 className={`change-mgmt-step ${isActive ? 'active' : ''}`}
                 onClick={() => {
                   setSelectedStage(stage);
+                  const stageSlug = stage.toLowerCase().replace(/\s+/g, '-');
                   if (location.pathname.startsWith('/order/sample')) {
-                    navigate(`/order/sample/${stage.toLowerCase().replace(/\s+/g, '-')}`);
+                    const target = stageSlug === 'new' ? 'leads' : stageSlug;
+                    navigate(`/order/sample/${target}`);
                   } else if (location.pathname.startsWith('/order/partial')) {
-                    navigate(`/order/partial/${stage.toLowerCase().replace(/\s+/g, '-')}`);
+                    const target = stageSlug === 'new' ? 'leads' : stageSlug;
+                    navigate(`/order/partial/${target}`);
                   } else if (location.pathname.startsWith('/order/complete')) {
-                    navigate(`/order/complete/${stage.toLowerCase().replace(/\s+/g, '-')}`);
+                    const target = stageSlug === 'new' ? 'leads' : stageSlug;
+                    navigate(`/order/complete/${target}`);
                   }
                 }}
                 title={`Stage: ${stage}`}
@@ -201,13 +324,69 @@ function OrderManagement() {
     );
   };
 
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
-    const action = e.nativeEvent.submitter.name;
+    const action = e.nativeEvent?.submitter?.name;
     if (action === 'save') {
-      alert('Lead saved successfully!');
+      try {
+        const payload = {
+          employeeName: 'Divyanshi',
+          query: query || 'lead',
+          queryStatus,
+          orderStage,
+          subStage,
+          ...formData,
+          items,
+        };
+        if (editId) payload._id = editId;
+        await api.post('/api/leads', payload);
+        alert('Lead saved successfully!');
+        if (orderStage) {
+          const target = !subStage || subStage === 'new' ? 'leads' : subStage.replace(/\s+/g, '-');
+          navigate(`/order/${orderStage}/${target}`);
+        } else {
+          navigate('/order/sample/leads');
+        }
+      } catch (err) {
+        console.error('Error saving lead:', err);
+        alert('Failed to save lead: ' + (err.response?.data?.message || err.message));
+      }
     } else if (action === 'submit') {
       setIsSubmitted(true);
+    }
+  };
+
+  const handleOrderSubmit = async () => {
+    try {
+      const payload = {
+        employeeName: 'Divyanshi',
+        query: 'order',
+        queryStatus,
+        orderStage,
+        subStage,
+        ...formData,
+        items,
+      };
+      if (editId) payload._id = editId;
+      await api.post('/api/leads', payload);
+      alert('Lead and Order Information Submitted successfully!');
+      setIsSubmitted(false);
+      setItems([]);
+      setQuery('');
+      setQueryStatus('');
+      setOrderStage('');
+      setSubStage('');
+      if (formRef.current) formRef.current.reset();
+
+      if (orderStage && subStage) {
+        const target = subStage === 'new' ? 'leads' : subStage.replace(/\s+/g, '-');
+        navigate(`/order/${orderStage}/${target}`);
+      } else {
+        navigate('/order/sample/order');
+      }
+    } catch (err) {
+      console.error('Error submitting order:', err);
+      alert('Failed to submit order: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -229,6 +408,48 @@ function OrderManagement() {
   };
 
   const canSubmit = query === 'order';
+
+  // Filter leads table data based on stage and sub-stage
+  let currentStage = '';
+  let currentSubStage = '';
+
+  if (pathParts.length >= 3) {
+    currentStage = pathParts[1].toLowerCase();
+    currentSubStage = pathParts[2].toLowerCase();
+  } else if (pathParts.length === 2) {
+    if (['sample', 'partial', 'complete'].includes(pathParts[1].toLowerCase())) {
+      currentStage = pathParts[1].toLowerCase();
+      currentSubStage = 'leads';
+    } else {
+      currentSubStage = pathParts[1].toLowerCase();
+    }
+  }
+
+  const matchingLeads = leadsList.filter((item) => {
+    const itemStage = (item.orderStage || '').toLowerCase().trim();
+    const itemSub = (item.subStage || '').toLowerCase().trim();
+
+    if (currentStage) {
+      if (itemStage && itemStage !== currentStage) {
+        return false;
+      }
+      if (!itemStage && currentStage !== 'sample') {
+        return false;
+      }
+    }
+
+    if (currentSubStage === 'leads' || currentSubStage === 'new') {
+      return itemSub === 'new' || itemSub === 'leads' || itemSub === '' || item.query === 'lead';
+    }
+
+    if (currentSubStage === 'order') {
+      return itemSub === 'order' || (item.query === 'order' && (!itemSub || itemSub === 'new'));
+    }
+
+    const normItemSub = itemSub.replace(/-/g, ' ');
+    const normCurrentSub = currentSubStage.replace(/-/g, ' ');
+    return normItemSub === normCurrentSub;
+  });
 
   if (location.pathname === '/order/create-lead') {
     return (
@@ -279,40 +500,76 @@ function OrderManagement() {
 
                 <div className="form-group">
                   <label>Company Name</label>
-                  <input type="text" />
+                  <input
+                    type="text"
+                    value={formData.companyName}
+                    onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                  />
                 </div>
 
                 <div className="form-group">
                   <label>Client Name</label>
-                  <input type="text" />
+                  <input
+                    type="text"
+                    value={formData.clientName}
+                    onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
+                  />
                 </div>
 
                 <div className="form-group">
                   <label>Company Address</label>
-                  <input type="text" />
+                  <input
+                    type="text"
+                    value={formData.companyAddress}
+                    onChange={(e) => setFormData({ ...formData, companyAddress: e.target.value })}
+                  />
                 </div>
 
                 <div className="form-group">
                   <label>State</label>
-                  <input type="text" />
+                  <input
+                    type="text"
+                    value={formData.state}
+                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                  />
                 </div>
 
                 <div className="form-group">
                   <label>Pincode *</label>
-                  <input type="text" required />
+                  <input
+                    type="text"
+                    required
+                    value={formData.pincode}
+                    onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
+                  />
                 </div>
 
                 <div className="form-group">
                   <label>Phone Number *</label>
-                  <input type="tel" required />
+                  <input
+                    type="tel"
+                    required
+                    value={formData.phoneNumber}
+                    onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                  />
                 </div>
 
                 {(queryStatus === 'phone not pick' || queryStatus === 'call back') ? (
                   <div className="form-group">
                     <label>Schedule</label>
                     <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                      <input type="date" style={{ flex: 1, padding: '10px' }} />
-                      <input type="time" style={{ flex: 1, padding: '10px' }} />
+                      <input
+                        type="date"
+                        value={formData.scheduleDate}
+                        onChange={(e) => setFormData({ ...formData, scheduleDate: e.target.value })}
+                        style={{ flex: 1, padding: '10px' }}
+                      />
+                      <input
+                        type="time"
+                        value={formData.scheduleTime}
+                        onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
+                        style={{ flex: 1, padding: '10px' }}
+                      />
                     </div>
                   </div>
                 ) : (
@@ -324,6 +581,8 @@ function OrderManagement() {
                 <label style={{ display: 'block', marginBottom: '8px' }}>Additional Note</label>
                 <textarea 
                   rows="4" 
+                  value={formData.additionalNote}
+                  onChange={(e) => setFormData({ ...formData, additionalNote: e.target.value })}
                   style={{ 
                     width: '100%', padding: '12px 14px', borderRadius: '8px', 
                     border: '1px solid #cbd5e1', background: 'white', color: '#334155', 
@@ -359,12 +618,22 @@ function OrderManagement() {
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Order ID</label>
-                    <input type="text" readOnly placeholder="Auto-generated" style={{ background: 'rgba(0,0,0,0.02)' }} />
+                    <input
+                      type="text"
+                      value={formData.orderId}
+                      onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
+                      placeholder="Auto-generated"
+                      style={{ background: 'rgba(0,0,0,0.02)' }}
+                    />
                   </div>
                   
                   <div className="form-group">
                     <label>Logo Name</label>
-                    <input type="text" />
+                    <input
+                      type="text"
+                      value={formData.logoName}
+                      onChange={(e) => setFormData({ ...formData, logoName: e.target.value })}
+                    />
                   </div>
 
                   <div className="form-group">
@@ -402,47 +671,92 @@ function OrderManagement() {
 
                   <div className="form-group">
                     <label>Total Quantity (pcs) *</label>
-                    <input type="number" required />
+                    <input
+                      type="number"
+                      required
+                      value={formData.totalQuantity}
+                      onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value })}
+                    />
                   </div>
 
                   <div className="form-group">
                     <label>Price Per Piece *</label>
-                    <input type="number" step="0.01" required />
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={formData.pricePerPiece}
+                      onChange={(e) => setFormData({ ...formData, pricePerPiece: e.target.value })}
+                    />
                   </div>
 
                   <div className="form-group">
                     <label>Total Amount *</label>
-                    <input type="number" required />
+                    <input
+                      type="number"
+                      required
+                      value={formData.totalAmount}
+                      onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
+                    />
                   </div>
 
                   <div className="form-group">
                     <label>GST</label>
-                    <input type="number" step="0.01" />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.gst}
+                      onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
+                    />
                   </div>
 
                   <div className="form-group">
                     <label>Net Amount *</label>
-                    <input type="number" required />
+                    <input
+                      type="number"
+                      required
+                      value={formData.netAmount}
+                      onChange={(e) => setFormData({ ...formData, netAmount: e.target.value })}
+                    />
                   </div>
 
                   <div className="form-group">
                     <label>Advance Amount *</label>
-                    <input type="number" required />
+                    <input
+                      type="number"
+                      required
+                      value={formData.advanceAmount}
+                      onChange={(e) => setFormData({ ...formData, advanceAmount: e.target.value })}
+                    />
                   </div>
 
                   <div className="form-group">
                     <label>Pending Amount *</label>
-                    <input type="number" required />
+                    <input
+                      type="number"
+                      required
+                      value={formData.pendingAmount}
+                      onChange={(e) => setFormData({ ...formData, pendingAmount: e.target.value })}
+                    />
                   </div>
 
                   <div className="form-group">
                     <label>Delivery Date *</label>
-                    <input type="date" required />
+                    <input
+                      type="date"
+                      required
+                      value={formData.deliveryDate}
+                      onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })}
+                    />
                   </div>
 
                   <div className="form-group">
                     <label>Urgency *</label>
-                    <select required>
+                    <select
+                      required
+                      value={formData.urgency}
+                      onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
+                    >
                       <option value="">Select urgency...</option>
                       <option value="yes">Yes</option>
                       <option value="no">No</option>
@@ -451,7 +765,11 @@ function OrderManagement() {
 
                   <div className="form-group">
                     <label>Mode of Delivery *</label>
-                    <select required>
+                    <select
+                      required
+                      value={formData.modeOfDelivery}
+                      onChange={(e) => setFormData({ ...formData, modeOfDelivery: e.target.value })}
+                    >
                       <option value="">Select mode...</option>
                       <option value="cash on delivery">Cash on Delivery</option>
                       <option value="transportation">Transportation</option>
@@ -526,16 +844,7 @@ function OrderManagement() {
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '32px' }}>
                   <button 
                     type="button" 
-                    onClick={() => {
-                      alert('Lead and Order Information Submitted successfully!');
-                      setIsSubmitted(false);
-                      setItems([]);
-                      setQuery('');
-                      setQueryStatus('');
-                      setOrderStage('');
-                      setSubStage('');
-                      if (formRef.current) formRef.current.reset();
-                    }} 
+                    onClick={handleOrderSubmit}
                     className="btn-primary" 
                     style={{ padding: '10px 32px' }}
                   >
@@ -569,11 +878,96 @@ function OrderManagement() {
             </div>
           </div>
         </div>
-        <div className="chart-body centered empty-chart" style={{ flex: 1 }}>
-          <p style={{ color: '#64748b', fontSize: '15px' }}>
-            No data available for {currentSection || 'Order Management'} yet.
-          </p>
-        </div>
+
+        {matchingLeads.length === 0 ? (
+          <div className="chart-body centered empty-chart" style={{ flex: 1 }}>
+            <p style={{ color: '#64748b', fontSize: '15px' }}>
+              No data available for {currentSection || 'Order Management'} yet.
+            </p>
+          </div>
+        ) : (
+          <div style={{ padding: '16px 20px', overflowX: 'auto', flex: 1 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600 }}>
+                  <th style={{ padding: '10px 12px' }}>Client Name</th>
+                  <th style={{ padding: '10px 12px' }}>Company</th>
+                  <th style={{ padding: '10px 12px' }}>Employee</th>
+                  <th style={{ padding: '10px 12px' }}>Phone</th>
+                  <th style={{ padding: '10px 12px' }}>Stage</th>
+                  <th style={{ padding: '10px 12px' }}>Sub Stage</th>
+                  <th style={{ padding: '10px 12px' }}>Quantity</th>
+                  <th style={{ padding: '10px 12px' }}>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matchingLeads.map((item) => (
+                  <tr
+                    key={item._id}
+                    onClick={() => navigate(`/order/create-lead?id=${item._id}`)}
+                    style={{
+                      borderBottom: '1px solid #f1f5f9',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    title="Click to view and edit pre-filled data"
+                  >
+                    <td style={{ padding: '12px', fontWeight: 600, color: '#1e293b' }}>
+                      {item.clientName || 'Unnamed Client'}
+                    </td>
+                    <td style={{ padding: '12px', color: '#475569' }}>
+                      {item.companyName || '—'}
+                    </td>
+                    <td style={{ padding: '12px', color: '#64748b' }}>
+                      {item.employeeName || 'Divyanshi'}
+                    </td>
+                    <td style={{ padding: '12px', color: '#64748b' }}>
+                      {item.phoneNumber || '—'}
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <span
+                        style={{
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          background: '#e0f2fe',
+                          color: '#0369a1',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {item.orderStage || 'Sample'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <span
+                        style={{
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          background: '#f3e8ff',
+                          color: '#6b21a8',
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {item.subStage === 'new' ? 'Leads' : item.subStage || 'Leads'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px', color: '#475569' }}>
+                      {item.totalQuantity ? `${item.totalQuantity} pcs` : '—'}
+                    </td>
+                    <td style={{ padding: '12px', color: '#94a3b8', fontSize: '12px' }}>
+                      {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
