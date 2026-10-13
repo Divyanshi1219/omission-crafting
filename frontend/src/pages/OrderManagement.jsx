@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { LayoutGrid, Plus, Trash2 } from 'lucide-react';
 import './OrderManagement.css';
 
-const ORDER_STAGES = [
+const FULL_ORDER_STAGES = [
   'New',
   'Order',
   'DTF Pending',
@@ -15,18 +15,191 @@ const ORDER_STAGES = [
   'Delivery'
 ];
 
+const SAMPLE_STAGES = [
+  'Leads',
+  'Order',
+  'DTF Pending',
+  'Stock',
+  'Printing',
+  'Customer Approved'
+];
+
+const PARTIAL_STAGES = [
+  'Leads',
+  'Order',
+  'DTF Pending',
+  'Stock',
+  'Printing',
+  'Quality Check',
+  'Payment Status'
+];
+
+const COMPLETE_STAGES = [
+  'Leads',
+  'Order',
+  'DTF Pending',
+  'Stock',
+  'Printing',
+  'Quality Check',
+  'Packaging',
+  'Delivery Pending',
+  'Delivery'
+];
+
+const SUB_STAGES_BY_ORDER_STAGE = {
+  sample: [
+    'New',
+    'Order',
+    'DTF Pending',
+    'Stock',
+    'Printing',
+    'Customer Approved'
+  ],
+  partial: [
+    'New',
+    'Order',
+    'DTF Pending',
+    'Stock',
+    'Printing',
+    'Quality Check',
+    'Payment Status'
+  ],
+  complete: [
+    'New',
+    'Order',
+    'DTF Pending',
+    'Stock',
+    'Printing',
+    'Quality Check',
+    'Packaging',
+    'Delivery Pending',
+    'Delivery'
+  ]
+};
+
+const STAGE_ROUTE_MAP = {
+  '/order/create-lead': 'New',
+  '/order/leads': 'New',
+  '/order/order': 'Order',
+  '/order/dtf-pending': 'DTF Pending',
+  '/order/stock': 'Stock',
+  '/order/printing': 'Printing',
+  '/order/quality-check': 'Quality Check',
+  '/order/packaging': 'Packaging',
+  '/order/delivery-pending': 'Delivery Pending',
+  '/order/delivery': 'Delivery',
+
+  // Sample child routes
+  '/order/sample': 'Leads',
+  '/order/sample/leads': 'Leads',
+  '/order/sample/order': 'Order',
+  '/order/sample/dtf-pending': 'DTF Pending',
+  '/order/sample/stock': 'Stock',
+  '/order/sample/printing': 'Printing',
+  '/order/sample/customer-approved': 'Customer Approved',
+
+  // Partial child routes
+  '/order/partial': 'Leads',
+  '/order/partial/leads': 'Leads',
+  '/order/partial/order': 'Order',
+  '/order/partial/dtf-pending': 'DTF Pending',
+  '/order/partial/stock': 'Stock',
+  '/order/partial/printing': 'Printing',
+  '/order/partial/quality-check': 'Quality Check',
+  '/order/partial/payment-status': 'Payment Status',
+
+  // Complete child routes
+  '/order/complete': 'Leads',
+  '/order/complete/leads': 'Leads',
+  '/order/complete/order': 'Order',
+  '/order/complete/dtf-pending': 'DTF Pending',
+  '/order/complete/stock': 'Stock',
+  '/order/complete/printing': 'Printing',
+  '/order/complete/quality-check': 'Quality Check',
+  '/order/complete/packaging': 'Packaging',
+  '/order/complete/delivery-pending': 'Delivery Pending',
+  '/order/complete/delivery': 'Delivery',
+};
+
 function OrderManagement() {
   const location = useLocation();
+  const navigate = useNavigate();
   const pathParts = location.pathname.split('/');
   const currentSection = pathParts[pathParts.length - 1].replace(/-/g, ' ');
 
   const formRef = useRef(null);
+
+  const isCustomerSupport = location.pathname === '/order/customer-support';
 
   const [query, setQuery] = useState('');
   const [queryStatus, setQueryStatus] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [items, setItems] = useState([]);
   const [selectedStage, setSelectedStage] = useState('New');
+  const [orderStage, setOrderStage] = useState('');
+  const [subStage, setSubStage] = useState('');
+
+  const getCurrentStages = () => {
+    if (location.pathname.startsWith('/order/sample')) {
+      return SAMPLE_STAGES;
+    }
+    if (location.pathname.startsWith('/order/partial')) {
+      return PARTIAL_STAGES;
+    }
+    if (location.pathname.startsWith('/order/complete')) {
+      return COMPLETE_STAGES;
+    }
+    return FULL_ORDER_STAGES;
+  };
+
+  useEffect(() => {
+    if (STAGE_ROUTE_MAP[location.pathname]) {
+      setSelectedStage(STAGE_ROUTE_MAP[location.pathname]);
+    } else {
+      const currentStages = getCurrentStages();
+      if (currentStages && currentStages.length > 0) {
+        setSelectedStage(currentStages[0]);
+      }
+    }
+  }, [location.pathname]);
+
+  const renderChangeManagementBar = () => {
+    const stages = getCurrentStages();
+    return (
+      <div className="change-mgmt-wrapper">
+        <div className="change-mgmt-track" role="tablist" aria-label="Order Lifecycle Stages">
+          {stages.map((stage) => {
+            const isActive =
+              selectedStage === stage ||
+              (selectedStage === 'New' && stage === 'Leads') ||
+              (selectedStage === 'Leads' && stage === 'New');
+            return (
+              <button
+                key={stage}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`change-mgmt-step ${isActive ? 'active' : ''}`}
+                onClick={() => {
+                  setSelectedStage(stage);
+                  if (location.pathname.startsWith('/order/sample')) {
+                    navigate(`/order/sample/${stage.toLowerCase().replace(/\s+/g, '-')}`);
+                  } else if (location.pathname.startsWith('/order/partial')) {
+                    navigate(`/order/partial/${stage.toLowerCase().replace(/\s+/g, '-')}`);
+                  } else if (location.pathname.startsWith('/order/complete')) {
+                    navigate(`/order/complete/${stage.toLowerCase().replace(/\s+/g, '-')}`);
+                  }
+                }}
+                title={`Stage: ${stage}`}
+              >
+                <span className="step-label">{stage}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
@@ -72,26 +245,7 @@ function OrderManagement() {
 
         <div className="dashboard-content">
           {/* Change Management Process Flow Chevron Tracker */}
-          <div className="change-mgmt-wrapper">
-            <div className="change-mgmt-track" role="tablist" aria-label="Order Lifecycle Stages">
-              {ORDER_STAGES.map((stage) => {
-                const isActive = selectedStage === stage;
-                return (
-                  <button
-                    key={stage}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    className={`change-mgmt-step ${isActive ? 'active' : ''}`}
-                    onClick={() => setSelectedStage(stage)}
-                    title={`Stage: ${stage}`}
-                  >
-                    <span className="step-label">{stage}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {renderChangeManagementBar()}
 
           <form className="form-container" onSubmit={handleFormSubmit} ref={formRef}>
             <div className="form-section">
@@ -215,13 +369,34 @@ function OrderManagement() {
 
                   <div className="form-group">
                     <label>Order Stage *</label>
-                    <select required>
+                    <select 
+                      required 
+                      value={orderStage} 
+                      onChange={(e) => {
+                        setOrderStage(e.target.value);
+                        setSubStage('');
+                      }}
+                    >
                       <option value="">Select stage...</option>
-                      <option value="open">Open</option>
-                      <option value="under procurement">Under Procurement</option>
-                      <option value="quality control">Quality Control</option>
-                      <option value="delivery pending">Delivery Pending</option>
-                      <option value="delivered">Delivered</option>
+                      <option value="sample">Sample</option>
+                      <option value="partial">Partial</option>
+                      <option value="complete">Complete</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Sub Stage *</label>
+                    <select 
+                      required 
+                      value={subStage} 
+                      onChange={(e) => setSubStage(e.target.value)}
+                      disabled={!orderStage}
+                      style={!orderStage ? { cursor: 'not-allowed', opacity: 0.7 } : {}}
+                    >
+                      <option value="">{orderStage ? 'Select sub stage...' : 'Select order stage first'}</option>
+                      {orderStage && SUB_STAGES_BY_ORDER_STAGE[orderStage]?.map((stage) => (
+                        <option key={stage} value={stage.toLowerCase()}>{stage}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -357,6 +532,8 @@ function OrderManagement() {
                       setItems([]);
                       setQuery('');
                       setQueryStatus('');
+                      setOrderStage('');
+                      setSubStage('');
                       if (formRef.current) formRef.current.reset();
                     }} 
                     className="btn-primary" 
@@ -379,6 +556,8 @@ function OrderManagement() {
       <div className="dashboard-header">
         <h2 style={{ textTransform: 'capitalize' }}>{currentSection || 'Order Management'}</h2>
       </div>
+
+      {!isCustomerSupport && renderChangeManagementBar()}
       
       <div className="chart-card hover-scale" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
         <div className="chart-header">
