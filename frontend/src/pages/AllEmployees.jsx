@@ -68,8 +68,11 @@ function AllEmployees() {
     api
       .get("/api/employees")
       .then((res) => setEmployees(res.data?.data || []))
-      .catch(() =>
-        setFetchError("Unable to load employees. Make sure the backend is running (port 5001) and MongoDB is connected.")
+      .catch((err) =>
+        setFetchError(
+          err.response?.data?.message ||
+          "Unable to load employees from server. Check backend connection and MongoDB Atlas access."
+        )
       )
       .finally(() => setIsLoading(false));
   };

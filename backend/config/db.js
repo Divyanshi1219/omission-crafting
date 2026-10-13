@@ -9,11 +9,12 @@ try {
 }
 
 const connectDB = async () => {
-  const uri = process.env.MONGODB_URI;
+  const uri =
+    process.env.MONGODB_URI ||
+    "mongodb+srv://ommissionit_db_user:Omission%4012345@cluster0.xmgpr25.mongodb.net/omission?appName=Cluster0&retryWrites=true&w=majority";
 
   if (!uri) {
-    console.warn("⚠️ MONGODB_URI is not set in backend/.env!");
-    console.warn("Please add your MongoDB Atlas connection string to backend/.env");
+    console.warn("⚠️ MONGODB_URI is not set!");
     return;
   }
 
