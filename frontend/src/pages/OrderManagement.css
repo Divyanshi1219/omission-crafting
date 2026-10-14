@@ -14,6 +14,39 @@
   box-sizing: border-box;
 }
 
+.change-mgmt-wrapper.definition-bar-wrapper {
+  margin-bottom: 12px;
+}
+
+.definition-bar-wrapper .change-mgmt-step {
+  height: 40px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.definition-bar-wrapper .change-mgmt-step.active {
+  background-color: #bfdbfe; /* Light pastel blue */
+  color: #1e3a8a; /* Deep navy for contrast */
+  font-weight: 700;
+}
+
+.definition-bar-wrapper .change-mgmt-step.active:hover {
+  background-color: #93c5fd;
+  color: #172554;
+}
+
+.app.dark .definition-bar-wrapper .change-mgmt-step.active {
+  background-color: #7dd3fc; /* Light pastel sky blue in dark mode */
+  color: #0c4a6e;
+  font-weight: 700;
+}
+
+.app.dark .definition-bar-wrapper .change-mgmt-step.active:hover {
+  background-color: #38bdf8;
+  color: #082f49;
+}
+
 .app.dark .change-mgmt-wrapper {
   background: #1e293b;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -131,5 +164,40 @@
 
 .app.dark .change-mgmt-step.active {
   background-color: #16a34a;
+  color: #ffffff;
+}
+
+/* Back to Order button styling */
+.back-to-order-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s ease;
+}
+
+.back-to-order-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.app.dark .back-to-order-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+.app.dark .back-to-order-btn:hover {
+  background: #334155;
+  border-color: #475569;
   color: #ffffff;
 }

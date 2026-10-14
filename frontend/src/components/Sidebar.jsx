@@ -43,7 +43,6 @@ function Sidebar() {
   };
 
   const sampleItems = [
-    { name: 'Leads', path: '/order/sample/leads' },
     { name: 'Order', path: '/order/sample/order' },
     { name: 'DTF Pending', path: '/order/sample/dtf-pending' },
     { name: 'Stock', path: '/order/sample/stock' },
@@ -52,7 +51,6 @@ function Sidebar() {
   ];
 
   const partialItems = [
-    { name: 'Leads', path: '/order/partial/leads' },
     { name: 'Order', path: '/order/partial/order' },
     { name: 'DTF Pending', path: '/order/partial/dtf-pending' },
     { name: 'Stock', path: '/order/partial/stock' },
@@ -62,7 +60,6 @@ function Sidebar() {
   ];
 
   const completeItems = [
-    { name: 'Leads', path: '/order/complete/leads' },
     { name: 'Order', path: '/order/complete/order' },
     { name: 'DTF Pending', path: '/order/complete/dtf-pending' },
     { name: 'Stock', path: '/order/complete/stock' },

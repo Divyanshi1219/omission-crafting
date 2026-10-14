@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 
 const itemSchema = new mongoose.Schema({
   item: { type: String, default: "" },
+  itemType: { type: String, default: "" },
+  enterItem: { type: String, default: "" },
   printingType: { type: String, default: "" },
   sublimationOption: { type: String, default: "" },
   fabric: { type: String, default: "" },
@@ -70,6 +72,10 @@ const leadSchema = new mongoose.Schema(
     additionalNote: {
       type: String,
       default: "",
+    },
+    repeatedOrder: {
+      type: String,
+      default: "No",
     },
     // Order details (if query is order)
     orderId: {

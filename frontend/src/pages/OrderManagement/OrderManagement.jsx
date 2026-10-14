@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Plus, Trash2 } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2, ArrowLeft } from 'lucide-react';
 import api from '../api';
 import './OrderManagement.css';
 
@@ -17,7 +17,6 @@ const FULL_ORDER_STAGES = [
 ];
 
 const SAMPLE_STAGES = [
-  'Leads',
   'Order',
   'DTF Pending',
   'Stock',
@@ -26,7 +25,6 @@ const SAMPLE_STAGES = [
 ];
 
 const PARTIAL_STAGES = [
-  'Leads',
   'Order',
   'DTF Pending',
   'Stock',
@@ -36,7 +34,6 @@ const PARTIAL_STAGES = [
 ];
 
 const COMPLETE_STAGES = [
-  'Leads',
   'Order',
   'DTF Pending',
   'Stock',
@@ -47,9 +44,14 @@ const COMPLETE_STAGES = [
   'Delivery'
 ];
 
+const ORDER_DEFINITIONS = [
+  { label: 'Sample', slug: 'sample' },
+  { label: 'Partial', slug: 'partial' },
+  { label: 'Complete', slug: 'complete' }
+];
+
 const SUB_STAGES_BY_ORDER_STAGE = {
   sample: [
-    'New',
     'Order',
     'DTF Pending',
     'Stock',
@@ -57,7 +59,6 @@ const SUB_STAGES_BY_ORDER_STAGE = {
     'Customer Approved'
   ],
   partial: [
-    'New',
     'Order',
     'DTF Pending',
     'Stock',
@@ -66,7 +67,6 @@ const SUB_STAGES_BY_ORDER_STAGE = {
     'Payment Status'
   ],
   complete: [
-    'New',
     'Order',
     'DTF Pending',
     'Stock',
@@ -91,8 +91,8 @@ const STAGE_ROUTE_MAP = {
   '/order/delivery': 'Delivery',
 
   // Sample child routes
-  '/order/sample': 'Leads',
-  '/order/sample/leads': 'Leads',
+  '/order/sample': 'Order',
+  '/order/sample/leads': 'Order',
   '/order/sample/order': 'Order',
   '/order/sample/dtf-pending': 'DTF Pending',
   '/order/sample/stock': 'Stock',
@@ -100,8 +100,8 @@ const STAGE_ROUTE_MAP = {
   '/order/sample/customer-approved': 'Customer Approved',
 
   // Partial child routes
-  '/order/partial': 'Leads',
-  '/order/partial/leads': 'Leads',
+  '/order/partial': 'Order',
+  '/order/partial/leads': 'Order',
   '/order/partial/order': 'Order',
   '/order/partial/dtf-pending': 'DTF Pending',
   '/order/partial/stock': 'Stock',
@@ -110,8 +110,8 @@ const STAGE_ROUTE_MAP = {
   '/order/partial/payment-status': 'Payment Status',
 
   // Complete child routes
-  '/order/complete': 'Leads',
-  '/order/complete/leads': 'Leads',
+  '/order/complete': 'Order',
+  '/order/complete/leads': 'Order',
   '/order/complete/order': 'Order',
   '/order/complete/dtf-pending': 'DTF Pending',
   '/order/complete/stock': 'Stock',
@@ -120,6 +120,15 @@ const STAGE_ROUTE_MAP = {
   '/order/complete/packaging': 'Packaging',
   '/order/complete/delivery-pending': 'Delivery Pending',
   '/order/complete/delivery': 'Delivery',
+};
+
+const getDefaultDeliveryDate = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 function OrderManagement() {
@@ -135,13 +144,14 @@ function OrderManagement() {
 
   const isCustomerSupport = location.pathname === '/order/customer-support';
 
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState('lead');
   const [queryStatus, setQueryStatus] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [items, setItems] = useState([]);
   const [selectedStage, setSelectedStage] = useState('New');
   const [orderStage, setOrderStage] = useState('');
   const [subStage, setSubStage] = useState('');
+  const [phoneTouched, setPhoneTouched] = useState(false);
 
   const [formData, setFormData] = useState({
     companyName: '',
@@ -150,6 +160,7 @@ function OrderManagement() {
     state: '',
     pincode: '',
     phoneNumber: '',
+    repeatedOrder: 'No',
     scheduleDate: '',
     scheduleTime: '',
     additionalNote: '',
@@ -162,7 +173,7 @@ function OrderManagement() {
     netAmount: '',
     advanceAmount: '',
     pendingAmount: '',
-    deliveryDate: '',
+    deliveryDate: getDefaultDeliveryDate(),
     urgency: '',
     modeOfDelivery: '',
   });
@@ -177,7 +188,8 @@ function OrderManagement() {
           .then((res) => {
             if (res.data?.data) {
               const d = res.data.data;
-              setQuery(d.query || '');
+              const q = (d.query || 'lead').toLowerCase();
+              setQuery(q);
               setQueryStatus(d.queryStatus || '');
               setOrderStage(d.orderStage || '');
               setSubStage(d.subStage || '');
@@ -189,6 +201,7 @@ function OrderManagement() {
                 state: d.state || '',
                 pincode: d.pincode || '',
                 phoneNumber: d.phoneNumber || '',
+                repeatedOrder: d.repeatedOrder || 'No',
                 scheduleDate: d.scheduleDate || '',
                 scheduleTime: d.scheduleTime || '',
                 additionalNote: d.additionalNote || '',
@@ -201,23 +214,22 @@ function OrderManagement() {
                 netAmount: d.netAmount || '',
                 advanceAmount: d.advanceAmount || '',
                 pendingAmount: d.pendingAmount || '',
-                deliveryDate: d.deliveryDate || '',
+                deliveryDate: d.deliveryDate ? (d.deliveryDate.includes('T') ? d.deliveryDate.split('T')[0] : d.deliveryDate) : getDefaultDeliveryDate(),
                 urgency: d.urgency || '',
                 modeOfDelivery: d.modeOfDelivery || '',
               });
-              if (d.query === 'order' || d.orderStage) {
-                setIsSubmitted(true);
-              }
+              setIsSubmitted(true);
             }
           })
           .catch((err) => console.error('Error loading lead for edit:', err));
       } else {
-        setQuery('');
+        setQuery('lead');
         setQueryStatus('');
         setOrderStage('');
         setSubStage('');
         setItems([]);
         setIsSubmitted(false);
+        setPhoneTouched(false);
         setFormData({
           companyName: '',
           clientName: '',
@@ -225,6 +237,7 @@ function OrderManagement() {
           state: '',
           pincode: '',
           phoneNumber: '',
+          repeatedOrder: 'No',
           scheduleDate: '',
           scheduleTime: '',
           additionalNote: '',
@@ -237,7 +250,7 @@ function OrderManagement() {
           netAmount: '',
           advanceAmount: '',
           pendingAmount: '',
-          deliveryDate: '',
+          deliveryDate: getDefaultDeliveryDate(),
           urgency: '',
           modeOfDelivery: '',
         });
@@ -257,6 +270,65 @@ function OrderManagement() {
         .catch((err) => console.error('Error fetching leads:', err));
     }
   }, [location.pathname]);
+
+  // Auto-calculate Total Amount = Total Quantity * Price Per Piece
+  useEffect(() => {
+    if (formData.totalQuantity !== '' && formData.pricePerPiece !== '') {
+      const qty = parseFloat(formData.totalQuantity);
+      const price = parseFloat(formData.pricePerPiece);
+      if (!isNaN(qty) && !isNaN(price)) {
+        const calculated = Math.round(qty * price * 100) / 100;
+        setFormData((prev) => {
+          if (Number(prev.totalAmount) === calculated && prev.totalAmount !== '') return prev;
+          return { ...prev, totalAmount: calculated };
+        });
+      }
+    }
+  }, [formData.totalQuantity, formData.pricePerPiece]);
+
+  // Auto-calculate Net Amount = Total Amount + (Total Amount * (GST / 100))
+  useEffect(() => {
+    if (formData.totalAmount !== '') {
+      const total = parseFloat(formData.totalAmount);
+      const gstPercent = parseFloat(formData.gst) || 0;
+      if (!isNaN(total)) {
+        const calculatedNet = Math.round((total + (total * (gstPercent / 100))) * 100) / 100;
+        setFormData((prev) => {
+          if (Number(prev.netAmount) === calculatedNet && prev.netAmount !== '') return prev;
+          return { ...prev, netAmount: calculatedNet };
+        });
+      }
+    }
+  }, [formData.totalAmount, formData.gst]);
+
+  // Auto-calculate Pending Amount:
+  // If GST entered: pendingAmount = netAmount - advanceAmount
+  // If GST not entered: pendingAmount = totalAmount - advanceAmount
+  useEffect(() => {
+    if (formData.totalAmount !== '') {
+      const total = parseFloat(formData.totalAmount);
+      if (isNaN(total)) return;
+
+      const hasGst = formData.gst !== '' && !isNaN(parseFloat(formData.gst));
+      const advance = parseFloat(formData.advanceAmount) || 0;
+
+      let baseAmount = total;
+      if (hasGst) {
+        if (formData.netAmount !== '' && !isNaN(parseFloat(formData.netAmount))) {
+          baseAmount = parseFloat(formData.netAmount);
+        } else {
+          const gstPercent = parseFloat(formData.gst) || 0;
+          baseAmount = Math.round((total + (total * (gstPercent / 100))) * 100) / 100;
+        }
+      }
+
+      const calculatedPending = Math.round((baseAmount - advance) * 100) / 100;
+      setFormData((prev) => {
+        if (Number(prev.pendingAmount) === calculatedPending && prev.pendingAmount !== '') return prev;
+        return { ...prev, pendingAmount: calculatedPending };
+      });
+    }
+  }, [formData.totalAmount, formData.netAmount, formData.gst, formData.advanceAmount]);
 
   const getCurrentStages = () => {
     if (location.pathname.startsWith('/order/sample')) {
@@ -282,16 +354,54 @@ function OrderManagement() {
     }
   }, [location.pathname]);
 
+  const renderDefinitionBar = () => {
+    let currentDefinition = '';
+    if (location.pathname.startsWith('/order/sample')) {
+      currentDefinition = 'sample';
+    } else if (location.pathname.startsWith('/order/partial')) {
+      currentDefinition = 'partial';
+    } else if (location.pathname.startsWith('/order/complete')) {
+      currentDefinition = 'complete';
+    }
+
+    if (!currentDefinition) return null;
+
+    return (
+      <div className="change-mgmt-wrapper definition-bar-wrapper">
+        <div className="change-mgmt-track" role="tablist" aria-label="Definition Bar">
+          {ORDER_DEFINITIONS.map((def) => {
+            const isActive = currentDefinition === def.slug;
+            return (
+              <button
+                key={def.slug}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`change-mgmt-step definition-step ${isActive ? 'active' : ''}`}
+                onClick={() => {
+                  const currentSub = pathParts[2]?.toLowerCase() || 'order';
+                  const targetAllowedSubStages = (SUB_STAGES_BY_ORDER_STAGE[def.slug] || []).map(s => s.toLowerCase().replace(/\s+/g, '-'));
+                  const targetSub = targetAllowedSubStages.includes(currentSub) ? currentSub : 'order';
+                  navigate(`/order/${def.slug}/${targetSub}`);
+                }}
+                title={`Definition: ${def.label}`}
+              >
+                <span className="step-label">{def.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const renderChangeManagementBar = () => {
     const stages = getCurrentStages();
     return (
       <div className="change-mgmt-wrapper">
         <div className="change-mgmt-track" role="tablist" aria-label="Order Lifecycle Stages">
           {stages.map((stage) => {
-            const isActive =
-              selectedStage === stage ||
-              (selectedStage === 'New' && stage === 'Leads') ||
-              (selectedStage === 'Leads' && stage === 'New');
+            const isActive = selectedStage === stage;
             return (
               <button
                 key={stage}
@@ -303,14 +413,11 @@ function OrderManagement() {
                   setSelectedStage(stage);
                   const stageSlug = stage.toLowerCase().replace(/\s+/g, '-');
                   if (location.pathname.startsWith('/order/sample')) {
-                    const target = stageSlug === 'new' ? 'leads' : stageSlug;
-                    navigate(`/order/sample/${target}`);
+                    navigate(`/order/sample/${stageSlug}`);
                   } else if (location.pathname.startsWith('/order/partial')) {
-                    const target = stageSlug === 'new' ? 'leads' : stageSlug;
-                    navigate(`/order/partial/${target}`);
+                    navigate(`/order/partial/${stageSlug}`);
                   } else if (location.pathname.startsWith('/order/complete')) {
-                    const target = stageSlug === 'new' ? 'leads' : stageSlug;
-                    navigate(`/order/complete/${target}`);
+                    navigate(`/order/complete/${stageSlug}`);
                   }
                 }}
                 title={`Stage: ${stage}`}
@@ -324,8 +431,26 @@ function OrderManagement() {
     );
   };
 
+  const handleBackToOrder = () => {
+    const from = searchParams.get('from');
+    if (from) {
+      navigate(from);
+    } else if (orderStage) {
+      const target = subStage ? subStage.replace(/\s+/g, '-') : 'order';
+      navigate(`/order/${orderStage}/${target}`);
+    } else {
+      navigate(-1);
+    }
+  };
+
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    const phone = (formData.phoneNumber || '').trim();
+    if (!/^\d{10}$/.test(phone)) {
+      setPhoneTouched(true);
+      alert('Phone number must be of 10 digits.');
+      return;
+    }
     const action = e.nativeEvent?.submitter?.name;
     if (action === 'save') {
       try {
@@ -341,11 +466,14 @@ function OrderManagement() {
         if (editId) payload._id = editId;
         await api.post('/api/leads', payload);
         alert('Lead saved successfully!');
-        if (orderStage) {
-          const target = !subStage || subStage === 'new' ? 'leads' : subStage.replace(/\s+/g, '-');
+        const from = searchParams.get('from');
+        if (from) {
+          navigate(from);
+        } else if (orderStage) {
+          const target = !subStage || subStage === 'new' || subStage === 'leads' ? 'order' : subStage.replace(/\s+/g, '-');
           navigate(`/order/${orderStage}/${target}`);
         } else {
-          navigate('/order/sample/leads');
+          navigate('/order/sample/order');
         }
       } catch (err) {
         console.error('Error saving lead:', err);
@@ -357,6 +485,12 @@ function OrderManagement() {
   };
 
   const handleOrderSubmit = async () => {
+    const phone = (formData.phoneNumber || '').trim();
+    if (!/^\d{10}$/.test(phone)) {
+      setPhoneTouched(true);
+      alert('Phone number must be of 10 digits.');
+      return;
+    }
     try {
       const payload = {
         employeeName: 'Divyanshi',
@@ -372,14 +506,18 @@ function OrderManagement() {
       alert('Lead and Order Information Submitted successfully!');
       setIsSubmitted(false);
       setItems([]);
-      setQuery('');
+      setQuery('lead');
       setQueryStatus('');
       setOrderStage('');
       setSubStage('');
+      setPhoneTouched(false);
       if (formRef.current) formRef.current.reset();
 
-      if (orderStage && subStage) {
-        const target = subStage === 'new' ? 'leads' : subStage.replace(/\s+/g, '-');
+      const from = searchParams.get('from');
+      if (from) {
+        navigate(from);
+      } else if (orderStage && subStage) {
+        const target = subStage === 'new' || subStage === 'leads' ? 'order' : subStage.replace(/\s+/g, '-');
         navigate(`/order/${orderStage}/${target}`);
       } else {
         navigate('/order/sample/order');
@@ -390,14 +528,24 @@ function OrderManagement() {
     }
   };
 
-  const handleAddItem = () => {
-    setItems([...items, { id: Date.now(), item: '', fabric: '', quantity: '', size: '', color: '', printingType: '', sublimationOption: '' }]);
+  const isTshirt = (it) => {
+    if (it.itemType === 't-shirt') return true;
+    if (it.itemType === 'others') return false;
+    const t = (it.item || '').toLowerCase().trim();
+    return ['t-shirt', 't shirt', 'tshirt'].includes(t);
   };
 
-  const handleItemChange = (id, field, value) => {
+  const handleAddItem = () => {
+    setItems([...items, { id: Date.now(), itemType: '', item: '', enterItem: '', fabric: '', quantity: '', size: '', color: '', printingType: '', sublimationOption: '' }]);
+  };
+
+  const handleItemChange = (id, fieldOrUpdates, value) => {
     setItems(items.map(item => {
       if (item.id === id) {
-        return { ...item, [field]: value };
+        if (typeof fieldOrUpdates === 'object') {
+          return { ...item, ...fieldOrUpdates };
+        }
+        return { ...item, [fieldOrUpdates]: value };
       }
       return item;
     }));
@@ -419,7 +567,7 @@ function OrderManagement() {
   } else if (pathParts.length === 2) {
     if (['sample', 'partial', 'complete'].includes(pathParts[1].toLowerCase())) {
       currentStage = pathParts[1].toLowerCase();
-      currentSubStage = 'leads';
+      currentSubStage = 'order';
     } else {
       currentSubStage = pathParts[1].toLowerCase();
     }
@@ -443,7 +591,7 @@ function OrderManagement() {
     }
 
     if (currentSubStage === 'order') {
-      return itemSub === 'order' || (item.query === 'order' && (!itemSub || itemSub === 'new'));
+      return itemSub === 'order' || (item.query === 'order' && (!itemSub || itemSub === 'new')) || !itemSub || itemSub === 'leads' || itemSub === 'new';
     }
 
     const normItemSub = itemSub.replace(/-/g, ' ');
@@ -454,19 +602,32 @@ function OrderManagement() {
   if (location.pathname === '/order/create-lead') {
     return (
       <div className="dashboard-page">
-        <div className="page-header">
-          <div>
-            <h1>Create Lead</h1>
-            <p>Fill out the form below to create a new lead.</p>
+        {editId ? (
+          <div style={{ marginBottom: '20px' }}>
+            <button
+              type="button"
+              onClick={handleBackToOrder}
+              className="back-to-order-btn"
+            >
+              <ArrowLeft size={18} />
+              <span>Back to Order</span>
+            </button>
           </div>
-          <div className="header-actions">
-            {/* Save Lead button removed from top header */}
+        ) : (
+          <div className="page-header">
+            <div>
+              <h1>Create Lead</h1>
+              <p>Fill out the form below to create a new lead.</p>
+            </div>
+            <div className="header-actions">
+              {/* Save Lead button removed from top header */}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="dashboard-content">
           {/* Change Management Process Flow Chevron Tracker */}
-          {renderChangeManagementBar()}
+          {!editId && renderChangeManagementBar()}
 
           <form className="form-container" onSubmit={handleFormSubmit} ref={formRef}>
             <div className="form-section">
@@ -546,16 +707,53 @@ function OrderManagement() {
 
                 <div className="form-group">
                   <label>Phone Number *</label>
-                  <input
-                    type="tel"
-                    required
-                    value={formData.phoneNumber}
-                    onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-                  />
+                  <div>
+                    <input
+                      type="tel"
+                      required
+                      value={formData.phoneNumber}
+                      onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                      onBlur={() => setPhoneTouched(true)}
+                      placeholder="10-digit mobile number"
+                    />
+                    {phoneTouched && !/^\d{10}$/.test((formData.phoneNumber || '').trim()) && (
+                      <span style={{ color: '#ef4444', fontSize: '12px', display: 'block', marginTop: '4px' }}>
+                        Phone number must be of 10 digits
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                {(queryStatus === 'phone not pick' || queryStatus === 'call back') ? (
-                  <div className="form-group">
+                <div className="form-group" style={{ gridColumn: 2 }}>
+                  <label>Repeated Order</label>
+                  <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
+                      <input
+                        type="radio"
+                        name="repeatedOrder"
+                        value="Yes"
+                        checked={formData.repeatedOrder === 'Yes'}
+                        onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
+                        style={{ width: 'auto', margin: 0, cursor: 'pointer', accentColor: '#2563eb' }}
+                      />
+                      Yes
+                    </label>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
+                      <input
+                        type="radio"
+                        name="repeatedOrder"
+                        value="No"
+                        checked={formData.repeatedOrder === 'No' || !formData.repeatedOrder}
+                        onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
+                        style={{ width: 'auto', margin: 0, cursor: 'pointer', accentColor: '#2563eb' }}
+                      />
+                      No
+                    </label>
+                  </div>
+                </div>
+
+                {(queryStatus === 'phone not pick' || queryStatus === 'call back') && (
+                  <div className="form-group" style={{ gridColumn: 1 }}>
                     <label>Schedule</label>
                     <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
                       <input
@@ -572,8 +770,6 @@ function OrderManagement() {
                       />
                     </div>
                   </div>
-                ) : (
-                  <div></div>
                 )}
               </div>
 
@@ -591,7 +787,7 @@ function OrderManagement() {
                 ></textarea>
               </div>
               
-              {!isSubmitted && (
+              {!isSubmitted && !editId && (
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '32px' }}>
                   <button type="submit" name="save" className="btn-secondary" style={{ padding: '10px 24px' }}>
                     Save
@@ -611,7 +807,7 @@ function OrderManagement() {
             </div>
 
             {/* MORE INFORMATION FORM */}
-            {isSubmitted && (
+            {(isSubmitted || !!editId) && (
               <div className="form-section" style={{ marginTop: '24px' }}>
                 <div className="form-section-title">Order Information</div>
                 
@@ -701,7 +897,7 @@ function OrderManagement() {
                   </div>
 
                   <div className="form-group">
-                    <label>GST</label>
+                    <label>GST (in percentage)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -741,26 +937,40 @@ function OrderManagement() {
                   </div>
 
                   <div className="form-group">
+                    <label>Urgency *</label>
+                    <select
+                      required
+                      value={formData.urgency}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData((prev) => ({
+                          ...prev,
+                          urgency: val,
+                          ...(val.toLowerCase() !== 'yes' ? { deliveryDate: getDefaultDeliveryDate() } : {})
+                        }));
+                      }}
+                    >
+                      <option value="">Select urgency...</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
                     <label>Delivery Date *</label>
                     <input
                       type="date"
                       required
                       value={formData.deliveryDate}
                       onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })}
+                      disabled={formData.urgency?.toLowerCase() !== 'yes'}
+                      style={
+                        formData.urgency?.toLowerCase() !== 'yes'
+                          ? { background: 'rgba(0,0,0,0.03)', cursor: 'not-allowed', color: '#64748b' }
+                          : {}
+                      }
+                      title={formData.urgency?.toLowerCase() !== 'yes' ? "Only editable when Urgency is 'Yes'" : ""}
                     />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Urgency *</label>
-                    <select
-                      required
-                      value={formData.urgency}
-                      onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
-                    >
-                      <option value="">Select urgency...</option>
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
                   </div>
 
                   <div className="form-group">
@@ -787,16 +997,83 @@ function OrderManagement() {
                   {items.length > 0 && (
                     <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                       {items.map((item) => (
-                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
-                          <div style={{ flex: '1 1 120px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Item *</label>
-                            <input type="text" required value={item.item || ''} onChange={(e) => handleItemChange(item.id, 'item', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                        <div
+                          key={item.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            gap: '10px',
+                            padding: '14px 16px',
+                            background: '#f8fafc',
+                            borderRadius: '12px',
+                            border: '1px solid #e2e8f0',
+                            flexWrap: 'nowrap',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            overflowX: 'auto',
+                          }}
+                        >
+                          <div style={{ flex: '1.1 1 115px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Item *</label>
+                            <select
+                              required
+                              value={item.itemType || (isTshirt(item) ? 't-shirt' : (item.item ? 'others' : ''))}
+                              onChange={(e) => {
+                                const selected = e.target.value;
+                                if (selected === 't-shirt') {
+                                  handleItemChange(item.id, {
+                                    itemType: 't-shirt',
+                                    item: 'T-Shirt',
+                                  });
+                                } else if (selected === 'others') {
+                                  handleItemChange(item.id, {
+                                    itemType: 'others',
+                                    item: item.enterItem || '',
+                                    printingType: '',
+                                    sublimationOption: '',
+                                  });
+                                } else {
+                                  handleItemChange(item.id, {
+                                    itemType: '',
+                                    item: '',
+                                    printingType: '',
+                                    sublimationOption: '',
+                                  });
+                                }
+                              }}
+                              style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                            >
+                              <option value="">Select...</option>
+                              <option value="t-shirt">T-Shirt</option>
+                              <option value="others">Others</option>
+                            </select>
                           </div>
-                          
-                          {['t-shirt', 't shirt', 'tshirt'].includes((item.item || '').toLowerCase().trim()) && (
-                            <div style={{ flex: '1 1 110px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Printing Type</label>
-                              <select value={item.printingType || ''} onChange={(e) => handleItemChange(item.id, 'printingType', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }}>
+
+                          {(item.itemType === 'others' || (!isTshirt(item) && item.item && item.item !== '')) && (
+                            <div style={{ flex: '1.2 1 120px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Enter Item *</label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Enter item..."
+                                value={item.enterItem || (item.item !== 'T-Shirt' && item.item !== 'others' ? item.item : '')}
+                                onChange={(e) => handleItemChange(item.id, {
+                                  enterItem: e.target.value,
+                                  item: e.target.value,
+                                })}
+                                style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                              />
+                            </div>
+                          )}
+
+                          {isTshirt(item) && (
+                            <div style={{ flex: '1.2 1 125px', minWidth: '115px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Printing Type</label>
+                              <select
+                                value={item.printingType || ''}
+                                onChange={(e) => handleItemChange(item.id, 'printingType', e.target.value)}
+                                style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                              >
                                 <option value="">Select...</option>
                                 <option value="DTF">DTF</option>
                                 <option value="Sublimation">Sublimation</option>
@@ -805,10 +1082,14 @@ function OrderManagement() {
                             </div>
                           )}
 
-                          {['t-shirt', 't shirt', 'tshirt'].includes((item.item || '').toLowerCase().trim()) && (item.printingType || '') === 'Sublimation' && (
-                            <div style={{ flex: '1 1 70px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Option</label>
-                              <select value={item.sublimationOption || ''} onChange={(e) => handleItemChange(item.id, 'sublimationOption', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }}>
+                          {isTshirt(item) && (item.printingType || '') === 'Sublimation' && (
+                            <div style={{ flex: '0.8 1 80px', minWidth: '75px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Option</label>
+                              <select
+                                value={item.sublimationOption || ''}
+                                onChange={(e) => handleItemChange(item.id, 'sublimationOption', e.target.value)}
+                                style={{ padding: '8px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                              >
                                 <option value="">Select...</option>
                                 <option value="1/2">1/2</option>
                                 <option value="1">1</option>
@@ -816,24 +1097,78 @@ function OrderManagement() {
                             </div>
                           )}
 
-                          <div style={{ flex: '1 1 100px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Fabric *</label>
-                            <input type="text" required value={item.fabric || ''} onChange={(e) => handleItemChange(item.id, 'fabric', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                          <div style={{ flex: '1 1 95px', minWidth: '85px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Fabric *</label>
+                            <input
+                              type="text"
+                              required
+                              value={item.fabric || ''}
+                              onChange={(e) => handleItemChange(item.id, 'fabric', e.target.value)}
+                              style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                            />
                           </div>
-                          <div style={{ flex: '1 1 70px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Quantity *</label>
-                            <input type="number" required value={item.quantity || ''} onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                          <div style={{ flex: '0.8 1 70px', minWidth: '60px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Quantity *</label>
+                            <input
+                              type="number"
+                              required
+                              value={item.quantity || ''}
+                              onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
+                              style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                            />
                           </div>
-                          <div style={{ flex: '1 1 70px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Size *</label>
-                            <input type="text" required value={item.size || ''} onChange={(e) => handleItemChange(item.id, 'size', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                          <div style={{ flex: '0.8 1 75px', minWidth: '65px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Size *</label>
+                            <select
+                              required
+                              value={item.size || ''}
+                              onChange={(e) => handleItemChange(item.id, 'size', e.target.value)}
+                              style={{ padding: '8px 6px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                            >
+                              <option value="">Select...</option>
+                              <option value="XXS">XXS</option>
+                              <option value="XS">XS</option>
+                              <option value="S">S</option>
+                              <option value="M">M</option>
+                              <option value="L">L</option>
+                              <option value="XL">XL</option>
+                              <option value="XXL">XXL</option>
+                              <option value="XXXL">XXXL</option>
+                              {item.size && !['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'].includes(item.size) && (
+                                <option value={item.size}>{item.size}</option>
+                              )}
+                            </select>
                           </div>
-                          <div style={{ flex: '1 1 100px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Color *</label>
-                            <input type="text" required value={item.color || ''} onChange={(e) => handleItemChange(item.id, 'color', e.target.value)} style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                          <div style={{ flex: '1 1 95px', minWidth: '85px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Color *</label>
+                            <input
+                              type="text"
+                              required
+                              value={item.color || ''}
+                              onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
+                              style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                            />
                           </div>
-                          <button type="button" onClick={() => handleRemoveItem(item.id)} style={{ marginTop: '20px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Trash2 size={20} />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(item.id)}
+                            title="Remove item"
+                            style={{
+                              flex: '0 0 auto',
+                              height: '36px',
+                              background: 'none',
+                              border: 'none',
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                              padding: '6px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginBottom: '1px',
+                              borderRadius: '6px',
+                            }}
+                          >
+                            <Trash2 size={18} />
                           </button>
                         </div>
                       ))}
@@ -866,6 +1201,7 @@ function OrderManagement() {
         <h2 style={{ textTransform: 'capitalize' }}>{currentSection || 'Order Management'}</h2>
       </div>
 
+      {!isCustomerSupport && renderDefinitionBar()}
       {!isCustomerSupport && renderChangeManagementBar()}
       
       <div className="chart-card hover-scale" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
@@ -904,7 +1240,7 @@ function OrderManagement() {
                 {matchingLeads.map((item) => (
                   <tr
                     key={item._id}
-                    onClick={() => navigate(`/order/create-lead?id=${item._id}`)}
+                    onClick={() => navigate(`/order/create-lead?id=${item._id}&from=${encodeURIComponent(location.pathname)}`)}
                     style={{
                       borderBottom: '1px solid #f1f5f9',
                       cursor: 'pointer',
