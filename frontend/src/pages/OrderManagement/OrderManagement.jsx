@@ -481,6 +481,35 @@ function OrderManagement() {
       }
     } else if (action === 'submit') {
       setIsSubmitted(true);
+      if (!formData.orderId) {
+        let maxNumber = 0;
+        leadsList.forEach((l) => {
+          if (l.orderId) {
+            const match = l.orderId.match(/^ORD(\d+)$/i);
+            if (match) {
+              const num = parseInt(match[1], 10);
+              if (!isNaN(num) && num > maxNumber) {
+                maxNumber = num;
+              }
+            }
+          }
+        });
+        const generatedId = `ORD${String(maxNumber + 1).padStart(5, '0')}`;
+        setFormData((prev) => ({
+          ...prev,
+          orderId: prev.orderId || generatedId,
+        }));
+        api.get('/api/leads/next-order-id')
+          .then((res) => {
+            if (res.data?.nextOrderId) {
+              setFormData((prev) => ({
+                ...prev,
+                orderId: res.data.nextOrderId,
+              }));
+            }
+          })
+          .catch(() => {});
+      }
     }
   };
 
@@ -492,6 +521,13 @@ function OrderManagement() {
       return;
     }
     try {
+      let finalOrderId = formData.orderId;
+      if (!finalOrderId) {
+        try {
+          const idRes = await api.get('/api/leads/next-order-id');
+          if (idRes.data?.nextOrderId) finalOrderId = idRes.data.nextOrderId;
+        } catch (_) {}
+      }
       const payload = {
         employeeName: 'Divyanshi',
         query: 'order',
@@ -499,6 +535,7 @@ function OrderManagement() {
         orderStage,
         subStage,
         ...formData,
+        orderId: finalOrderId || formData.orderId,
         items,
       };
       if (editId) payload._id = editId;
@@ -818,8 +855,8 @@ function OrderManagement() {
                       type="text"
                       value={formData.orderId}
                       onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
-                      placeholder="Auto-generated"
-                      style={{ background: 'rgba(0,0,0,0.02)' }}
+                      placeholder="ORD00001"
+                      style={{ background: 'rgba(0,0,0,0.02)', fontWeight: 600, color: '#1e40af' }}
                     />
                   </div>
                   
