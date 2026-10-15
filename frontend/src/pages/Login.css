@@ -1,0 +1,549 @@
+/* =========================================================
+   LOGIN PAGE - ETHEREAL VLYORA-INSPIRED FLOATING CARD
+   TAILORED FOR OMISSION CRAFTING ERP
+========================================================= */
+
+.login-page-container {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow-x: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #1e293b;
+  background: #dbeafe;
+}
+
+/* Background image layer with blur applied only to Day view */
+.login-page-container::before {
+  content: "";
+  position: fixed;
+  inset: -24px;
+  background-image: url('../assets/sky-bg.jpg');
+  background-position: center 30%;
+  background-size: cover;
+  background-repeat: no-repeat;
+  filter: blur(16px);
+  transform: scale(1.08);
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.4s ease, filter 0.4s ease;
+}
+
+.login-page-container.dark {
+  background: #0d1117;
+  color: #f8fafc;
+}
+
+/* Night view: exact original sharp view with 0 blur */
+.login-page-container.dark::before {
+  background-image: url('../assets/sky-dark-bg.jpg');
+  background-position: center center;
+  filter: none;
+  transform: scale(1);
+}
+
+/* Subtle overlay gradient to ensure text readability and card elevation */
+.login-bg-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.2) 0%, rgba(210, 230, 250, 0.35) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.login-page-container.dark .login-bg-overlay {
+  background: radial-gradient(circle at 50% 50%, rgba(10, 14, 26, 0.4) 0%, rgba(5, 7, 15, 0.75) 100%);
+}
+
+/* Minimal Top Floating Navigation */
+.login-floating-top-nav {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0;
+}
+
+.login-top-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.login-pill-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 7px 14px;
+  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.login-pill-btn:hover {
+  background: #ffffff;
+  color: #0f172a;
+  transform: translateY(-1px);
+}
+
+.login-page-container.dark .login-pill-btn {
+  background: rgba(20, 24, 33, 0.85);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+}
+
+.login-page-container.dark .login-pill-btn:hover {
+  background: #252a36;
+  color: #ffffff;
+}
+
+.login-theme-pill {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+/* Center Stage */
+.login-center-stage {
+  position: relative;
+  z-index: 5;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 20px;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* Floating Card Container (Styled after Reference Image) */
+.login-reference-card {
+  width: 100%;
+  max-width: 450px;
+  background: #ffffff;
+  border-radius: 32px;
+  padding: 26px 36px 22px 36px;
+  box-shadow: 
+    0 24px 60px -12px rgba(30, 41, 59, 0.14),
+    0 8px 24px -4px rgba(30, 41, 59, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.8);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: card-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes card-appear {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.login-page-container.dark .login-reference-card {
+  background: rgba(23, 26, 35, 0.94);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  box-shadow: 
+    0 28px 70px -15px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Brand Emblem */
+.login-card-brand {
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.login-card-emblem {
+  height: 42px;
+  object-fit: contain;
+}
+
+/* Headings (Reference: editorial serif styling) */
+.login-card-heading {
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.login-page-container.dark .login-card-heading {
+  color: #ffffff;
+}
+
+.login-card-subheading {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #64748b;
+  margin: 0 0 14px 0;
+  max-width: 340px;
+}
+
+.login-page-container.dark .login-card-subheading {
+  color: #94a3b8;
+}
+
+/* Profile Selector Row (Clean & Minimalist Segmented Pill Grid) */
+.login-profile-segmented-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+  background: #f8fafc;
+  padding: 4px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  box-sizing: border-box;
+}
+
+.login-page-container.dark .login-profile-segmented-grid {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.login-profile-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 3px;
+  border-radius: 10px;
+  border: 1.5px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.login-profile-chip:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.login-page-container.dark .login-profile-chip:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.login-profile-chip.active {
+  background: #ffffff;
+  border-color: rgba(245, 158, 11, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.login-page-container.dark .login-profile-chip.active {
+  background: #252a36;
+  border-color: rgba(245, 158, 11, 0.6);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.login-chip-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.login-chip-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.2;
+}
+
+.login-page-container.dark .login-chip-name {
+  color: #f1f5f9;
+}
+
+.login-chip-role {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.login-page-container.dark .login-chip-role {
+  color: #94a3b8;
+}
+
+/* Form Container (Reference Styling) */
+.login-clean-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.login-input-group {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.login-input-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.login-page-container.dark .login-input-label {
+  color: #e2e8f0;
+}
+
+.login-required-star {
+  color: #ef4444;
+}
+
+/* Reference Input: soft blue-gray / sky tint */
+.login-soft-input-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.login-soft-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid #dbeafe;
+  background: #f0f6fe;
+  color: #0f172a;
+  font-size: 13px;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.login-soft-input::placeholder {
+  color: #94a3b8;
+  font-size: 12.5px;
+}
+
+.login-soft-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.login-page-container.dark .login-soft-input {
+  background: #1b1f2b;
+  border-color: #2e3648;
+  color: #f8fafc;
+}
+
+.login-page-container.dark .login-soft-input:focus {
+  background: #232838;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+/* Password eye icon */
+.login-eye-toggle-btn {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.login-eye-toggle-btn:hover {
+  color: #0f172a;
+}
+
+.login-page-container.dark .login-eye-toggle-btn {
+  color: #94a3b8;
+}
+
+.login-page-container.dark .login-eye-toggle-btn:hover {
+  color: #ffffff;
+}
+
+/* Remember me & Forgot Password Row (Reference style) */
+.login-support-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: -2px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+}
+
+.login-custom-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+}
+
+.login-page-container.dark .login-custom-checkbox {
+  color: #cbd5e1;
+}
+
+.login-custom-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #243c5a;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.login-forgot-pass-btn {
+  color: #334155;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.login-forgot-pass-btn:hover {
+  color: #0f172a;
+}
+
+.login-page-container.dark .login-forgot-pass-btn {
+  color: #94a3b8;
+}
+
+.login-page-container.dark .login-forgot-pass-btn:hover {
+  color: #f1f5f9;
+}
+
+/* Primary Dark Pill Button (Reference: #233446 deep slate solid button) */
+.login-primary-pill-btn {
+  width: 100%;
+  height: 42px;
+  border-radius: 22px;
+  border: none;
+  background: #243545;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(36, 53, 69, 0.2);
+}
+
+.login-primary-pill-btn:hover:not(:disabled) {
+  background: #172430;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(36, 53, 69, 0.3);
+}
+
+.login-primary-pill-btn:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.login-primary-pill-btn:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+.login-page-container.dark .login-primary-pill-btn {
+  background: #f59e0b;
+  color: #0f172a;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+}
+
+.login-page-container.dark .login-primary-pill-btn:hover:not(:disabled) {
+  background: #fbbf24;
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+}
+
+
+
+/* Bottom Footer (Reference: Don't have an account? Sign Up) */
+.login-ref-footer-text {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.login-ref-footer-text a {
+  color: #243545;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.login-page-container.dark .login-ref-footer-text {
+  color: #94a3b8;
+}
+
+.login-page-container.dark .login-ref-footer-text a {
+  color: #f59e0b;
+}
+
+/* Spinner */
+.login-spinner-ref {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: login-spin-ref 0.6s linear infinite;
+}
+
+@keyframes login-spin-ref {
+  to { transform: rotate(360deg); }
+}
+
+/* Mobile responsive */
+@media (max-width: 540px) {
+  .login-reference-card {
+    padding: 32px 24px;
+    border-radius: 28px;
+  }
+  .login-floating-top-nav {
+    padding: 16px 20px;
+  }
+}

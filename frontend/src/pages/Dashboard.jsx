@@ -18,11 +18,13 @@ import {
   HelpCircle,
   Layers,
   Flame,
-  Radio
+  Radio,
+  Package
 } from "lucide-react";
 import "./EmployeeCards.css";
 import "./OverviewDashboard.css";
 import OrderManagementDashboard from "./OrderManagementDashboard";
+import InventoryManagement from "./InventoryManagement";
 
 const employees = [
   { id: 1, name: "Noah Castell", initials: "NC", role: "Project Lead", department: "Management", openTasks: 0, completedTasks: 48, workload: 64, avatarBg: "#ffedd5", status: "online" },
@@ -190,8 +192,8 @@ function Dashboard() {
         <button className={`tab ${activeTab === "employee" ? "active" : ""}`} onClick={() => setActiveTab("employee")}>
           <Users size={18} /> Employee Management
         </button>
-        <button className={`tab ${activeTab === "leave" ? "active" : ""}`} onClick={() => setActiveTab("leave")}>
-          <Calendar size={18} /> Leave Management
+        <button className={`tab ${activeTab === "inventory" || activeTab === "leave" ? "active" : ""}`} onClick={() => setActiveTab("inventory")}>
+          <Package size={18} /> Inventory Management
         </button>
       </div>
 
@@ -201,7 +203,7 @@ function Dashboard() {
             {activeTab === "overview" && "Overview"}
             {activeTab === "case" && "Order Management"}
             {activeTab === "employee" && "Employee Management"}
-            {activeTab === "leave" && "Leave Management"}
+            {(activeTab === "inventory" || activeTab === "leave") && "Inventory Management"}
           </h1>
         </div>
 
@@ -267,7 +269,7 @@ function Dashboard() {
             </div>
 
             {/* Tile 3: On Leave Today */}
-            <div className="overview-tile tile-leave" onClick={() => setActiveTab("leave")}>
+            <div className="overview-tile tile-leave" onClick={() => setActiveTab("inventory")}>
               <div className="tile-top">
                 <div className="tile-icon-badge orange">
                   <Clock size={22} />
@@ -1274,6 +1276,12 @@ function Dashboard() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {(activeTab === "inventory" || activeTab === "leave") && (
+        <div className="dashboard-content">
+          <InventoryManagement />
         </div>
       )}
     </div>
