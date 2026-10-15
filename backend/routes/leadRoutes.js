@@ -40,6 +40,35 @@ router.get("/", async (req, res) => {
   }
 });
 
+// Helper: Generate next sequential order ID (e.g. ORD00001, ORD00002)
+const getNextOrderId = async () => {
+  const leads = await Lead.find({ orderId: { $regex: /^ORD\d+$/i } }, "orderId");
+  let maxNumber = 0;
+  leads.forEach((l) => {
+    if (l.orderId) {
+      const match = l.orderId.match(/^ORD(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNumber) {
+          maxNumber = num;
+        }
+      }
+    }
+  });
+  return `ORD${String(maxNumber + 1).padStart(5, "0")}`;
+};
+
+// GET /api/leads/next-order-id - Get next auto-generated orderId
+router.get("/next-order-id", async (req, res) => {
+  try {
+    const nextOrderId = await getNextOrderId();
+    res.json({ success: true, nextOrderId });
+  } catch (error) {
+    console.error("Error generating next order ID:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // GET /api/leads/:id - Fetch single lead by id
 router.get("/:id", async (req, res) => {
   try {
@@ -61,6 +90,11 @@ router.get("/:id", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const { _id, ...leadData } = req.body;
+
+    if ((leadData.query === "order" || leadData.orderStage) && !leadData.orderId) {
+      leadData.orderId = await getNextOrderId();
+    }
+
     if (_id) {
       const updated = await Lead.findByIdAndUpdate(_id, leadData, {
         new: true,
