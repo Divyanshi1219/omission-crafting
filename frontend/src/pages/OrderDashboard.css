@@ -1,0 +1,474 @@
+/* =========================================================
+   CLEAN & ACCURATE ORDER MANAGEMENT DASHBOARD
+   With Rich Micro-Interactions & Hover Feedback
+========================================================= */
+
+.order-simple-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Top 3 Summary Tiles --- */
+.order-summary-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .order-summary-tiles {
+    grid-template-columns: 1fr;
+  }
+}
+
+.order-tile {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 22px 24px;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.order-tile:hover {
+  transform: translateY(-4px);
+}
+
+.app.dark .order-tile {
+  background: rgba(20, 24, 32, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.order-tile.tile-sample {
+  border-top: 4px solid #0284c7;
+}
+
+.order-tile.tile-sample:hover {
+  border-color: #bae6fd;
+  border-top-color: #0284c7;
+  box-shadow: 0 12px 28px rgba(2, 132, 199, 0.12);
+}
+
+.order-tile.tile-partial {
+  border-top: 4px solid #7c3aed;
+}
+
+.order-tile.tile-partial:hover {
+  border-color: #ddd6fe;
+  border-top-color: #7c3aed;
+  box-shadow: 0 12px 28px rgba(124, 58, 237, 0.12);
+}
+
+.order-tile.tile-complete {
+  border-top: 4px solid #059669;
+}
+
+.order-tile.tile-complete:hover {
+  border-color: #a7f3d0;
+  border-top-color: #059669;
+  box-shadow: 0 12px 28px rgba(5, 150, 105, 0.12);
+}
+
+.order-tile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.order-tile-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app.dark .order-tile-title {
+  color: #94a3b8;
+}
+
+.order-tile-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.order-tile-badge.sample {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.order-tile-badge.partial {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.order-tile-badge.complete {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.order-tile-count {
+  font-size: 38px;
+  font-weight: 800;
+  line-height: 1;
+  margin: 4px 0;
+  letter-spacing: -0.5px;
+}
+
+.order-tile-sub {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app.dark .order-tile-sub {
+  color: #94a3b8;
+}
+
+.tile-action-hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.order-tile:hover .tile-action-hint {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* --- 3 Pipeline Stage Chart Cards --- */
+.order-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 1200px) {
+  .order-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.order-chart-card {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 22px 24px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.25s ease;
+}
+
+.order-chart-card:hover {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+  border-color: #cbd5e1;
+}
+
+.app.dark .order-chart-card {
+  background: rgba(20, 24, 32, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.order-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.order-chart-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app.dark .order-chart-header h3 {
+  color: #ffffff;
+}
+
+.order-chart-header p {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+  min-height: 18px;
+  display: flex;
+  align-items: center;
+}
+
+.order-chart-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.app.dark .order-chart-badge {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+/* SVG Bar Chart Area */
+.bar-chart-svg-container {
+  width: 100%;
+  margin: 8px 0 14px 0;
+  overflow: visible;
+}
+
+.chart-bar-group {
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chart-bar-group rect {
+  transition: filter 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: bottom;
+}
+
+.chart-bar-group:hover rect {
+  filter: brightness(1.18) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.16));
+  transform: scaleY(1.04);
+}
+
+.chart-bar-group:hover text {
+  font-weight: 800;
+}
+
+.order-chart-footer {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app.dark .order-chart-footer {
+  border-top-color: rgba(255, 255, 255, 0.06);
+}
+
+.order-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2563eb;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.order-open-link:hover {
+  text-decoration: underline;
+  gap: 8px;
+  color: #1d4ed8;
+}
+
+.app.dark .order-open-link {
+  color: #60a5fa;
+}
+
+/* --- Bottom Row: Distribution + Recent Table --- */
+.order-bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 20px;
+}
+
+@media (max-width: 1024px) {
+  .order-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.donut-legend-simple {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.donut-legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.donut-legend-row:hover {
+  background: #f1f5f9;
+  transform: translateX(4px);
+}
+
+.app.dark .donut-legend-row {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.app.dark .donut-legend-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.donut-legend-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.app.dark .donut-legend-left {
+  color: #e2e8f0;
+}
+
+.donut-legend-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.app.dark .donut-legend-right {
+  color: #ffffff;
+}
+
+.donut-dot-marker {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Recent Orders Clean Table */
+.clean-orders-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.clean-orders-table th {
+  padding: 10px 14px;
+  font-weight: 600;
+  color: #64748b;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.app.dark .clean-orders-table th {
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+.clean-orders-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.app.dark .clean-orders-table td {
+  border-bottom-color: rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+}
+
+.clean-orders-table tr.table-row-hover {
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clean-orders-table tr.table-row-hover:hover {
+  background: #f8fafc;
+}
+
+.clean-orders-table tr.table-row-hover:hover td:first-child {
+  color: #2563eb;
+}
+
+.app.dark .clean-orders-table tr.table-row-hover:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.status-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-badge-pill.sample {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.status-badge-pill.partial {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.status-badge-pill.complete {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin-animation {
+  animation: spin 1s linear infinite;
+}

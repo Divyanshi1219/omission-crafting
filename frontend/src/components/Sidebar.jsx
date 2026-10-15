@@ -10,13 +10,21 @@ import {
 
 function Sidebar() {
   const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isViewingOrder = searchParams.has('id');
+  const fromPath = searchParams.get('from');
+  const stageParam = searchParams.get('stage') || 'sample';
+  const activePath = isViewingOrder
+    ? (fromPath || `/order/${stageParam}/order`)
+    : location.pathname;
+
   const isOrderRoute = location.pathname.startsWith('/order');
   const [isOrderMenuOpen, setIsOrderMenuOpen] = useState(isOrderRoute);
 
   const [openSubMenus, setOpenSubMenus] = useState({
-    sample: location.pathname.startsWith('/order/sample'),
-    partial: location.pathname.startsWith('/order/partial'),
-    complete: location.pathname.startsWith('/order/complete'),
+    sample: activePath.startsWith('/order/sample'),
+    partial: activePath.startsWith('/order/partial'),
+    complete: activePath.startsWith('/order/complete'),
   });
 
   useEffect(() => {
@@ -26,14 +34,14 @@ function Sidebar() {
   }, [isOrderRoute]);
 
   useEffect(() => {
-    if (location.pathname.startsWith('/order/sample')) {
+    if (activePath.startsWith('/order/sample')) {
       setOpenSubMenus(prev => ({ ...prev, sample: true }));
-    } else if (location.pathname.startsWith('/order/partial')) {
+    } else if (activePath.startsWith('/order/partial')) {
       setOpenSubMenus(prev => ({ ...prev, partial: true }));
-    } else if (location.pathname.startsWith('/order/complete')) {
+    } else if (activePath.startsWith('/order/complete')) {
       setOpenSubMenus(prev => ({ ...prev, complete: true }));
     }
-  }, [location.pathname]);
+  }, [activePath]);
 
   const toggleSubMenu = (menuKey) => {
     setOpenSubMenus(prev => ({
@@ -112,7 +120,7 @@ function Sidebar() {
               <NavLink
                 to="/order/create-lead"
                 className={({ isActive }) =>
-                  `sidebar-submenu-item ${isActive ? "active" : ""}`
+                  `sidebar-submenu-item ${(isActive && !isViewingOrder) ? "active" : ""}`
                 }
               >
                 <span className="submenu-dot"></span>
@@ -122,7 +130,7 @@ function Sidebar() {
               {/* 2. Sample */}
               <div className="sidebar-nested-accordion">
                 <div 
-                  className={`sidebar-submenu-header ${location.pathname.startsWith('/order/sample') ? 'active' : ''}`}
+                  className={`sidebar-submenu-header ${activePath.startsWith('/order/sample') ? 'active' : ''}`}
                   onClick={() => toggleSubMenu('sample')}
                 >
                   <div className="submenu-header-content">
@@ -138,7 +146,7 @@ function Sidebar() {
                         key={item.path}
                         to={item.path}
                         className={({ isActive }) =>
-                          `sidebar-childmenu-item ${isActive ? "active" : ""}`
+                          `sidebar-childmenu-item ${(isActive || activePath === item.path) ? "active" : ""}`
                         }
                       >
                         <span className="childmenu-dot"></span>
@@ -152,7 +160,7 @@ function Sidebar() {
               {/* 3. Partial */}
               <div className="sidebar-nested-accordion">
                 <div 
-                  className={`sidebar-submenu-header ${location.pathname.startsWith('/order/partial') ? 'active' : ''}`}
+                  className={`sidebar-submenu-header ${activePath.startsWith('/order/partial') ? 'active' : ''}`}
                   onClick={() => toggleSubMenu('partial')}
                 >
                   <div className="submenu-header-content">
@@ -168,7 +176,7 @@ function Sidebar() {
                         key={item.path}
                         to={item.path}
                         className={({ isActive }) =>
-                          `sidebar-childmenu-item ${isActive ? "active" : ""}`
+                          `sidebar-childmenu-item ${(isActive || activePath === item.path) ? "active" : ""}`
                         }
                       >
                         <span className="childmenu-dot"></span>
@@ -182,7 +190,7 @@ function Sidebar() {
               {/* 4. Complete */}
               <div className="sidebar-nested-accordion">
                 <div 
-                  className={`sidebar-submenu-header ${location.pathname.startsWith('/order/complete') ? 'active' : ''}`}
+                  className={`sidebar-submenu-header ${activePath.startsWith('/order/complete') ? 'active' : ''}`}
                   onClick={() => toggleSubMenu('complete')}
                 >
                   <div className="submenu-header-content">
@@ -198,7 +206,7 @@ function Sidebar() {
                         key={item.path}
                         to={item.path}
                         className={({ isActive }) =>
-                          `sidebar-childmenu-item ${isActive ? "active" : ""}`
+                          `sidebar-childmenu-item ${(isActive || activePath === item.path) ? "active" : ""}`
                         }
                       >
                         <span className="childmenu-dot"></span>
@@ -213,7 +221,7 @@ function Sidebar() {
               <NavLink
                 to="/order/customer-support"
                 className={({ isActive }) =>
-                  `sidebar-submenu-item ${isActive ? "active" : ""}`
+                  `sidebar-submenu-item ${(isActive && !isViewingOrder) ? "active" : ""}`
                 }
               >
                 <span className="submenu-dot"></span>

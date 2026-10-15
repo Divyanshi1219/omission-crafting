@@ -330,21 +330,54 @@ function OrderManagement() {
     }
   }, [formData.totalAmount, formData.netAmount, formData.gst, formData.advanceAmount]);
 
+  const getActiveDefinition = () => {
+    if (location.pathname.startsWith('/order/sample')) return 'sample';
+    if (location.pathname.startsWith('/order/partial')) return 'partial';
+    if (location.pathname.startsWith('/order/complete')) return 'complete';
+
+    if (orderStage) {
+      const os = orderStage.toLowerCase().trim();
+      if (['sample', 'partial', 'complete'].includes(os)) return os;
+    }
+    const from = searchParams.get('from');
+    if (from) {
+      if (from.startsWith('/order/sample')) return 'sample';
+      if (from.startsWith('/order/partial')) return 'partial';
+      if (from.startsWith('/order/complete')) return 'complete';
+    }
+    if (editId) return 'sample';
+    return '';
+  };
+
   const getCurrentStages = () => {
-    if (location.pathname.startsWith('/order/sample')) {
+    const activeDef = getActiveDefinition();
+    if (activeDef === 'sample') {
       return SAMPLE_STAGES;
     }
-    if (location.pathname.startsWith('/order/partial')) {
+    if (activeDef === 'partial') {
       return PARTIAL_STAGES;
     }
-    if (location.pathname.startsWith('/order/complete')) {
+    if (activeDef === 'complete') {
       return COMPLETE_STAGES;
     }
     return FULL_ORDER_STAGES;
   };
 
   useEffect(() => {
-    if (STAGE_ROUTE_MAP[location.pathname]) {
+    if (editId) {
+      const activeStages = getCurrentStages();
+      if (subStage) {
+        const normSub = subStage.toLowerCase().replace(/\s+/g, '-');
+        const matched = activeStages.find(s => s.toLowerCase().replace(/\s+/g, '-') === normSub);
+        if (matched) {
+          setSelectedStage(matched);
+          return;
+        }
+      }
+      if (activeStages && activeStages.length > 0) {
+        setSelectedStage(activeStages[0]);
+      }
+    } else if (STAGE_ROUTE_MAP[location.pathname]) {
       setSelectedStage(STAGE_ROUTE_MAP[location.pathname]);
     } else {
       const currentStages = getCurrentStages();
@@ -352,18 +385,10 @@ function OrderManagement() {
         setSelectedStage(currentStages[0]);
       }
     }
-  }, [location.pathname]);
+  }, [location.pathname, editId, subStage, orderStage]);
 
   const renderDefinitionBar = () => {
-    let currentDefinition = '';
-    if (location.pathname.startsWith('/order/sample')) {
-      currentDefinition = 'sample';
-    } else if (location.pathname.startsWith('/order/partial')) {
-      currentDefinition = 'partial';
-    } else if (location.pathname.startsWith('/order/complete')) {
-      currentDefinition = 'complete';
-    }
-
+    const currentDefinition = getActiveDefinition();
     if (!currentDefinition) return null;
 
     return (
@@ -379,10 +404,20 @@ function OrderManagement() {
                 aria-selected={isActive}
                 className={`change-mgmt-step definition-step ${isActive ? 'active' : ''}`}
                 onClick={() => {
-                  const currentSub = pathParts[2]?.toLowerCase() || 'order';
-                  const targetAllowedSubStages = (SUB_STAGES_BY_ORDER_STAGE[def.slug] || []).map(s => s.toLowerCase().replace(/\s+/g, '-'));
-                  const targetSub = targetAllowedSubStages.includes(currentSub) ? currentSub : 'order';
-                  navigate(`/order/${def.slug}/${targetSub}`);
+                  if (location.pathname === '/order/create-lead') {
+                    setOrderStage(def.slug);
+                    const targetAllowedSubStages = (SUB_STAGES_BY_ORDER_STAGE[def.slug] || []).map(s => s.toLowerCase());
+                    const currentSubNorm = (subStage || 'order').toLowerCase().replace(/\s+/g, '-').replace(/-/g, ' ');
+                    if (!targetAllowedSubStages.includes(currentSubNorm)) {
+                      setSubStage('order');
+                      setSelectedStage('Order');
+                    }
+                  } else {
+                    const currentSub = pathParts[2]?.toLowerCase() || 'order';
+                    const targetAllowedSubStages = (SUB_STAGES_BY_ORDER_STAGE[def.slug] || []).map(s => s.toLowerCase().replace(/\s+/g, '-'));
+                    const targetSub = targetAllowedSubStages.includes(currentSub) ? currentSub : 'order';
+                    navigate(`/order/${def.slug}/${targetSub}`);
+                  }
                 }}
                 title={`Definition: ${def.label}`}
               >
@@ -411,13 +446,12 @@ function OrderManagement() {
                 className={`change-mgmt-step ${isActive ? 'active' : ''}`}
                 onClick={() => {
                   setSelectedStage(stage);
-                  const stageSlug = stage.toLowerCase().replace(/\s+/g, '-');
-                  if (location.pathname.startsWith('/order/sample')) {
-                    navigate(`/order/sample/${stageSlug}`);
-                  } else if (location.pathname.startsWith('/order/partial')) {
-                    navigate(`/order/partial/${stageSlug}`);
-                  } else if (location.pathname.startsWith('/order/complete')) {
-                    navigate(`/order/complete/${stageSlug}`);
+                  if (location.pathname === '/order/create-lead') {
+                    setSubStage(stage.toLowerCase());
+                  } else {
+                    const stageSlug = stage.toLowerCase().replace(/\s+/g, '-');
+                    const activeDef = getActiveDefinition() || 'sample';
+                    navigate(`/order/${activeDef}/${stageSlug}`);
                   }
                 }}
                 title={`Stage: ${stage}`}
@@ -626,8 +660,9 @@ function OrderManagement() {
         )}
 
         <div className="dashboard-content">
-          {/* Change Management Process Flow Chevron Tracker */}
-          {!editId && renderChangeManagementBar()}
+          {/* Definition Bar & Change Management Process Flow (shown only inside orders) */}
+          {editId && renderDefinitionBar()}
+          {editId && renderChangeManagementBar()}
 
           <form className="form-container" onSubmit={handleFormSubmit} ref={formRef}>
             <div className="form-section">
@@ -1126,15 +1161,13 @@ function OrderManagement() {
                               style={{ padding: '8px 6px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                             >
                               <option value="">Select...</option>
-                              <option value="XXS">XXS</option>
-                              <option value="XS">XS</option>
                               <option value="S">S</option>
                               <option value="M">M</option>
                               <option value="L">L</option>
                               <option value="XL">XL</option>
                               <option value="XXL">XXL</option>
                               <option value="XXXL">XXXL</option>
-                              {item.size && !['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'].includes(item.size) && (
+                              {item.size && !['S', 'M', 'L', 'XL', 'XXL', 'XXXL'].includes(item.size) && (
                                 <option value={item.size}>{item.size}</option>
                               )}
                             </select>
@@ -1200,9 +1233,6 @@ function OrderManagement() {
       <div className="dashboard-header">
         <h2 style={{ textTransform: 'capitalize' }}>{currentSection || 'Order Management'}</h2>
       </div>
-
-      {!isCustomerSupport && renderDefinitionBar()}
-      {!isCustomerSupport && renderChangeManagementBar()}
       
       <div className="chart-card hover-scale" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
         <div className="chart-header">
@@ -1240,7 +1270,7 @@ function OrderManagement() {
                 {matchingLeads.map((item) => (
                   <tr
                     key={item._id}
-                    onClick={() => navigate(`/order/create-lead?id=${item._id}&from=${encodeURIComponent(location.pathname)}`)}
+                    onClick={() => navigate(`/order/create-lead?id=${item._id}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(item.orderStage || 'sample')}`)}
                     style={{
                       borderBottom: '1px solid #f1f5f9',
                       cursor: 'pointer',
