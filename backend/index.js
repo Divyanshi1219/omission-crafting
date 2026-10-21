@@ -6,6 +6,9 @@ require("dotenv").config();
 const connectDB = require("./config/db");
 const leadRoutes = require("./routes/leadRoutes");
 const employeeRoutes = require("./routes/employeeRoutes");
+const invoiceRoutes = require("./routes/invoiceRoutes");
+const inventoryRoutes = require("./routes/inventoryRoutes");
+const taskRoutes = require("./routes/taskRoutes");
 
 const app = express();
 
@@ -18,6 +21,9 @@ app.use(express.json());
 // Routes
 app.use("/api/leads", leadRoutes);
 app.use("/api/employees", employeeRoutes);
+app.use("/api/invoices", invoiceRoutes);
+app.use("/api/inventory", inventoryRoutes);
+app.use("/api/tasks", taskRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({

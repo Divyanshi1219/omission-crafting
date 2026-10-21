@@ -82,6 +82,14 @@ const leadSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    attachment: {
+      type: String,
+      default: "",
+    },
+    attachmentName: {
+      type: String,
+      default: "",
+    },
     logoName: {
       type: String,
       default: "",
@@ -135,6 +143,33 @@ const leadSchema = new mongoose.Schema(
       default: "",
     },
     items: [itemSchema],
+    approvalStatus: {
+      type: String,
+      default: "Pending", // "Pending", "Approved", "Referred Back"
+    },
+    stockApproval: {
+      status: { type: String, default: "Pending" }, // "Pending", "Approved", "Referred Back"
+      note: { type: String, default: "" },
+      author: { type: String, default: "" },
+      updatedAt: { type: Date, default: null },
+      resubmittedAt: { type: Date, default: null },
+    },
+    productionApproval: {
+      status: { type: String, default: "Pending" }, // "Pending", "Approved", "Referred Back"
+      note: { type: String, default: "" },
+      author: { type: String, default: "" },
+      updatedAt: { type: Date, default: null },
+      resubmittedAt: { type: Date, default: null },
+    },
+    approvalComments: [
+      {
+        author: { type: String, default: "" },
+        role: { type: String, default: "" },
+        comment: { type: String, default: "" },
+        status: { type: String, default: "" },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   {
     collection: "leads",

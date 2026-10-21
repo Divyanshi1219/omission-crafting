@@ -5,10 +5,19 @@ import {
   Users,
   ShoppingCart,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  ReceiptText,
+  CheckSquare,
+  ClipboardCheck
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 function Sidebar() {
+  const { currentUser } = useAuth();
+  const isAdmin = currentUser?.id === "admin";
+  const isSalesOrAdmin = currentUser?.id === "sales" || currentUser?.id === "admin";
+  const isTaskUser = currentUser?.id === "stock" || currentUser?.id === "production" || currentUser?.id === "admin";
+  const isApprovalUser = currentUser?.id === "stock" || currentUser?.id === "production" || currentUser?.id === "admin";
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const isViewingOrder = searchParams.has('id');
@@ -20,6 +29,24 @@ function Sidebar() {
 
   const isOrderRoute = location.pathname.startsWith('/order');
   const [isOrderMenuOpen, setIsOrderMenuOpen] = useState(isOrderRoute);
+
+  const isInvoiceRoute = location.pathname.startsWith('/invoices');
+  const [isInvoiceMenuOpen, setIsInvoiceMenuOpen] = useState(isInvoiceRoute);
+
+  const isTaskRoute = location.pathname.startsWith('/tasks');
+  const [isTaskMenuOpen, setIsTaskMenuOpen] = useState(isTaskRoute);
+
+  useEffect(() => {
+    if (isInvoiceRoute) {
+      setIsInvoiceMenuOpen(true);
+    }
+  }, [isInvoiceRoute]);
+
+  useEffect(() => {
+    if (isTaskRoute) {
+      setIsTaskMenuOpen(true);
+    }
+  }, [isTaskRoute]);
 
   const [openSubMenus, setOpenSubMenus] = useState({
     sample: activePath.startsWith('/order/sample'),
@@ -91,15 +118,17 @@ function Sidebar() {
           <span>Dashboard</span>
         </NavLink>
 
-        <NavLink
-          to="/employees"
-          className={({ isActive }) =>
-            `sidebar-item ${isActive ? "active" : ""}`
-          }
-        >
-          <Users size={20} />
-          <span>All Employees</span>
-        </NavLink>
+        {isAdmin && (
+          <NavLink
+            to="/employees"
+            className={({ isActive }) =>
+              `sidebar-item ${isActive ? "active" : ""}`
+            }
+          >
+            <Users size={20} />
+            <span>All Employees</span>
+          </NavLink>
+        )}
 
         <div className="sidebar-accordion">
           <div 
@@ -230,6 +259,142 @@ function Sidebar() {
             </div>
           )}
         </div>
+
+        {/* Invoice Section for Sales Executive (and Admin) */}
+        {isSalesOrAdmin && (
+          <div className="sidebar-accordion">
+            <div
+              className={`sidebar-item ${isInvoiceRoute ? "active" : ""}`}
+              onClick={() => setIsInvoiceMenuOpen(!isInvoiceMenuOpen)}
+              style={{ cursor: "pointer" }}
+            >
+              <ReceiptText size={20} />
+              <span>Invoice</span>
+              <div className="menu-toggle" style={{ marginLeft: "auto", display: "flex" }}>
+                {isInvoiceMenuOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </div>
+            </div>
+
+            {isInvoiceMenuOpen && (
+              <div className="sidebar-submenu">
+                <NavLink
+                  to="/invoices"
+                  end
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${isActive ? "active" : ""}`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  Invoices List
+                </NavLink>
+
+                <NavLink
+                  to="/invoices/create"
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${isActive ? "active" : ""}`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  Create Invoice
+                </NavLink>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Task Section for Stock Room Manager & Production Manager (and Admin) */}
+        {isTaskUser && (
+          <div className="sidebar-accordion">
+            <div
+              className={`sidebar-item ${isTaskRoute ? "active" : ""}`}
+              onClick={() => setIsTaskMenuOpen(!isTaskMenuOpen)}
+              style={{ cursor: "pointer" }}
+            >
+              <CheckSquare size={20} />
+              <span>Task</span>
+              <div className="menu-toggle" style={{ marginLeft: "auto", display: "flex" }}>
+                {isTaskMenuOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </div>
+            </div>
+
+            {isTaskMenuOpen && (
+              <div className="sidebar-submenu">
+                <NavLink
+                  to="/tasks/all"
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${isActive ? "active" : ""}`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  ALL
+                </NavLink>
+
+                <NavLink
+                  to="/tasks/open"
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${isActive ? "active" : ""}`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  Open
+                </NavLink>
+
+                <NavLink
+                  to="/tasks/resolved"
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${isActive ? "active" : ""}`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  Resolved
+                </NavLink>
+
+                <NavLink
+                  to="/tasks/closed"
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${isActive ? "active" : ""}`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  Closed
+                </NavLink>
+
+                <NavLink
+                  to="/tasks/work-in-progress"
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${isActive ? "active" : ""}`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  Work in progress
+                </NavLink>
+
+                <NavLink
+                  to="/tasks/on-hold"
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${isActive ? "active" : ""}`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  On hold
+                </NavLink>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Approval Section for Stock Room Manager & Production Manager (and Admin) */}
+        {isApprovalUser && (
+          <NavLink
+            to="/approvals"
+            className={({ isActive }) =>
+              `sidebar-item ${isActive ? "active" : ""}`
+            }
+          >
+            <ClipboardCheck size={20} />
+            <span>Approval</span>
+          </NavLink>
+        )}
 
       </nav>
     </aside>

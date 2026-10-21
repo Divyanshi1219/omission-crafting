@@ -49,6 +49,22 @@ export const PROFILES = {
     permissions: ["Stock Tracking", "Inventory Influx", "Material Allocation", "Dispatch Audits"],
     stats: { clearance: "Level 2 (Logistics)", location: "Central Warehouse", department: "Inventory & Supply" },
   },
+  sales: {
+    id: "sales",
+    name: "Divyanshi",
+    role: "Sales Executive",
+    subtitle: "Client Relations & Sales Pipeline",
+    email: "sales@omissioncrafting.com",
+    initials: "SE",
+    avatarBg: "#fdf2f8",
+    avatarColor: "#be185d",
+    badge: "Sales & Accounts",
+    badgeColor: "#be185d",
+    badgeBg: "#fce7f3",
+    description: "Client acquisition, customer inquiries, order quotations, and sales pipeline tracking.",
+    permissions: ["Client Inquiries", "Quotation Management", "Lead Tracking", "Order Placement"],
+    stats: { clearance: "Level 2 (Commercial)", location: "Sales Suite", department: "Sales & Marketing" },
+  },
 };
 
 const AuthContext = createContext(null);

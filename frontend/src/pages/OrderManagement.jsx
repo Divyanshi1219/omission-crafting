@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Plus, Trash2, ArrowLeft } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2, ArrowLeft, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check } from 'lucide-react';
 import api from '../api';
 import './OrderManagement.css';
 
@@ -141,6 +141,7 @@ function OrderManagement() {
   const currentSection = pathParts[pathParts.length - 1]?.replace(/-/g, ' ') || 'Order Management';
 
   const formRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const isCustomerSupport = location.pathname === '/order/customer-support';
 
@@ -165,6 +166,8 @@ function OrderManagement() {
     scheduleTime: '',
     additionalNote: '',
     orderId: '',
+    attachment: '',
+    attachmentName: '',
     logoName: '',
     totalQuantity: '',
     pricePerPiece: '',
@@ -179,6 +182,95 @@ function OrderManagement() {
   });
 
   const [leadsList, setLeadsList] = useState([]);
+  const [orderApprovalData, setOrderApprovalData] = useState(null);
+
+  const handleAttachmentChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      alert('Attachment file size must be under 8MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFormData((prev) => ({
+        ...prev,
+        attachment: reader.result,
+        attachmentName: file.name,
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveAttachment = () => {
+    setFormData((prev) => ({
+      ...prev,
+      attachment: '',
+      attachmentName: '',
+    }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Quantities for validation
+  const itemsTotalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const orderTotalQty = Number(formData.totalQuantity) || 0;
+
+  const getStockApproval = () => {
+    if (orderApprovalData?.stockApproval?.status) {
+      return orderApprovalData.stockApproval;
+    }
+    const comments = orderApprovalData?.approvalComments || [];
+    const stockComment = [...comments].reverse().find(c =>
+      (c.role && c.role.toLowerCase().includes('stock')) ||
+      (c.author && c.author.toLowerCase().includes('elena')) ||
+      (c.comment && c.comment.toLowerCase().includes('stock'))
+    );
+    if (stockComment) {
+      return {
+        status: stockComment.status || 'Pending',
+        note: stockComment.comment || '',
+        author: stockComment.author || 'Elena Rostova',
+      };
+    }
+    return {
+      status: orderApprovalData?.approvalStatus || 'Pending',
+      note: '',
+      author: 'Elena Rostova',
+    };
+  };
+
+  const getProductionApproval = () => {
+    if (orderApprovalData?.productionApproval?.status) {
+      return orderApprovalData.productionApproval;
+    }
+    const comments = orderApprovalData?.approvalComments || [];
+    const prodComment = [...comments].reverse().find(c =>
+      (c.role && c.role.toLowerCase().includes('production')) ||
+      (c.author && c.author.toLowerCase().includes('marcus')) ||
+      (c.comment && c.comment.toLowerCase().includes('production'))
+    );
+    if (prodComment) {
+      return {
+        status: prodComment.status || 'Pending',
+        note: prodComment.comment || '',
+        author: prodComment.author || 'Marcus Vance',
+      };
+    }
+    return {
+      status: orderApprovalData?.approvalStatus || 'Pending',
+      note: '',
+      author: 'Marcus Vance',
+    };
+  };
+
+  const stockAppr = getStockApproval();
+  const prodAppr = getProductionApproval();
+  const isOrderReferredBack =
+    orderApprovalData?.approvalStatus === 'Referred Back' ||
+    stockAppr.status === 'Referred Back' ||
+    prodAppr.status === 'Referred Back';
 
   // Load pre-filled data when an id is in the URL
   useEffect(() => {
@@ -188,6 +280,7 @@ function OrderManagement() {
           .then((res) => {
             if (res.data?.data) {
               const d = res.data.data;
+              setOrderApprovalData(d);
               const q = (d.query || 'lead').toLowerCase();
               setQuery(q);
               setQueryStatus(d.queryStatus || '');
@@ -206,6 +299,8 @@ function OrderManagement() {
                 scheduleTime: d.scheduleTime || '',
                 additionalNote: d.additionalNote || '',
                 orderId: d.orderId || '',
+                attachment: d.attachment || '',
+                attachmentName: d.attachmentName || '',
                 logoName: d.logoName || '',
                 totalQuantity: d.totalQuantity || '',
                 pricePerPiece: d.pricePerPiece || '',
@@ -223,6 +318,7 @@ function OrderManagement() {
           })
           .catch((err) => console.error('Error loading lead for edit:', err));
       } else {
+        setOrderApprovalData(null);
         setQuery('lead');
         setQueryStatus('');
         setOrderStage('');
@@ -242,6 +338,8 @@ function OrderManagement() {
           scheduleTime: '',
           additionalNote: '',
           orderId: '',
+          attachment: '',
+          attachmentName: '',
           logoName: '',
           totalQuantity: '',
           pricePerPiece: '',
@@ -554,6 +652,23 @@ function OrderManagement() {
       alert('Phone number must be of 10 digits.');
       return;
     }
+
+    const totalQty = Number(formData.totalQuantity);
+    if (!formData.totalQuantity || isNaN(totalQty) || totalQty <= 0) {
+      alert('Please enter a valid Total Quantity (pcs).');
+      return;
+    }
+
+    if (items.length > 0) {
+      if (itemsTotalQty > totalQty) {
+        alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) cannot be greater than Total Quantity (${totalQty} pcs). Sum of items must equal Total Quantity (${totalQty} === ${totalQty}).`);
+        return;
+      }
+      if (itemsTotalQty !== totalQty) {
+        alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) must equal Total Quantity (${totalQty} pcs). (${totalQty} === ${itemsTotalQty})`);
+        return;
+      }
+    }
     try {
       let finalOrderId = formData.orderId;
       if (!finalOrderId) {
@@ -571,10 +686,14 @@ function OrderManagement() {
         ...formData,
         orderId: finalOrderId || formData.orderId,
         items,
+        approvalStatus: 'Pending',
       };
       if (editId) payload._id = editId;
-      await api.post('/api/leads', payload);
-      alert('Lead and Order Information Submitted successfully!');
+      const res = await api.post('/api/leads', payload);
+      alert('Order submitted successfully!\nSent to Stock Room Manager and Production Room Manager for approval in the Approval side menu.');
+      if (editId && res.data?.data) {
+        setOrderApprovalData(res.data.data);
+      }
       setIsSubmitted(false);
       setItems([]);
       setQuery('lead');
@@ -700,6 +819,18 @@ function OrderManagement() {
           {/* Definition Bar & Change Management Process Flow (shown only inside orders) */}
           {editId && renderDefinitionBar()}
           {editId && renderChangeManagementBar()}
+
+          {editId && isOrderReferredBack && (
+            <div className="referred-back-banner">
+              <RotateCcw size={20} style={{ flexShrink: 0, marginTop: '1px' }} />
+              <div>
+                <strong>Action Required: Order Referred Back for Revisions.</strong>
+                <div style={{ marginTop: '3px', fontSize: '13px' }}>
+                  Please review the manager notes in the clearance tasks below, adjust the required fields in this form, and click <strong>Submit</strong> to send back for approval.
+                </div>
+              </div>
+            </div>
+          )}
 
           <form className="form-container" onSubmit={handleFormSubmit} ref={formRef}>
             <div className="form-section">
@@ -894,14 +1025,85 @@ function OrderManagement() {
                       style={{ background: 'rgba(0,0,0,0.02)', fontWeight: 600, color: '#1e40af' }}
                     />
                   </div>
-                  
+
                   <div className="form-group">
-                    <label>Logo Name</label>
-                    <input
-                      type="text"
-                      value={formData.logoName}
-                      onChange={(e) => setFormData({ ...formData, logoName: e.target.value })}
-                    />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Paperclip size={15} style={{ color: '#2563eb' }} />
+                      <span>Attachment</span>
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={handleAttachmentChange}
+                        style={{ display: 'none' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="btn-secondary"
+                        style={{
+                          padding: '7px 12px',
+                          fontSize: '13px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          borderRadius: '8px',
+                          background: 'white',
+                          border: '1px solid #cbd5e1',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        <Upload size={14} />
+                        {formData.attachment ? 'Change File' : 'Upload File'}
+                      </button>
+                      {formData.attachment ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                          <a
+                            href={formData.attachment}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download={formData.attachmentName || 'logo-artwork'}
+                            title={formData.attachmentName}
+                            style={{
+                              fontSize: '12px',
+                              color: '#2563eb',
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              textDecoration: 'underline',
+                              maxWidth: '120px'
+                            }}
+                          >
+                            {formData.attachmentName || 'Attached'}
+                          </a>
+                          <button
+                            type="button"
+                            onClick={handleRemoveAttachment}
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                              padding: '0 4px',
+                              fontSize: '15px',
+                              fontWeight: 'bold',
+                              lineHeight: 1
+                            }}
+                            title="Remove attachment"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                          No file chosen
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="form-group">
@@ -922,6 +1124,16 @@ function OrderManagement() {
                   </div>
 
                   <div className="form-group">
+                    <label>Logo Name</label>
+                    <input
+                      type="text"
+                      value={formData.logoName}
+                      onChange={(e) => setFormData({ ...formData, logoName: e.target.value })}
+                      placeholder="Enter logo name"
+                    />
+                  </div>
+
+                  <div className="form-group">
                     <label>Sub Stage *</label>
                     <select 
                       required 
@@ -939,12 +1151,42 @@ function OrderManagement() {
 
                   <div className="form-group">
                     <label>Total Quantity (pcs) *</label>
-                    <input
-                      type="number"
-                      required
-                      value={formData.totalQuantity}
-                      onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value })}
-                    />
+                    <div>
+                      <input
+                        type="number"
+                        required
+                        value={formData.totalQuantity}
+                        onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value })}
+                        style={{
+                          width: '100%',
+                          borderColor:
+                            items.length > 0 && orderTotalQty > 0
+                              ? itemsTotalQty === orderTotalQty
+                                ? '#22c55e'
+                                : itemsTotalQty > orderTotalQty
+                                ? '#ef4444'
+                                : '#f59e0b'
+                              : undefined,
+                        }}
+                      />
+                      {items.length > 0 && orderTotalQty > 0 && (
+                        <div style={{ marginTop: '5px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {itemsTotalQty === orderTotalQty ? (
+                            <span style={{ color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <CheckCircle2 size={13} /> Matches Add Item total ({itemsTotalQty}/{orderTotalQty} pcs)
+                            </span>
+                          ) : itemsTotalQty > orderTotalQty ? (
+                            <span style={{ color: '#dc2626', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <AlertCircle size={13} /> Items total ({itemsTotalQty} pcs) exceeds Total Quantity ({orderTotalQty} pcs). Must equal ({orderTotalQty} === {orderTotalQty}).
+                            </span>
+                          ) : (
+                            <span style={{ color: '#d97706', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <AlertCircle size={13} /> Items total: {itemsTotalQty} / {orderTotalQty} pcs ({orderTotalQty - itemsTotalQty} pcs remaining to match)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="form-group">
@@ -1062,9 +1304,26 @@ function OrderManagement() {
                 </div>
 
                 <div style={{ marginTop: '32px' }}>
-                  <button type="button" onClick={handleAddItem} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Plus size={16} /> Add Item
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <button type="button" onClick={handleAddItem} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Plus size={16} /> Add Item
+                      </button>
+                      {orderTotalQty > 0 && (
+                        <span style={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          background: itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#dcfce7' : itemsTotalQty > orderTotalQty ? '#fee2e2' : '#fef3c7',
+                          color: itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#15803d' : itemsTotalQty > orderTotalQty ? '#b91c1c' : '#b45309',
+                          border: `1px solid ${itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#86efac' : itemsTotalQty > orderTotalQty ? '#fca5a5' : '#fde68a'}`
+                        }}>
+                          Items Total: {itemsTotalQty} / {orderTotalQty} pcs {itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '✓' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   
                   {items.length > 0 && (
                     <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1260,6 +1519,102 @@ function OrderManagement() {
             )}
             
           </form>
+
+          {/* TASK SECTION AFTER THE FORM IN ORDERS (Only in orders of sample, partial, and complete) */}
+          {Boolean(editId) && (
+            <div className="order-tasks-wrapper">
+              <div className="tasks-section-header">
+                <div className="tasks-section-title">Department Clearance Tasks</div>
+                <p className="tasks-section-subtitle">
+                  Review status and feedback from Stock Room Manager and Production Room Manager
+                </p>
+              </div>
+
+              {/* Task 1 - Stock Room */}
+              <div className="order-task-card">
+                <div className="task-col-left">
+                  <div className="task-title">Task 1 - Stock Room</div>
+                  <div className="task-manager-subtitle">Elena Rostova (Stock Room Manager)</div>
+                </div>
+
+                <div className="task-col-center">
+                  <span className="task-status-label">Status</span>
+                  <span
+                    className={`task-status-pill ${
+                      stockAppr.status === 'Approved'
+                        ? 'approved'
+                        : stockAppr.status === 'Referred Back'
+                        ? 'referred'
+                        : 'pending'
+                    }`}
+                  >
+                    {stockAppr.status || 'Pending'}
+                  </span>
+                </div>
+
+                <div className="task-col-right">
+                  <span className="task-note-label">Stock Room Notes</span>
+                  {stockAppr.note ? (
+                    <div
+                      className={`task-note-content ${
+                        stockAppr.status === 'Referred Back' ? 'referred' : ''
+                      }`}
+                    >
+                      {stockAppr.note}
+                    </div>
+                  ) : (
+                    <div className="task-note-placeholder">
+                      {stockAppr.status === 'Approved'
+                        ? 'Approved by Stock Room'
+                        : 'Awaiting Review'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Task 2 - Production Room */}
+              <div className="order-task-card">
+                <div className="task-col-left">
+                  <div className="task-title">Task 2 - Production Room</div>
+                  <div className="task-manager-subtitle">Marcus Vance (Production Lead)</div>
+                </div>
+
+                <div className="task-col-center">
+                  <span className="task-status-label">Status</span>
+                  <span
+                    className={`task-status-pill ${
+                      prodAppr.status === 'Approved'
+                        ? 'approved'
+                        : prodAppr.status === 'Referred Back'
+                        ? 'referred'
+                        : 'pending'
+                    }`}
+                  >
+                    {prodAppr.status || 'Pending'}
+                  </span>
+                </div>
+
+                <div className="task-col-right">
+                  <span className="task-note-label">Production Notes</span>
+                  {prodAppr.note ? (
+                    <div
+                      className={`task-note-content ${
+                        prodAppr.status === 'Referred Back' ? 'referred' : ''
+                      }`}
+                    >
+                      {prodAppr.note}
+                    </div>
+                  ) : (
+                    <div className="task-note-placeholder">
+                      {prodAppr.status === 'Approved'
+                        ? 'Approved by Production'
+                        : 'Awaiting Review'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1300,6 +1655,7 @@ function OrderManagement() {
                   <th style={{ padding: '10px 12px' }}>Stage</th>
                   <th style={{ padding: '10px 12px' }}>Sub Stage</th>
                   <th style={{ padding: '10px 12px' }}>Quantity</th>
+                  <th style={{ padding: '10px 12px' }}>Clearance Status</th>
                   <th style={{ padding: '10px 12px' }}>Date</th>
                 </tr>
               </thead>
@@ -1361,6 +1717,46 @@ function OrderManagement() {
                     </td>
                     <td style={{ padding: '12px', color: '#475569' }}>
                       {item.totalQuantity ? `${item.totalQuantity} pcs` : '—'}
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '3px 10px',
+                          borderRadius: '12px',
+                          fontSize: '11.5px',
+                          fontWeight: 700,
+                          backgroundColor:
+                            (item.approvalStatus || 'Pending') === 'Approved'
+                              ? '#d1fae5'
+                              : (item.approvalStatus || 'Pending') === 'Referred Back'
+                              ? '#fee2e2'
+                              : '#fef3c7',
+                          color:
+                            (item.approvalStatus || 'Pending') === 'Approved'
+                              ? '#065f46'
+                              : (item.approvalStatus || 'Pending') === 'Referred Back'
+                              ? '#b91c1c'
+                              : '#b45309',
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            backgroundColor:
+                              (item.approvalStatus || 'Pending') === 'Approved'
+                                ? '#059669'
+                                : (item.approvalStatus || 'Pending') === 'Referred Back'
+                                ? '#dc2626'
+                                : '#d97706',
+                          }}
+                        />
+                        {item.approvalStatus || 'Pending'}
+                      </span>
                     </td>
                     <td style={{ padding: '12px', color: '#94a3b8', fontSize: '12px' }}>
                       {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}

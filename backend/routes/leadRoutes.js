@@ -32,6 +32,18 @@ router.get("/", async (req, res) => {
         filter.subStage = new RegExp(`^${req.query.subStage.replace(/-/g, "[ -]")}$`, "i");
       }
     }
+    if (req.query.approvalStatus) {
+      if (req.query.approvalStatus.toLowerCase() === "pending") {
+        filter.$or = [
+          { approvalStatus: "Pending" },
+          { approvalStatus: "" },
+          { approvalStatus: null },
+          { approvalStatus: { $exists: false } },
+        ];
+      } else {
+        filter.approvalStatus = new RegExp(`^${req.query.approvalStatus}$`, "i");
+      }
+    }
     const leads = await Lead.find(filter).sort({ createdAt: -1 });
     res.json({ success: true, count: leads.length, data: leads });
   } catch (error) {
@@ -96,6 +108,42 @@ router.post("/", async (req, res) => {
     }
 
     if (_id) {
+      const existing = await Lead.findById(_id);
+      if (existing) {
+        // If this lead was referred back, resubmitting sets it back to Pending for the referred department(s)
+        const isReferredBack =
+          existing.approvalStatus === "Referred Back" ||
+          existing.stockApproval?.status === "Referred Back" ||
+          existing.productionApproval?.status === "Referred Back";
+
+        if (isReferredBack) {
+          leadData.approvalStatus = "Pending";
+          leadData.stockApproval = {
+            status: existing.stockApproval?.status === "Referred Back" ? "Pending" : (existing.stockApproval?.status || "Pending"),
+            note: existing.stockApproval?.note || "",
+            author: existing.stockApproval?.author || "",
+            resubmittedAt: new Date(),
+          };
+          leadData.productionApproval = {
+            status: existing.productionApproval?.status === "Referred Back" ? "Pending" : (existing.productionApproval?.status || "Pending"),
+            note: existing.productionApproval?.note || "",
+            author: existing.productionApproval?.author || "",
+            resubmittedAt: new Date(),
+          };
+
+          if (!Array.isArray(leadData.approvalComments)) {
+            leadData.approvalComments = existing.approvalComments || [];
+          }
+          leadData.approvalComments.push({
+            author: leadData.employeeName || "Sales Team",
+            role: "Sales",
+            comment: "Revisions completed by Sales team; resubmitted for manager approval.",
+            status: "Pending",
+            createdAt: new Date(),
+          });
+        }
+      }
+
       const updated = await Lead.findByIdAndUpdate(_id, leadData, {
         new: true,
         runValidators: true,
@@ -126,6 +174,146 @@ router.put("/:id", async (req, res) => {
   } catch (error) {
     console.error("Error updating lead:", error);
     res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// PATCH /api/leads/:id/approval - Approve or Refer back with comments
+router.patch("/:id/approval", async (req, res) => {
+  try {
+    const { status, comment, author, role, department } = req.body;
+    if (!["Approved", "Referred Back", "Pending"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid status" });
+    }
+
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) {
+      return res.status(404).json({ success: false, message: "Lead not found" });
+    }
+
+    const authorText = `${author || ""} ${role || ""} ${department || ""}`.toLowerCase();
+    const isStock = authorText.includes("stock");
+    const isProduction = authorText.includes("production");
+
+    if (!lead.stockApproval) {
+      lead.stockApproval = { status: "Pending", note: "", author: "", updatedAt: null };
+    }
+    if (!lead.productionApproval) {
+      lead.productionApproval = { status: "Pending", note: "", author: "", updatedAt: null };
+    }
+
+    if (isStock) {
+      lead.stockApproval = {
+        status,
+        note: comment || "",
+        author: author || "Elena Rostova",
+        updatedAt: new Date(),
+      };
+    } else if (isProduction) {
+      lead.productionApproval = {
+        status,
+        note: comment || "",
+        author: author || "Marcus Vance",
+        updatedAt: new Date(),
+      };
+    } else {
+      // General manager / admin
+      lead.stockApproval = {
+        status,
+        note: comment || "",
+        author: author || "Manager",
+        updatedAt: new Date(),
+      };
+      lead.productionApproval = {
+        status,
+        note: comment || "",
+        author: author || "Manager",
+        updatedAt: new Date(),
+      };
+    }
+
+    // Determine overall approvalStatus
+    if (
+      lead.stockApproval.status === "Referred Back" ||
+      lead.productionApproval.status === "Referred Back"
+    ) {
+      lead.approvalStatus = "Referred Back";
+    } else if (
+      lead.stockApproval.status === "Approved" &&
+      lead.productionApproval.status === "Approved"
+    ) {
+      lead.approvalStatus = "Approved";
+    } else {
+      lead.approvalStatus = "Pending";
+    }
+
+    if (comment || status) {
+      if (!Array.isArray(lead.approvalComments)) {
+        lead.approvalComments = [];
+      }
+      lead.approvalComments.push({
+        author: author || "Manager",
+        role: role || (isStock ? "Stock Room Manager" : isProduction ? "Production Lead" : "Manager"),
+        comment: comment || (status === "Approved" ? "Approved" : "Referred Back"),
+        status,
+        createdAt: new Date(),
+      });
+    }
+
+    await lead.save();
+
+    let createdTask = null;
+    if (status === "Approved") {
+      const Task = require("../models/Task");
+      const orderIdStr = lead.orderId || lead._id.toString().slice(-6).toUpperCase();
+      const taskIdStr = `TSK-${orderIdStr}`;
+
+      const deptName = isStock ? "Stock Room" : "Production";
+
+      const urgencyStr = (lead.urgency || "").toLowerCase();
+      const priority =
+        urgencyStr.includes("urgent") || urgencyStr.includes("high")
+          ? "High"
+          : urgencyStr.includes("medium")
+          ? "Medium"
+          : "Normal";
+
+      createdTask = await Task.findOneAndUpdate(
+        { $or: [{ leadId: lead._id }, { taskId: taskIdStr }] },
+        {
+          taskId: taskIdStr,
+          leadId: lead._id,
+          orderId: orderIdStr,
+          title: `Order #${orderIdStr} - ${lead.companyName || lead.clientName || "Approved Order"}`,
+          companyName: lead.companyName || "",
+          clientName: lead.clientName || "",
+          assignedTo: author || (isStock ? "Elena Rostova" : "Marcus Vance"),
+          department: deptName,
+          priority,
+          status: "open",
+          dueDate: lead.deliveryDate || lead.scheduleDate || "Within 7 Days",
+          totalQuantity: lead.totalQuantity || 0,
+          orderStage: lead.orderStage || "sample",
+          subStage: lead.subStage || "",
+          approvedBy: {
+            name: author || "Manager",
+            role: role || "",
+            comment: comment || "Approved",
+            approvedAt: new Date(),
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+
+    res.json({
+      success: true,
+      message: `Order ${status.toLowerCase()} successfully`,
+      data: lead,
+      task: createdTask,
+    });
+  } catch (error) {
+    console.error("Error updating approval:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

@@ -17,7 +17,7 @@ function Login({ darkMode, setDarkMode }) {
   const navigate = useNavigate();
   const { profiles, currentUser, login } = useAuth();
 
-  // Selected profile state: 'admin' | 'production' | 'stock'
+  // Selected profile state: 'admin' | 'production' | 'stock' | 'sales'
   const [selectedProfileId, setSelectedProfileId] = useState(
     currentUser?.id || "admin"
   );
@@ -98,10 +98,10 @@ function Login({ darkMode, setDarkMode }) {
           {/* Heading & Subheading (Editorial Serif like reference) */}
           <h1 className="login-card-heading">Welcome Back to Omission</h1>
           <p className="login-card-subheading">
-            Access your account to view orders, track production queues, and manage stock details.
+            Access your account to view orders, track production queues, manage stock, and handle sales leads.
           </p>
 
-          {/* 3 Profile Segmented Selector Chips */}
+          {/* 4 Profile Segmented Selector Chips */}
           <div className="login-profile-segmented-grid">
             {/* 1. Admin (Adam CEO) */}
             <div
@@ -171,6 +171,31 @@ function Login({ darkMode, setDarkMode }) {
               <span className="login-chip-name">Elena R.</span>
               <span className="login-chip-role">Stock Manager</span>
             </div>
+
+            {/* 4. Sales Executive (Divyanshi) */}
+            {profiles.sales && (
+              <div
+                className={`login-profile-chip ${
+                  selectedProfileId === "sales" ? "active" : ""
+                }`}
+                onClick={() => handleSelectProfile("sales")}
+                role="button"
+                tabIndex={0}
+                title="Sales Executive (Divyanshi)"
+              >
+                <div
+                  className="login-chip-avatar"
+                  style={{
+                    backgroundColor: profiles.sales.avatarBg,
+                    color: profiles.sales.avatarColor,
+                  }}
+                >
+                  {profiles.sales.initials}
+                </div>
+                <span className="login-chip-name">{profiles.sales.name}</span>
+                <span className="login-chip-role">Sales Exec</span>
+              </div>
+            )}
           </div>
 
           {/* Form with Clean Floating/Soft Inputs */}

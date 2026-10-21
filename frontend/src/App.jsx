@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
@@ -7,13 +7,22 @@ import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import AllEmployees from "./pages/AllEmployees";
 import OrderManagement from "./pages/OrderManagement";
+import InvoicesList from "./pages/Invoices/InvoicesList";
+import CreateInvoice from "./pages/Invoices/CreateInvoice";
+import TasksPage from "./pages/Tasks/TasksPage";
+import Approvals from "./pages/Approvals";
 import Login from "./pages/Login";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 
 import "./App.css";
 
 function AppContent({ darkMode, setDarkMode }) {
   const location = useLocation();
+  const { currentUser } = useAuth();
+  const isAdmin = currentUser?.id === "admin";
+  const isSalesOrAdmin = currentUser?.id === "sales" || currentUser?.id === "admin";
+  const isTaskUser = currentUser?.id === "stock" || currentUser?.id === "production" || currentUser?.id === "admin";
+  const isApprovalUser = currentUser?.id === "stock" || currentUser?.id === "production" || currentUser?.id === "admin";
   const isLoginPage = location.pathname === "/login";
 
   if (isLoginPage) {
@@ -46,12 +55,37 @@ function AppContent({ darkMode, setDarkMode }) {
 
             <Route
               path="/employees"
-              element={<AllEmployees />}
+              element={isAdmin ? <AllEmployees /> : <Navigate to="/" replace />}
             />
 
             <Route
               path="/order/*"
               element={<OrderManagement />}
+            />
+
+            <Route
+              path="/invoices"
+              element={isSalesOrAdmin ? <InvoicesList /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/invoices/create"
+              element={isSalesOrAdmin ? <CreateInvoice /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/tasks"
+              element={isTaskUser ? <Navigate to="/tasks/all" replace /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/tasks/:status"
+              element={isTaskUser ? <TasksPage /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/approvals"
+              element={isApprovalUser ? <Approvals /> : <Navigate to="/" replace />}
             />
 
             <Route
