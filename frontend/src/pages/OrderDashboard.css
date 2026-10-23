@@ -317,6 +317,56 @@
   gap: 20px;
 }
 
+.order-analytics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+  .order-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.order-profile-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 18px;
+  margin-bottom: 20px;
+}
+
+.app.dark .order-profile-banner {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.order-profile-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #334155;
+  font-weight: 500;
+}
+
+.app.dark .order-profile-pill {
+  color: #e2e8f0;
+}
+
+.order-profile-pill strong {
+  color: #2563eb;
+}
+
+.app.dark .order-profile-pill strong {
+  color: #60a5fa;
+}
+
 @media (max-width: 1024px) {
   .order-bottom-grid {
     grid-template-columns: 1fr;

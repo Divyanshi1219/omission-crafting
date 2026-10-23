@@ -217,7 +217,7 @@
 .login-profile-segmented-grid {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 6px;
   margin-bottom: 14px;
   background: #f8fafc;

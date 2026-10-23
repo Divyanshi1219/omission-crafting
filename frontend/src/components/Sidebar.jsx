@@ -15,9 +15,22 @@ import { useAuth } from "../context/AuthContext";
 function Sidebar() {
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.id === "admin";
-  const isSalesOrAdmin = currentUser?.id === "sales" || currentUser?.id === "admin";
-  const isTaskUser = currentUser?.id === "stock" || currentUser?.id === "production" || currentUser?.id === "admin";
-  const isApprovalUser = currentUser?.id === "stock" || currentUser?.id === "production" || currentUser?.id === "admin";
+  const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
+  const isLeadManager =
+    currentUser?.id === "lead_manager" ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase() === "lead manager");
+  const isInvoiceUser = isSales || currentUser?.id === "admin" || isLeadManager;
+  const isTaskUser =
+    currentUser?.id === "stock" ||
+    currentUser?.id === "production" ||
+    currentUser?.id === "admin" ||
+    Boolean(currentUser?.role && (currentUser.role.toLowerCase().includes("stock") || (currentUser.role.toLowerCase().includes("production") && !currentUser.role.toLowerCase().includes("lead manager"))));
+  const isStockUser =
+    currentUser?.id === "stock" ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("stock"));
+  const isProductionUser =
+    currentUser?.id === "production" ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("production") && !currentUser.role.toLowerCase().includes("lead manager"));
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const isViewingOrder = searchParams.has('id');
@@ -82,7 +95,9 @@ function Sidebar() {
     { name: 'DTF Pending', path: '/order/sample/dtf-pending' },
     { name: 'Stock', path: '/order/sample/stock' },
     { name: 'Printing', path: '/order/sample/printing' },
-    { name: 'Customer Approved', path: '/order/sample/customer-approved' },
+    { name: 'Ready to Pick Up', path: '/order/sample/ready-to-pick-up' },
+    { name: 'Staging Ground', path: '/order/sample/staging-ground' },
+    { name: 'Customer Approval Awaiting', path: '/order/sample/customer-approval-awaiting' },
   ];
 
   const partialItems = [
@@ -91,7 +106,9 @@ function Sidebar() {
     { name: 'Stock', path: '/order/partial/stock' },
     { name: 'Printing', path: '/order/partial/printing' },
     { name: 'Quality Check', path: '/order/partial/quality-check' },
-    { name: 'Payment Status', path: '/order/partial/payment-status' },
+    { name: 'Packaging', path: '/order/partial/packaging' },
+    { name: 'Staging Room', path: '/order/partial/staging-room' },
+    { name: 'Payment Confirmation', path: '/order/partial/payment-confirmation' },
   ];
 
   const completeItems = [
@@ -102,7 +119,7 @@ function Sidebar() {
     { name: 'Quality Check', path: '/order/complete/quality-check' },
     { name: 'Packaging', path: '/order/complete/packaging' },
     { name: 'Delivery Pending', path: '/order/complete/delivery-pending' },
-    { name: 'Delivery', path: '/order/complete/delivery' },
+    { name: 'Delivered', path: '/order/complete/delivered' },
   ];
 
   return (
@@ -131,8 +148,8 @@ function Sidebar() {
         )}
 
         <div className="sidebar-accordion">
-          <div 
-            className={`sidebar-item ${isOrderRoute ? 'active' : ''}`} 
+          <div
+            className={`sidebar-item ${isOrderRoute ? 'active' : ''}`}
             onClick={() => setIsOrderMenuOpen(!isOrderMenuOpen)}
             style={{ cursor: 'pointer' }}
           >
@@ -142,7 +159,7 @@ function Sidebar() {
               {isOrderMenuOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </div>
           </div>
-          
+
           {isOrderMenuOpen && (
             <div className="sidebar-submenu">
               {/* 1. Create Lead */}
@@ -158,7 +175,7 @@ function Sidebar() {
 
               {/* 2. Sample */}
               <div className="sidebar-nested-accordion">
-                <div 
+                <div
                   className={`sidebar-submenu-header ${activePath.startsWith('/order/sample') ? 'active' : ''}`}
                   onClick={() => toggleSubMenu('sample')}
                 >
@@ -188,7 +205,7 @@ function Sidebar() {
 
               {/* 3. Partial */}
               <div className="sidebar-nested-accordion">
-                <div 
+                <div
                   className={`sidebar-submenu-header ${activePath.startsWith('/order/partial') ? 'active' : ''}`}
                   onClick={() => toggleSubMenu('partial')}
                 >
@@ -218,7 +235,7 @@ function Sidebar() {
 
               {/* 4. Complete */}
               <div className="sidebar-nested-accordion">
-                <div 
+                <div
                   className={`sidebar-submenu-header ${activePath.startsWith('/order/complete') ? 'active' : ''}`}
                   onClick={() => toggleSubMenu('complete')}
                 >
@@ -260,8 +277,8 @@ function Sidebar() {
           )}
         </div>
 
-        {/* Invoice Section for Sales Executive (and Admin) */}
-        {isSalesOrAdmin && (
+        {/* Invoice Section for Sales Executive, Lead Manager & Admin */}
+        {isInvoiceUser && (
           <div className="sidebar-accordion">
             <div
               className={`sidebar-item ${isInvoiceRoute ? "active" : ""}`}
@@ -322,78 +339,57 @@ function Sidebar() {
                 <NavLink
                   to="/tasks/all"
                   className={({ isActive }) =>
-                    `sidebar-submenu-item ${isActive ? "active" : ""}`
+                    `sidebar-submenu-item ${
+                      isActive || location.pathname === "/tasks"
+                        ? "active"
+                        : ""
+                    }`
                   }
                 >
                   <span className="submenu-dot"></span>
                   ALL
                 </NavLink>
 
-                <NavLink
-                  to="/tasks/open"
-                  className={({ isActive }) =>
-                    `sidebar-submenu-item ${isActive ? "active" : ""}`
-                  }
-                >
-                  <span className="submenu-dot"></span>
-                  Open
-                </NavLink>
+                {/* Stock Room Manager Submenus */}
+                {(isStockUser || isAdmin) && (
+                  <>
+                    <NavLink
+                      to="/tasks/ready-to-pick"
+                      className={({ isActive }) =>
+                        `sidebar-submenu-item ${isActive ? "active" : ""}`
+                      }
+                    >
+                      <span className="submenu-dot"></span>
+                      Ready to Pick
+                    </NavLink>
 
-                <NavLink
-                  to="/tasks/resolved"
-                  className={({ isActive }) =>
-                    `sidebar-submenu-item ${isActive ? "active" : ""}`
-                  }
-                >
-                  <span className="submenu-dot"></span>
-                  Resolved
-                </NavLink>
+                    <NavLink
+                      to="/tasks/staging-room"
+                      className={({ isActive }) =>
+                        `sidebar-submenu-item ${isActive ? "active" : ""}`
+                      }
+                    >
+                      <span className="submenu-dot"></span>
+                      Staging Room
+                    </NavLink>
+                  </>
+                )}
 
-                <NavLink
-                  to="/tasks/closed"
-                  className={({ isActive }) =>
-                    `sidebar-submenu-item ${isActive ? "active" : ""}`
-                  }
-                >
-                  <span className="submenu-dot"></span>
-                  Closed
-                </NavLink>
-
-                <NavLink
-                  to="/tasks/work-in-progress"
-                  className={({ isActive }) =>
-                    `sidebar-submenu-item ${isActive ? "active" : ""}`
-                  }
-                >
-                  <span className="submenu-dot"></span>
-                  Work in progress
-                </NavLink>
-
-                <NavLink
-                  to="/tasks/on-hold"
-                  className={({ isActive }) =>
-                    `sidebar-submenu-item ${isActive ? "active" : ""}`
-                  }
-                >
-                  <span className="submenu-dot"></span>
-                  On hold
-                </NavLink>
+                {/* Production Lead Manager Submenus */}
+                {(isProductionUser || isAdmin) && (
+                  <NavLink
+                    to="/tasks/logo-cutting"
+                    className={({ isActive }) =>
+                      `sidebar-submenu-item ${isActive ? "active" : ""}`
+                    }
+                  >
+                    <span className="submenu-dot"></span>
+                    Logo Cutting
+                  </NavLink>
+                )}
               </div>
             )}
           </div>
-        )}
-
-        {/* Approval Section for Stock Room Manager & Production Manager (and Admin) */}
-        {isApprovalUser && (
-          <NavLink
-            to="/approvals"
-            className={({ isActive }) =>
-              `sidebar-item ${isActive ? "active" : ""}`
-            }
-          >
-            <ClipboardCheck size={20} />
-            <span>Approval</span>
-          </NavLink>
         )}
 
       </nav>

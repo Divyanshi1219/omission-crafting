@@ -412,47 +412,81 @@ function CreateInvoice() {
 
   return (
     <div className="create-invoice-page">
-      {/* Top Breadcrumb & Header Row (Screenshot 2) */}
+      {/* Top Header Row */}
       <div className="create-inv-header-row">
         <div>
-          <div className="create-inv-breadcrumb">
-            <span onClick={() => navigate("/invoices")} className="crumb-link">
-              Invoice
-            </span>
-            <span className="crumb-sep">&gt;</span>
-            <span className="crumb-active">Create Invoice</span>
-          </div>
           <h1 className="create-inv-title">Create Invoice</h1>
-          <p className="create-inv-subtitle">
-            Create a new invoice and deliver it instantly.
-          </p>
         </div>
 
-        {/* Toggle Live Preview switch (Screenshot 2) */}
-        <div className="preview-toggle-wrap">
-          <span className="preview-toggle-label">Show Preview</span>
-          <button
-            type="button"
-            className={`toggle-switch-btn ${showPreview ? "active" : ""}`}
-            onClick={() => setShowPreview(!showPreview)}
-            aria-label="Toggle Preview"
-          >
-            <span className="toggle-switch-thumb"></span>
-          </button>
-        </div>
-      </div>
+        <div className="create-inv-header-actions">
+          {/* Always Visible Action Buttons (PDF, Print, Save Draft, Send Invoice) */}
+          <div className="preview-action-buttons">
+            <button
+              type="button"
+              className="action-pill-btn"
+              onClick={handleDownloadPDF}
+              title="Download High-Res PDF"
+            >
+              <Download size={14} />
+              <span>PDF</span>
+            </button>
 
-      {/* Mode Pills: Standard, Split, Recurring (Screenshot 2) */}
-      <div className="invoice-mode-pills">
-        {["Standard", "Split", "Recurring"].map((type) => (
-          <button
-            key={type}
-            className={`mode-pill ${invoiceType === type ? "active" : ""}`}
-            onClick={() => setInvoiceType(type)}
-          >
-            {type}
-          </button>
-        ))}
+            <button
+              type="button"
+              className="action-pill-btn"
+              onClick={handlePrint}
+              title="Print Invoice"
+            >
+              <Printer size={14} />
+              <span>Print</span>
+            </button>
+
+            <button
+              type="button"
+              className="action-pill-btn"
+              onClick={() => handleSaveInvoice("Draft")}
+              disabled={isSaving}
+              title="Save as Draft"
+            >
+              <Save size={14} />
+              <span>Save Draft</span>
+            </button>
+
+            <button
+              type="button"
+              className="send-invoice-primary-btn"
+              onClick={() => handleSaveInvoice("Sent")}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <span className="btn-spinner"></span>
+              ) : saveSuccess ? (
+                <>
+                  <CheckCircle2 size={15} />
+                  <span>Saved!</span>
+                </>
+              ) : (
+                <>
+                  <Send size={15} />
+                  <span>Send Invoice</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Toggle Live Preview switch */}
+          <div className="preview-toggle-wrap">
+            <span className="preview-toggle-label">Show Preview</span>
+            <button
+              type="button"
+              className={`toggle-switch-btn ${showPreview ? "active" : ""}`}
+              onClick={() => setShowPreview(!showPreview)}
+              aria-label="Toggle Preview"
+            >
+              <span className="toggle-switch-thumb"></span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Main Split Grid (Screenshot 2 Layout) */}
@@ -826,10 +860,10 @@ function CreateInvoice() {
           <div className="form-card-section">
             <div className="form-section-title">
               <Percent size={16} />
-              <span>Tax, Discount & Notes</span>
+              <span>Tax & GST</span>
             </div>
 
-            {/* Does your invoice include Tax/GST? (Screenshot 4) */}
+            {/* Does your invoice include Tax/GST? */}
             <div className="tax-question-card">
               <label className="field-label-bold">
                 Does your invoice include Tax/GST?
@@ -857,198 +891,98 @@ function CreateInvoice() {
 
               {includeTax && (
                 <div className="gst-rate-row">
-                  <label className="field-mini-label">GST Tax Rate:</label>
-                  <div className="gst-pills">
-                    {[5, 12, 18, 28].map((rate) => (
-                      <button
-                        key={rate}
-                        type="button"
-                        className={`gst-pill ${taxRate === rate ? "active" : ""}`}
-                        onClick={() => setTaxRate(rate)}
-                      >
-                        {rate}% GST ({(rate / 2).toFixed(1)}% CGST + {(rate / 2).toFixed(1)}% SGST)
-                      </button>
-                    ))}
+                  <div className="gst-header-flex">
+                    <label className="field-mini-label">GST Tax Rate (%):</label>
+                    <span className="gst-split-hint">
+                      ({((Number(taxRate) || 0) / 2).toFixed(1)}% CGST + {((Number(taxRate) || 0) / 2).toFixed(1)}% SGST)
+                    </span>
+                  </div>
+
+                  <div className="gst-controls-inline">
+                    {/* Percentage Input Field */}
+                    <div className="gst-percent-input-wrapper">
+                      <input
+                        type="number"
+                        className="styled-input gst-percent-input"
+                        placeholder="0"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={taxRate}
+                        onChange={(e) => setTaxRate(e.target.value === "" ? "" : Number(e.target.value))}
+                        id="input-gst-tax-rate"
+                      />
+                      <span className="gst-percent-badge">%</span>
+                    </div>
+
+                    {/* Quick Preset Buttons */}
+                    <div className="gst-pills">
+                      {[5, 12, 18, 28].map((rate) => (
+                        <button
+                          key={rate}
+                          type="button"
+                          className={`gst-pill ${Number(taxRate) === rate ? "active" : ""}`}
+                          onClick={() => setTaxRate(rate)}
+                        >
+                          {rate}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Auto Calculated Bill Breakdown */}
+                  <div className="gst-bill-breakdown-card">
+                    <div className="gst-breakdown-title">
+                      <span>Auto-Calculated Bill Summary</span>
+                    </div>
+
+                    <div className="gst-breakdown-row">
+                      <span className="gst-label">Subtotal (Items):</span>
+                      <span className="gst-val">{currSymbol}{subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+
+                    <div className="gst-breakdown-row">
+                      <span className="gst-label">CGST ({((Number(taxRate) || 0) / 2).toFixed(1)}%):</span>
+                      <span className="gst-val">+{currSymbol}{(taxAmount / 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+
+                    <div className="gst-breakdown-row">
+                      <span className="gst-label">SGST ({((Number(taxRate) || 0) / 2).toFixed(1)}%):</span>
+                      <span className="gst-val">+{currSymbol}{(taxAmount / 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+
+                    <div className="gst-breakdown-row highlight">
+                      <span className="gst-label">Total GST ({Number(taxRate) || 0}%):</span>
+                      <span className="gst-val tax-highlight">+{currSymbol}{taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+
+                    <div className="gst-breakdown-divider"></div>
+
+                    <div className="gst-breakdown-row total">
+                      <span className="gst-label">Total Bill Amount:</span>
+                      <span className="gst-val final-total">{currSymbol}{grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!includeTax && (
+                <div className="gst-bill-breakdown-card" style={{ marginTop: '14px' }}>
+                  <div className="gst-breakdown-row total">
+                    <span className="gst-label">Total Bill Amount (Exempt):</span>
+                    <span className="gst-val final-total">{currSymbol}{grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               )}
             </div>
-
-            {/* Add Discount Checkbox (Screenshot 2) */}
-            <div className="discount-toggle-block">
-              <label className="custom-checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={hasDiscount}
-                  onChange={(e) => setHasDiscount(e.target.checked)}
-                />
-                <span className="checkbox-text">Add Discount</span>
-              </label>
-
-              {hasDiscount && (
-                <div className="discount-inputs-inline">
-                  <select
-                    className="styled-select-mini"
-                    value={discountType}
-                    onChange={(e) => setDiscountType(e.target.value)}
-                  >
-                    <option value="flat">Flat ({currSymbol})</option>
-                    <option value="percentage">Percentage (%)</option>
-                  </select>
-
-                  <input
-                    type="number"
-                    className="styled-input-mini"
-                    placeholder="0"
-                    min="0"
-                    value={discountValue}
-                    onChange={(e) => setDiscountValue(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Amount in words live box (Screenshot 4) */}
-            <div className="amount-in-words-preview-box">
-              <span className="words-title">INVOICE AMOUNT IN WORDS:</span>
-              <p className="words-text">{wordsRepresentation}</p>
-            </div>
-
-            {/* Terms and conditions (Screenshot 4) */}
-            <div className="input-field-group">
-              <label className="field-label">Terms and Conditions</label>
-              <textarea
-                className="styled-textarea"
-                rows={3}
-                placeholder="Enter terms and conditions / delivery notes..."
-                value={termsAndConditions}
-                onChange={(e) => setTermsAndConditions(e.target.value)}
-              />
-            </div>
-
-            {/* Bank / Payment Details */}
-            <div className="input-field-group">
-              <label className="field-label">Payment Method</label>
-              <input
-                type="text"
-                className="styled-input"
-                placeholder="e.g. Bank Transfer (NEFT/RTGS), UPI, Cheque, Cash"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-              />
-            </div>
-
-            <div className="form-two-col-grid">
-              <div className="input-field-group">
-                <label className="field-label">Bank Name</label>
-                <input
-                  type="text"
-                  className="styled-input"
-                  placeholder="e.g. HDFC Bank Ltd"
-                  value={bankName}
-                  onChange={(e) => setBankName(e.target.value)}
-                />
-              </div>
-
-              <div className="input-field-group">
-                <label className="field-label">Account Number</label>
-                <input
-                  type="text"
-                  className="styled-input"
-                  placeholder="e.g. 50200088921455"
-                  value={accountNumber}
-                  onChange={(e) => setAccountNumber(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="form-two-col-grid">
-              <div className="input-field-group">
-                <label className="field-label">IFSC Code</label>
-                <input
-                  type="text"
-                  className="styled-input"
-                  placeholder="e.g. HDFC0001420"
-                  value={ifscCode}
-                  onChange={(e) => setIfscCode(e.target.value)}
-                />
-              </div>
-
-              <div className="input-field-group">
-                <label className="field-label">UPI ID</label>
-                <input
-                  type="text"
-                  className="styled-input"
-                  placeholder="e.g. company@upi"
-                  value={upiId}
-                  onChange={(e) => setUpiId(e.target.value)}
-                />
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Live Interactive Preview & Action Header (Screenshot 2) */}
-        {showPreview && (
-          <div className="create-inv-preview-col">
-            {/* Action Bar (Email, PDF, Save as Draft, Send Invoice - Screenshot 2) */}
-            <div className="preview-top-action-bar">
-              <h2 className="preview-bar-title">Preview</h2>
-
-              <div className="preview-action-buttons">
-                <button
-                  type="button"
-                  className="action-pill-btn"
-                  onClick={handleDownloadPDF}
-                  title="Download High-Res PDF"
-                >
-                  <Download size={14} />
-                  <span>PDF</span>
-                </button>
-
-                <button
-                  type="button"
-                  className="action-pill-btn"
-                  onClick={handlePrint}
-                  title="Print Invoice"
-                >
-                  <Printer size={14} />
-                  <span>Print</span>
-                </button>
-
-                <button
-                  type="button"
-                  className="action-pill-btn"
-                  onClick={() => handleSaveInvoice("Draft")}
-                  disabled={isSaving}
-                  title="Save as Draft"
-                >
-                  <Save size={14} />
-                  <span>Save Draft</span>
-                </button>
-
-                <button
-                  type="button"
-                  className="send-invoice-primary-btn"
-                  onClick={() => handleSaveInvoice("Sent")}
-                  disabled={isSaving}
-                >
-                  {isSaving ? (
-                    <span className="btn-spinner"></span>
-                  ) : saveSuccess ? (
-                    <>
-                      <CheckCircle2 size={15} />
-                      <span>Saved!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send size={15} />
-                      <span>Send Invoice</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
+        {/* RIGHT COLUMN: Live Interactive Preview */}
+        <div className={`create-inv-preview-col ${!showPreview ? "preview-hidden-offscreen" : ""}`}>
+          <div className="preview-top-action-bar">
+            <h2 className="preview-bar-title">Live Preview</h2>
+          </div>
 
             {/* WYSIWYG Document Sheet Preview (Screenshot 2 & 4) */}
             <div className="paper-document-viewport">
@@ -1298,9 +1232,8 @@ function CreateInvoice() {
               </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
-    </div>
   );
 }
 

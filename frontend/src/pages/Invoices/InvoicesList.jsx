@@ -1,17 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import {
   Plus,
   Search,
-  FileText,
   Download,
   Printer,
   Trash2,
   Calendar,
-  CheckCircle2,
-  Clock,
   ArrowRight,
-  TrendingUp,
   Receipt,
   Eye,
   AlertCircle
@@ -23,6 +20,8 @@ const STORAGE_KEY = "omission_local_invoices";
 
 function InvoicesList() {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -86,88 +85,11 @@ function InvoicesList() {
     return matchesSearch && matchesStatus;
   });
 
-  // Calculate metrics
-  const totalCount = invoices.length;
-  const totalAmount = invoices.reduce(
-    (sum, inv) => sum + (Number(inv.grandTotal) || 0),
-    0
-  );
-  const paidCount = invoices.filter((i) => i.status === "Paid").length;
-  const pendingCount = invoices.filter((i) => i.status === "Sent" || i.status === "Draft").length;
-
   return (
     <div className="invoices-page-container">
       {/* Top Header */}
       <div className="invoices-header">
-        <div>
-          <div className="invoices-breadcrumb">
-            <span>Sales Operations</span>
-            <span className="crumb-sep">/</span>
-            <span className="crumb-active">Invoices</span>
-          </div>
-          <h1 className="invoices-title">Commercial Invoices</h1>
-          <p className="invoices-subtitle">
-            Create, manage and issue GST-compliant invoices for your clients.
-          </p>
-        </div>
-
-        <button
-          className="create-invoice-btn"
-          onClick={() => navigate("/invoices/create")}
-          id="btn-create-invoice"
-        >
-          <Plus size={16} />
-          <span>Create Invoice</span>
-        </button>
-      </div>
-
-      {/* Metric Tiles */}
-      <div className="invoices-metrics-grid">
-        <div className="inv-metric-card">
-          <div className="metric-header">
-            <span className="metric-title">Total Invoices</span>
-            <div className="metric-icon-wrap blue">
-              <FileText size={18} />
-            </div>
-          </div>
-          <div className="metric-value">{totalCount}</div>
-          <div className="metric-subtext">Issued commercial bills</div>
-        </div>
-
-        <div className="inv-metric-card">
-          <div className="metric-header">
-            <span className="metric-title">Total Revenue Invoiced</span>
-            <div className="metric-icon-wrap green">
-              <TrendingUp size={18} />
-            </div>
-          </div>
-          <div className="metric-value">
-            ₹{totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="metric-subtext">Cumulative billed amount</div>
-        </div>
-
-        <div className="inv-metric-card">
-          <div className="metric-header">
-            <span className="metric-title">Paid Invoices</span>
-            <div className="metric-icon-wrap emerald">
-              <CheckCircle2 size={18} />
-            </div>
-          </div>
-          <div className="metric-value">{paidCount}</div>
-          <div className="metric-subtext">Settled & cleared transactions</div>
-        </div>
-
-        <div className="inv-metric-card">
-          <div className="metric-header">
-            <span className="metric-title">Awaiting Payment</span>
-            <div className="metric-icon-wrap amber">
-              <Clock size={18} />
-            </div>
-          </div>
-          <div className="metric-value">{pendingCount}</div>
-          <div className="metric-subtext">Open & pending settlement</div>
-        </div>
+        <h1 className="invoices-title">Invoice</h1>
       </div>
 
       {/* Controls & Table Container */}
@@ -211,15 +133,19 @@ function InvoicesList() {
             <p>
               {searchTerm || statusFilter !== "all"
                 ? "No invoices match your search filters."
-                : "You haven't generated any invoices yet. Click below to create your first client invoice."}
+                : isSales
+                  ? "You haven't generated any invoices yet."
+                  : "You haven't generated any invoices yet. Click below to create your first client invoice."}
             </p>
-            <button
-              className="create-invoice-btn primary"
-              onClick={() => navigate("/invoices/create")}
-            >
-              <Plus size={16} />
-              <span>Create First Invoice</span>
-            </button>
+            {!isSales && (
+              <button
+                className="create-invoice-btn primary"
+                onClick={() => navigate("/invoices/create")}
+              >
+                <Plus size={16} />
+                <span>Create First Invoice</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="invoices-table-scroll">

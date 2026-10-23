@@ -22,7 +22,13 @@ function getPriorityFromLead(urgency = "") {
 // Sync helper: ensure every approved lead has a corresponding Task
 async function syncApprovedLeadsToTasks() {
   try {
-    const approvedLeads = await Lead.find({ approvalStatus: "Approved" });
+    const approvedLeads = await Lead.find({
+      approvalStatus: "Approved",
+      $or: [
+        { "leadApproval.status": "Approved" },
+        { leadApproval: { $exists: false } },
+      ],
+    });
     for (const lead of approvedLeads) {
       const orderIdStr = lead.orderId || lead._id.toString().slice(-6).toUpperCase();
       const taskIdStr = `TSK-${orderIdStr}`;

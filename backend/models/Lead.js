@@ -19,6 +19,11 @@ const leadSchema = new mongoose.Schema(
       default: "Divyanshi",
       trim: true,
     },
+    createdBy: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     query: {
       type: String,
       default: "",
@@ -78,6 +83,11 @@ const leadSchema = new mongoose.Schema(
       default: "No",
     },
     // Order details (if query is order)
+    taskId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     orderId: {
       type: String,
       default: "",
@@ -147,6 +157,13 @@ const leadSchema = new mongoose.Schema(
       type: String,
       default: "Pending", // "Pending", "Approved", "Referred Back"
     },
+    leadApproval: {
+      status: { type: String, default: "Pending" }, // "Pending", "Approved", "Referred Back"
+      note: { type: String, default: "" },
+      author: { type: String, default: "" },
+      updatedAt: { type: Date, default: null },
+      resubmittedAt: { type: Date, default: null },
+    },
     stockApproval: {
       status: { type: String, default: "Pending" }, // "Pending", "Approved", "Referred Back"
       note: { type: String, default: "" },
@@ -170,6 +187,95 @@ const leadSchema = new mongoose.Schema(
         createdAt: { type: Date, default: Date.now },
       },
     ],
+    // Workflow tracking fields across Sample, Partial, and Complete
+    stockTaskStage: {
+      type: String,
+      default: "ready_to_pick", // "ready_to_pick", "staging_room", "completed"
+    },
+    stockTaskData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    productionTaskStage: {
+      type: String,
+      default: "logo_cutting", // "logo_cutting", "completed"
+    },
+    productionTaskData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    printingStageData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    sampleReadyToPickUpData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    sampleStagingGroundData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    customerApprovalData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    partialData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    partialPrintingData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    partialQualityCheckData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    partialPackagingData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    partialStagingRoomData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    partialPaymentConfirmationData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    completeData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    completePrintingData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    completeQualityCheckData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    completePackagingData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    completeDeliveryPendingData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    completeDeliveredData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    completeCustomerSupportData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    isCompleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     collection: "leads",

@@ -7,14 +7,31 @@
   animation: fadeIn 0.25s ease-out;
 }
 
-/* Header & Breadcrumb (Screenshot 2) */
+/* Header & Action Controls */
 .create-inv-header-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.create-inv-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.create-inv-preview-col.preview-hidden-offscreen {
+  position: fixed;
+  top: 0;
+  left: -99999px;
+  width: 800px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -9999;
 }
 
 .create-inv-breadcrumb {
@@ -667,12 +684,64 @@
   border-color: #334155;
 }
 
+.gst-header-flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.gst-split-hint {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.app.dark .gst-split-hint {
+  color: #94a3b8;
+}
+
+.gst-controls-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.gst-percent-input-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 110px;
+}
+
+.gst-percent-input {
+  width: 100% !important;
+  padding-right: 28px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+}
+
+.app.dark .gst-percent-input {
+  color: #f8fafc !important;
+}
+
+.gst-percent-badge {
+  position: absolute;
+  right: 10px;
+  font-weight: 700;
+  color: #64748b;
+  font-size: 13px;
+  pointer-events: none;
+}
+
 .gst-pills {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
-  margin-top: 6px;
 }
 
 .gst-pill {
@@ -703,6 +772,87 @@
   background: #f59e0b;
   color: #0f172a;
   border-color: #f59e0b;
+}
+
+/* Auto Calculated Bill Summary */
+.gst-bill-breakdown-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 14px;
+}
+
+.app.dark .gst-bill-breakdown-card {
+  background: rgba(30, 41, 59, 0.5);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.gst-breakdown-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+
+.app.dark .gst-breakdown-title {
+  color: #94a3b8;
+}
+
+.gst-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 6px;
+}
+
+.app.dark .gst-breakdown-row {
+  color: #cbd5e1;
+}
+
+.gst-breakdown-row.highlight {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.app.dark .gst-breakdown-row.highlight {
+  color: #ffffff;
+}
+
+.tax-highlight {
+  color: #059669;
+  font-weight: 700;
+}
+
+.gst-breakdown-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 10px 0;
+}
+
+.app.dark .gst-breakdown-divider {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.gst-breakdown-row.total {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 0;
+}
+
+.app.dark .gst-breakdown-row.total {
+  color: #ffffff;
+}
+
+.final-total {
+  font-size: 17px;
+  font-weight: 800;
+  color: #2563eb;
 }
 
 /* Discount Checkbox Block (Screenshot 2) */

@@ -101,101 +101,42 @@ function Login({ darkMode, setDarkMode }) {
             Access your account to view orders, track production queues, manage stock, and handle sales leads.
           </p>
 
-          {/* 4 Profile Segmented Selector Chips */}
           <div className="login-profile-segmented-grid">
-            {/* 1. Admin (Adam CEO) */}
-            <div
-              className={`login-profile-chip ${
-                selectedProfileId === "admin" ? "active" : ""
-              }`}
-              onClick={() => handleSelectProfile("admin")}
-              role="button"
-              tabIndex={0}
-              title="Admin (Adam CEO)"
-            >
-              <div
-                className="login-chip-avatar"
-                style={{
-                  backgroundColor: profiles.admin.avatarBg,
-                  color: profiles.admin.avatarColor,
-                }}
-              >
-                {profiles.admin.initials}
-              </div>
-              <span className="login-chip-name">{profiles.admin.name}</span>
-              <span className="login-chip-role">CEO / Admin</span>
-            </div>
-
-            {/* 2. Production (Marcus Vance) */}
-            <div
-              className={`login-profile-chip ${
-                selectedProfileId === "production" ? "active" : ""
-              }`}
-              onClick={() => handleSelectProfile("production")}
-              role="button"
-              tabIndex={0}
-              title="Production Lead (Marcus Vance)"
-            >
-              <div
-                className="login-chip-avatar"
-                style={{
-                  backgroundColor: profiles.production.avatarBg,
-                  color: profiles.production.avatarColor,
-                }}
-              >
-                {profiles.production.initials}
-              </div>
-              <span className="login-chip-name">Marcus V.</span>
-              <span className="login-chip-role">Production</span>
-            </div>
-
-            {/* 3. Stock Room Manager (Elena Rostova) */}
-            <div
-              className={`login-profile-chip ${
-                selectedProfileId === "stock" ? "active" : ""
-              }`}
-              onClick={() => handleSelectProfile("stock")}
-              role="button"
-              tabIndex={0}
-              title="Stock Room Manager (Elena Rostova)"
-            >
-              <div
-                className="login-chip-avatar"
-                style={{
-                  backgroundColor: profiles.stock.avatarBg,
-                  color: profiles.stock.avatarColor,
-                }}
-              >
-                {profiles.stock.initials}
-              </div>
-              <span className="login-chip-name">Elena R.</span>
-              <span className="login-chip-role">Stock Manager</span>
-            </div>
-
-            {/* 4. Sales Executive (Divyanshi) */}
-            {profiles.sales && (
-              <div
-                className={`login-profile-chip ${
-                  selectedProfileId === "sales" ? "active" : ""
-                }`}
-                onClick={() => handleSelectProfile("sales")}
-                role="button"
-                tabIndex={0}
-                title="Sales Executive (Divyanshi)"
-              >
+            {Object.values(profiles).map((prof) => {
+              const isSelected = selectedProfileId === prof.id;
+              return (
                 <div
-                  className="login-chip-avatar"
-                  style={{
-                    backgroundColor: profiles.sales.avatarBg,
-                    color: profiles.sales.avatarColor,
-                  }}
+                  key={prof.id}
+                  className={`login-profile-chip ${isSelected ? "active" : ""}`}
+                  onClick={() => handleSelectProfile(prof.id)}
+                  role="button"
+                  tabIndex={0}
+                  title={`${prof.name} (${prof.role})`}
                 >
-                  {profiles.sales.initials}
+                  <div
+                    className="login-chip-avatar"
+                    style={{
+                      backgroundColor: prof.avatarBg,
+                      color: prof.avatarColor,
+                    }}
+                  >
+                    {prof.initials}
+                  </div>
+                  <span className="login-chip-name">{prof.name}</span>
+                  <span className="login-chip-role">
+                    {prof.id === "admin"
+                      ? "CEO / Admin"
+                      : prof.role === "Lead Manager"
+                      ? "Lead Manager"
+                      : prof.role
+                          .replace(" Executive", " Exec")
+                          .replace(" Room Manager", " Mgr")
+                          .replace(" Lead Manager", " Lead Mgr")
+                          .replace(" Lead", "")}
+                  </span>
                 </div>
-                <span className="login-chip-name">{profiles.sales.name}</span>
-                <span className="login-chip-role">Sales Exec</span>
-              </div>
-            )}
+              );
+            })}
           </div>
 
           {/* Form with Clean Floating/Soft Inputs */}

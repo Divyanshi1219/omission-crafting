@@ -53,14 +53,32 @@ const getWorkloadColor = (workload) => {
 function Dashboard() {
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.id === "admin";
-  const [activeTab, setActiveTab] = useState("overview");
+  const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
+  const isProduction =
+    currentUser?.id === "production" ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("production"));
+  const isStock =
+    currentUser?.id === "stock" ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("stock"));
+  const isLeadManager =
+    currentUser?.id === "lead_manager" ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase() === "lead manager");
+  const isOnlyOrderManagement = isSales || isProduction || isLeadManager;
+  const isOnlyInventory = isStock;
+  const [activeTab, setActiveTab] = useState(
+    isOnlyInventory ? "inventory" : isOnlyOrderManagement ? "case" : "overview"
+  );
   const [selectedEmployee, setSelectedEmployee] = useState(null);
 
   useEffect(() => {
-    if (!isAdmin && activeTab === "employee") {
+    if (isOnlyInventory) {
+      if (activeTab !== "inventory") setActiveTab("inventory");
+    } else if (isOnlyOrderManagement) {
+      if (activeTab !== "case") setActiveTab("case");
+    } else if (!isAdmin && activeTab === "employee") {
       setActiveTab("overview");
     }
-  }, [isAdmin, activeTab]);
+  }, [isAdmin, isOnlyOrderManagement, isOnlyInventory, activeTab]);
 
   // Live Leads and Production Data from Backend
   const [leads, setLeads] = useState([]);
@@ -482,30 +500,38 @@ function Dashboard() {
 
   return (
     <div className="dashboard-page">
-      <div className="dashboard-tabs">
-        <button className={`tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-          <LayoutGrid size={18} /> Overview
-        </button>
-        <button className={`tab ${activeTab === "case" ? "active" : ""}`} onClick={() => setActiveTab("case")}>
-          <FileText size={18} /> Order Management
-        </button>
-        {isAdmin && (
-          <button className={`tab ${activeTab === "employee" ? "active" : ""}`} onClick={() => setActiveTab("employee")}>
-            <Users size={18} /> Employee Management
+      {!isOnlyOrderManagement && !isOnlyInventory && (
+        <div className="dashboard-tabs">
+          <button className={`tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
+            <LayoutGrid size={18} /> Overview
           </button>
-        )}
-        <button className={`tab ${activeTab === "inventory" || activeTab === "leave" ? "active" : ""}`} onClick={() => setActiveTab("inventory")}>
-          <Package size={18} /> Inventory Management
-        </button>
-      </div>
+          <button className={`tab ${activeTab === "case" ? "active" : ""}`} onClick={() => setActiveTab("case")}>
+            <FileText size={18} /> Order Management
+          </button>
+          {isAdmin && (
+            <button className={`tab ${activeTab === "employee" ? "active" : ""}`} onClick={() => setActiveTab("employee")}>
+              <Users size={18} /> Employee Management
+            </button>
+          )}
+          <button className={`tab ${activeTab === "inventory" || activeTab === "leave" ? "active" : ""}`} onClick={() => setActiveTab("inventory")}>
+            <Package size={18} /> Inventory Management
+          </button>
+        </div>
+      )}
 
       <div className="page-header dashboard-header">
         <div>
           <h1>
-            {activeTab === "overview" && "Overview"}
-            {activeTab === "case" && "Order Management"}
-            {activeTab === "employee" && isAdmin && "Employee Management"}
-            {(activeTab === "inventory" || activeTab === "leave") && "Inventory Management"}
+            {isOnlyOrderManagement || isOnlyInventory ? (
+              "Dashboard"
+            ) : (
+              <>
+                {activeTab === "overview" && "Overview"}
+                {activeTab === "case" && "Order Management"}
+                {activeTab === "employee" && isAdmin && "Employee Management"}
+                {(activeTab === "inventory" || activeTab === "leave") && "Inventory Management"}
+              </>
+            )}
           </h1>
         </div>
 

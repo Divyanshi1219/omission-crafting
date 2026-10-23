@@ -19,6 +19,7 @@ const employeeSchema = new mongoose.Schema(
     employeeId: { type: String, default: "" },
     employeeType: { type: String, default: "Full-Time" },
     hireDate: { type: String, default: "" },
+
     officeLocation: { type: String, default: "" },
     manager: { type: String, default: "" },
     sponsors: { type: String, default: "" },

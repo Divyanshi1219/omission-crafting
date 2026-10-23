@@ -20,9 +20,16 @@ function AppContent({ darkMode, setDarkMode }) {
   const location = useLocation();
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.id === "admin";
-  const isSalesOrAdmin = currentUser?.id === "sales" || currentUser?.id === "admin";
-  const isTaskUser = currentUser?.id === "stock" || currentUser?.id === "production" || currentUser?.id === "admin";
-  const isApprovalUser = currentUser?.id === "stock" || currentUser?.id === "production" || currentUser?.id === "admin";
+  const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
+  const isLeadManager =
+    currentUser?.id === "lead_manager" ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase() === "lead manager");
+  const isSalesOrAdmin = isSales || currentUser?.id === "admin" || isLeadManager;
+  const isTaskUser =
+    currentUser?.id === "stock" ||
+    currentUser?.id === "production" ||
+    currentUser?.id === "admin" ||
+    Boolean(currentUser?.role && (currentUser.role.toLowerCase().includes("stock") || (currentUser.role.toLowerCase().includes("production") && !currentUser.role.toLowerCase().includes("lead manager"))));
   const isLoginPage = location.pathname === "/login";
 
   if (isLoginPage) {
@@ -79,13 +86,18 @@ function AppContent({ darkMode, setDarkMode }) {
             />
 
             <Route
+              path="/tasks/all"
+              element={isTaskUser ? <Approvals /> : <Navigate to="/" replace />}
+            />
+
+            <Route
               path="/tasks/:status"
-              element={isTaskUser ? <TasksPage /> : <Navigate to="/" replace />}
+              element={isTaskUser ? <Approvals /> : <Navigate to="/" replace />}
             />
 
             <Route
               path="/approvals"
-              element={isApprovalUser ? <Approvals /> : <Navigate to="/" replace />}
+              element={<Navigate to="/tasks/all" replace />}
             />
 
             <Route

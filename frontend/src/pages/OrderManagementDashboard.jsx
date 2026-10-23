@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
+import { useAuth } from "../context/AuthContext";
 import {
   Layers,
   ArrowRight,
@@ -11,9 +12,14 @@ import {
   PieChart,
   ChevronRight,
   ArrowUpRight,
-  Package
+  Package,
+  HelpCircle,
+  Sparkles,
+  Radio,
+  X
 } from "lucide-react";
 import "./OrderDashboard.css";
+import "./OverviewDashboard.css";
 
 // Exact child side menu stages from Sidebar.jsx
 const SAMPLE_STAGES = [
@@ -59,9 +65,12 @@ const normalizeRecord = (lead) => {
 
 export default function OrderManagementDashboard() {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hoveredBar, setHoveredBar] = useState(null);
+  const [showRepeatDetailsModal, setShowRepeatDetailsModal] = useState(false);
 
   // Fetch real leads data from backend
   const fetchLeads = async () => {
@@ -82,12 +91,40 @@ export default function OrderManagementDashboard() {
     fetchLeads();
   }, []);
 
-  // Filter leads to valid orders
+  // Filter leads to valid orders (and isolate by sales executive profile)
   const orders = useMemo(() => {
-    return leads
-      .filter(l => l.query === 'order' || l.orderStage || l.totalQuantity)
-      .map(normalizeRecord);
-  }, [leads]);
+    let valid = leads
+      .filter(l => l.query === 'order' || l.orderStage || l.totalQuantity);
+
+    if (isSales && currentUser?.name) {
+      const currentEmp = currentUser.name.toLowerCase().trim();
+      valid = valid.filter(l => {
+        const leadEmp = (l.employeeName || '').toLowerCase().trim();
+        return leadEmp === currentEmp;
+      });
+    }
+
+    return valid.map(normalizeRecord);
+  }, [leads, isSales, currentUser]);
+
+  // Compute live repeat customer rate linked to lead form field `repeatedOrder`
+  const repeatCustomerStats = useMemo(() => {
+    const totalCount = orders.length;
+    const repeatLeads = orders.filter(l => (l.repeatedOrder || "").toLowerCase().trim() === "yes");
+    const repeatCount = repeatLeads.length;
+    const firstTimeCount = Math.max(totalCount - repeatCount, 0);
+    const rate = totalCount > 0 ? Math.round((repeatCount / totalCount) * 100) : 0;
+    const target = 30; // Target repeat rate: 30%
+
+    return {
+      rate,
+      target,
+      totalCount,
+      repeatCount,
+      firstTimeCount,
+      repeatLeads
+    };
+  }, [orders]);
 
   // Totals for top 3 cards
   const sampleOrders = useMemo(() => orders.filter(o => o.normStage === 'sample'), [orders]);
@@ -372,8 +409,8 @@ export default function OrderManagementDashboard() {
         </div>
       </div>
 
-      {/* 3. BOTTOM SECTION: OVERALL BREAKDOWN & RECENT ORDERS TABLE */}
-      <div className="order-bottom-grid">
+      {/* 3. BOTTOM ANALYTICS ROW: OVERALL DISTRIBUTION + REPEAT CUSTOMER RATE */}
+      <div className="order-analytics-grid">
         {/* Simple Donut Breakdown */}
         <div className="order-chart-card">
           <div className="order-chart-header">
@@ -484,83 +521,274 @@ export default function OrderManagementDashboard() {
           </div>
         </div>
 
-        {/* Clean Orders List */}
-        <div className="order-chart-card">
-          <div className="order-chart-header">
+        {/* Repeat Customer Rate Widget */}
+        <div className="order-chart-card repeat-rate-card">
+          <div className="card-header-clean">
             <div>
-              <h3>Recent Orders</h3>
-              <p>Click any row to open and edit order</p>
+              <h3>Repeat Customer Rate</h3>
+              <p>Live calculated from leads</p>
             </div>
-            <button
-              className="order-open-link"
-              onClick={fetchLeads}
-              title="Refresh order database"
-              style={{ fontSize: '12px' }}
+            <button 
+              className="clean-icon-btn" 
+              title="Click to view details" 
+              onClick={() => setShowRepeatDetailsModal(true)}
             >
-              <RefreshCw size={13} className={loading ? "spin-animation" : ""} /> Refresh
+              <HelpCircle size={17} />
             </button>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table className="clean-orders-table">
-              <thead>
-                <tr>
-                  <th>Client Name</th>
-                  <th>Company</th>
-                  <th>Pipeline</th>
-                  <th>Current Stage</th>
-                  <th>Quantity</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
-                      No orders found yet.
-                    </td>
-                  </tr>
-                ) : (
-                  orders.slice(0, 7).map((order) => (
-                    <tr
-                      key={order._id}
-                      className="table-row-hover"
-                      onClick={() => navigate(`/order/create-lead?id=${order._id}&from=${encodeURIComponent(`/order/${order.normStage}/${order.normSub}`)}&stage=${order.normStage}`)}
-                      title="Click to open and edit this order"
-                    >
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontWeight: 700 }}>
-                            {order.clientName || 'Unnamed Client'}
-                          </span>
-                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                            {order.orderId || 'ORD-NEW'}
-                          </span>
-                        </div>
-                      </td>
-                      <td>{order.companyName || '—'}</td>
-                      <td>
-                        <span className={`status-badge-pill ${order.normStage}`}>
-                          {order.normStage}
-                        </span>
-                      </td>
-                      <td style={{ textTransform: 'capitalize' }}>
-                        {order.normSub.replace(/-/g, ' ')}
-                      </td>
-                      <td style={{ fontWeight: 600 }}>
-                        {order.totalQuantity ? `${order.totalQuantity} pcs` : '—'}
-                      </td>
-                      <td style={{ textAlign: 'right', color: '#94a3b8' }}>
-                        <ArrowUpRight size={15} />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          <div className="repeat-gauge-body">
+            <svg viewBox="0 0 200 115" className="repeat-gauge-svg">
+              <defs>
+                <linearGradient id="orderGaugeActiveGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#10b981" />
+                  <stop offset="100%" stopColor="#34d399" />
+                </linearGradient>
+              </defs>
+
+              {Array.from({ length: 40 }).map((_, i) => {
+                const totalTicks = 40;
+                const activeTicks = Math.round(totalTicks * (repeatCustomerStats.rate / 100));
+                const angle = Math.PI - (i / (totalTicks - 1)) * Math.PI;
+                const radius = 76;
+                const cx = 100;
+                const cy = 96;
+
+                const x1 = cx + (radius - 10) * Math.cos(angle);
+                const y1 = cy - (radius - 10) * Math.sin(angle);
+                const x2 = cx + (radius + 8) * Math.cos(angle);
+                const y2 = cy - (radius + 8) * Math.sin(angle);
+
+                const isActive = i < activeTicks;
+                const isTargetMark = i === Math.round(totalTicks * (repeatCustomerStats.target / 100));
+
+                return (
+                  <g key={i}>
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke={isActive ? "url(#orderGaugeActiveGrad)" : "#e2e8f0"}
+                      strokeWidth={isTargetMark ? "4" : "3"}
+                      strokeLinecap="round"
+                      className={`repeat-tick ${isActive ? "repeat-tick-active" : ""}`}
+                    />
+                    {isTargetMark && (
+                      <circle
+                        cx={cx + (radius + 16) * Math.cos(angle)}
+                        cy={cy - (radius + 16) * Math.sin(angle)}
+                        r="2.5"
+                        fill="#f59e0b"
+                      />
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+
+            <div className="repeat-gauge-center">
+              <span className="repeat-percentage">{repeatCustomerStats.rate}%</span>
+              <span className="repeat-target-status">
+                <Sparkles size={13} />
+                {repeatCustomerStats.rate >= repeatCustomerStats.target
+                  ? `Target exceeded (+${repeatCustomerStats.rate - repeatCustomerStats.target}%)`
+                  : `Target ${repeatCustomerStats.target}%`}
+              </span>
+              <span className="repeat-sync-source">
+                <Radio size={11} color="#10b981" />
+                {repeatCustomerStats.repeatCount} / {repeatCustomerStats.totalCount} orders
+              </span>
+            </div>
+          </div>
+
+          <div className="repeat-footer-stats">
+            <div className="repeat-stat-col">
+              <span className="repeat-stat-label">Repeat</span>
+              <span className="repeat-stat-val" style={{ color: "#059669" }}>
+                {repeatCustomerStats.repeatCount} ({repeatCustomerStats.rate}%)
+              </span>
+            </div>
+            <div className="repeat-stat-col">
+              <span className="repeat-stat-label">First-Time</span>
+              <span className="repeat-stat-val" style={{ color: "#64748b" }}>
+                {repeatCustomerStats.firstTimeCount} ({100 - repeatCustomerStats.rate}%)
+              </span>
+            </div>
+            <button 
+              className="repeat-details-btn"
+              onClick={() => setShowRepeatDetailsModal(true)}
+            >
+              Details <ArrowUpRight size={13} />
+            </button>
           </div>
         </div>
       </div>
+
+      {/* 4. RECENT ORDERS TABLE (FULL WIDTH) */}
+      <div className="order-chart-card" style={{ marginTop: '4px' }}>
+        <div className="order-chart-header">
+          <div>
+            <h3>Recent Orders</h3>
+            <p>Click any row to open and edit order</p>
+          </div>
+          <button
+            className="order-open-link"
+            onClick={fetchLeads}
+            title="Refresh order database"
+            style={{ fontSize: '12px' }}
+          >
+            <RefreshCw size={13} className={loading ? "spin-animation" : ""} /> Refresh
+          </button>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table className="clean-orders-table">
+            <thead>
+              <tr>
+                <th>Client Name</th>
+                <th>Company</th>
+                <th>Pipeline</th>
+                <th>Current Stage</th>
+                <th>Quantity</th>
+                <th>Repeat Customer</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
+                    No orders found yet.
+                  </td>
+                </tr>
+              ) : (
+                orders.slice(0, 10).map((order) => (
+                  <tr
+                    key={order._id}
+                    className="table-row-hover"
+                    onClick={() => navigate(`/order/create-lead?id=${order._id}&from=${encodeURIComponent(`/order/${order.normStage}/${order.normSub}`)}&stage=${order.normStage}`)}
+                    title="Click to open and edit this order"
+                  >
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontWeight: 700 }}>
+                          {order.clientName || 'Unnamed Client'}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          {order.orderId || 'ORD-NEW'}
+                        </span>
+                      </div>
+                    </td>
+                    <td>{order.companyName || '—'}</td>
+                    <td>
+                      <span className={`status-badge-pill ${order.normStage}`}>
+                        {order.normStage}
+                      </span>
+                    </td>
+                    <td style={{ textTransform: 'capitalize' }}>
+                      {order.normSub.replace(/-/g, ' ')}
+                    </td>
+                    <td style={{ fontWeight: 600 }}>
+                      {order.totalQuantity ? `${order.totalQuantity} pcs` : '—'}
+                    </td>
+                    <td>
+                      {(order.repeatedOrder || '').toLowerCase().trim() === 'yes' ? (
+                        <span className="repeat-tag yes" style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
+                          Repeat
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>First-time</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right', color: '#94a3b8' }}>
+                      <ArrowUpRight size={15} />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Repeat Customer Details Modal */}
+      {showRepeatDetailsModal && (
+        <div className="repeat-modal-backdrop" onClick={() => setShowRepeatDetailsModal(false)}>
+          <div className="repeat-modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="repeat-modal-header">
+              <h2>Repeat Customer Analytics</h2>
+              <button className="clean-icon-btn" onClick={() => setShowRepeatDetailsModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="repeat-modal-body">
+              <div className="repeat-modal-metrics">
+                <div className="repeat-modal-metric-card">
+                  <h4 style={{ color: "#059669" }}>{repeatCustomerStats.rate}%</h4>
+                  <p>Repeat Rate</p>
+                </div>
+                <div className="repeat-modal-metric-card">
+                  <h4>{repeatCustomerStats.repeatCount}</h4>
+                  <p>Repeat Orders</p>
+                </div>
+                <div className="repeat-modal-metric-card">
+                  <h4 style={{ color: "#2563eb" }}>{repeatCustomerStats.totalCount}</h4>
+                  <p>Total Orders</p>
+                </div>
+              </div>
+
+              <div>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 10px 0", color: "#0f172a" }}>
+                  Repeat Customer Accounts ({repeatCustomerStats.repeatLeads.length})
+                </h4>
+                <div className="repeat-leads-table-wrapper">
+                  <table className="repeat-leads-table">
+                    <thead>
+                      <tr>
+                        <th>Client / Account</th>
+                        <th>Stage</th>
+                        <th>Quantity</th>
+                        <th>Repeat Order</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {repeatCustomerStats.repeatLeads.length === 0 ? (
+                        <tr>
+                          <td colSpan="4" style={{ textAlign: "center", color: "#64748b", padding: "24px 16px" }}>
+                            No repeat orders found for this profile. When creating leads, select &quot;Repeated Order: Yes&quot; to track them here.
+                          </td>
+                        </tr>
+                      ) : (
+                        repeatCustomerStats.repeatLeads.map((lead, idx) => (
+                          <tr key={lead._id || idx}>
+                            <td>
+                              <strong>{lead.clientName || lead.companyName || `Client #${idx + 1}`}</strong>
+                              {lead.orderId && (
+                                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{lead.orderId}</div>
+                              )}
+                            </td>
+                            <td style={{ textTransform: "capitalize" }}>{lead.normStage || lead.orderStage || "Sample"}</td>
+                            <td>{lead.totalQuantity ? `${lead.totalQuantity} pcs` : "—"}</td>
+                            <td><span className="repeat-tag yes">Yes</span></td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="repeat-modal-footer">
+              <button className="btn-secondary" onClick={() => setShowRepeatDetailsModal(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
