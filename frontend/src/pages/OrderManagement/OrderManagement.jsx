@@ -95,133 +95,105 @@ const getLeadStageInfo = (item, targetStage, targetSubStage) => {
   const normTargetStage = (targetStage || '').toLowerCase().trim();
   const normTargetSub = (targetSubStage || '').toLowerCase().trim().replace(/\s+/g, '-');
   
-  const itemStage = (item.orderStage || 'sample').toLowerCase().trim();
+  const rawItemStage = (item.orderStage || 'sample').toLowerCase().trim();
+  const itemStage = ['sample', 'partial', 'complete'].includes(rawItemStage) ? rawItemStage : 'sample';
+
   const rawItemSub = (item.subStage || 'order').toLowerCase().trim();
-  const itemSub = (rawItemSub === 'new' || rawItemSub === 'leads') ? 'order' : rawItemSub.replace(/\s+/g, '-');
-
-  // Dedicated handling for Customer Support (/order/customer-support)
-  if (normTargetSub === 'customer-support') {
-    const isAtSupport = itemStage === 'complete' && (
-      itemSub === 'customer-support' ||
-      Boolean(item.completeDeliveredData?.deliveredDate) ||
-      Boolean(item.isCompleted) ||
-      item.approvalStatus === 'Completed' ||
-      Boolean(item.completeCustomerSupportData?.clientRating)
-    );
-    if (!isAtSupport) return { matches: false, status: 'none', isCompleted: false };
-
-    const isArchived = Boolean(
-      item.isCompleted ||
-      item.approvalStatus === 'Completed' ||
-      item.completeCustomerSupportData?.orderFulfilled
-    );
-    return { matches: true, status: isArchived ? 'approved' : 'in_progress', isCompleted: isArchived };
+  let itemSub = rawItemSub.replace(/\s+/g, '-');
+  if (itemSub === 'new' || itemSub === 'leads' || !itemSub) {
+    itemSub = 'order';
+  } else if (itemSub === 'dtf' || itemSub === 'dtf-pending-workspace') {
+    itemSub = 'dtf-pending';
   }
 
-  if (!targetStage) return { matches: true, status: 'in_progress', isCompleted: false };
-
-  const targetMajorIdx = MAJOR_STAGES_ORDER.indexOf(normTargetStage);
-  const itemMajorIdx = MAJOR_STAGES_ORDER.indexOf(itemStage);
-
-  // If viewing main Order tab for a stage (e.g. /order/sample/order, /order/partial/order, /order/complete/order)
-  if (normTargetSub === 'order' || !normTargetSub) {
-    if (itemStage === normTargetStage || (!item.orderStage && normTargetStage === 'sample')) {
-      const isCompleted = itemStage !== normTargetStage ||
-        (normTargetStage === 'sample' && (item.subStage === 'customer-approval-awaiting' || item.approvalStatus === 'Approved')) ||
-        (normTargetStage === 'partial' && (item.subStage === 'payment-confirmation' || item.approvalStatus === 'Approved')) ||
-        (normTargetStage === 'complete' && (item.subStage === 'customer-support' || item.isCompleted || item.approvalStatus === 'Completed'));
-      return { matches: true, status: isCompleted ? 'approved' : 'in_progress', isCompleted };
-    }
-    // Also if item is in a subsequent major stage, it should show as approved in the earlier major stage's Order tab
-    if (itemMajorIdx !== -1 && targetMajorIdx !== -1 && itemMajorIdx > targetMajorIdx) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    return { matches: false, status: 'none', isCompleted: false };
+  // 1. Dedicated handling for Customer Support (/order/customer-support or /order/complete/customer-support)
+  if (normTargetSub === 'customer-support') {
+    const isAtSupport = itemStage === 'complete' && itemSub === 'customer-support';
+    if (!isAtSupport) return { matches: false, status: 'none', isCompleted: false };
+    const isApproved = Boolean(
+      item.isCompleted ||
+      item.approvalStatus === 'Completed' ||
+      item.completeCustomerSupportData?.clientRating ||
+      item.completeCustomerSupportData?.orderFulfilled
+    );
+    return { matches: true, status: isApproved ? 'approved' : 'in_progress', isCompleted: isApproved };
   }
 
   // If viewing Leads tab
   if (normTargetSub === 'leads' || normTargetSub === 'new') {
-    const isLead = itemSub === 'leads' || itemSub === 'new' || itemSub === '' || item.query === 'lead';
+    const isLead = itemSub === 'leads' || itemSub === 'new' || item.query === 'lead';
     return { matches: isLead, status: 'in_progress', isCompleted: false };
   }
 
-  // If item is in an earlier major stage than target stage, it hasn't reached target stage yet
-  if (itemMajorIdx !== -1 && targetMajorIdx !== -1 && itemMajorIdx < targetMajorIdx) {
-    return { matches: false, status: 'none', isCompleted: false };
-  }
-
-  // If item is in a subsequent major stage (e.g. item is in 'partial' or 'complete', target is 'sample')
-  if (itemMajorIdx !== -1 && targetMajorIdx !== -1 && itemMajorIdx > targetMajorIdx) {
-    return { matches: true, status: 'approved', isCompleted: true };
-  }
-
-  // Both are in the same major stage
-  const subStages = (SUB_STAGES_BY_ORDER_STAGE[normTargetStage] || []).map((s) => s.toLowerCase().replace(/\s+/g, '-'));
-  const targetSubIdx = subStages.indexOf(normTargetSub);
-  const itemSubIdx = subStages.indexOf(itemSub);
-
-  if (targetSubIdx === -1 || itemSubIdx === -1) {
-    const directMatch = itemSub === normTargetSub;
-    return { matches: directMatch, status: directMatch ? 'in_progress' : 'none', isCompleted: false };
-  }
-
-  if (itemSubIdx === targetSubIdx) {
+  // If no target stage specified, match all
+  if (!normTargetStage) {
     return { matches: true, status: 'in_progress', isCompleted: false };
   }
 
-  if (itemSubIdx > targetSubIdx) {
-    return { matches: true, status: 'approved', isCompleted: true };
+  // 2. Strict Stage & Sub-Stage matching: only show order in its exact current stage and sub-stage
+  const stageMatches = itemStage === normTargetStage;
+  const subStageMatches = itemSub === normTargetSub;
+
+  if (!stageMatches || !subStageMatches) {
+    return { matches: false, status: 'none', isCompleted: false };
   }
 
-  // Check stage specific data objects if referred back
+  // 3. Determine status ('approved' vs 'in_progress') within this stage/sub-stage
+  let isApprovedAtThisStage = false;
+
   if (normTargetStage === 'sample') {
-    if (normTargetSub === 'staging-ground' && item.sampleStagingGroundData && item.sampleStagingGroundData.orderRequirementMatch) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'ready-to-pick-up' && item.sampleReadyToPickUpData && (item.sampleReadyToPickUpData.readyToPickupCount || item.sampleReadyToPickUpData.verifiedPickupCount)) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'printing' && item.printingStageData && item.printingStageData.printingStatus) {
-      return { matches: true, status: 'approved', isCompleted: true };
+    if (normTargetSub === 'order') {
+      isApprovedAtThisStage = item.leadApproval?.status === 'Approved' || item.approvalStatus === 'Approved';
+    } else if (normTargetSub === 'dtf-pending') {
+      isApprovedAtThisStage = item.productionApproval?.status === 'Approved';
+    } else if (normTargetSub === 'stock') {
+      isApprovedAtThisStage = item.stockApproval?.status === 'Approved';
+    } else if (normTargetSub === 'printing') {
+      isApprovedAtThisStage = item.printingStageData?.printingStatus === 'Complete';
+    } else if (normTargetSub === 'ready-to-pick-up') {
+      isApprovedAtThisStage = Boolean(item.sampleReadyToPickUpData?.verifiedPickupCount || item.sampleReadyToPickUpData?.readyToPickupCount);
+    } else if (normTargetSub === 'staging-ground') {
+      isApprovedAtThisStage = Boolean(item.sampleStagingGroundData?.orderRequirementMatch);
+    } else if (normTargetSub === 'customer-approval-awaiting') {
+      isApprovedAtThisStage = Boolean(item.customerApprovalData?.customerApproved);
     }
   } else if (normTargetStage === 'partial') {
-    if (normTargetSub === 'payment-confirmation' && item.partialPaymentConfirmationData?.paymentVerified) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'staging-room' && item.partialStagingRoomData?.dispatchReady) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'packaging' && item.partialPackagingData?.packedCount) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'quality-check' && item.partialQualityCheckData?.passedCount) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'printing' && item.partialPrintingData?.printingStatus) {
-      return { matches: true, status: 'approved', isCompleted: true };
+    if (normTargetSub === 'order') {
+      isApprovedAtThisStage = item.approvalStatus === 'Approved';
+    } else if (normTargetSub === 'printing') {
+      isApprovedAtThisStage = item.partialPrintingData?.printingStatus === 'Complete';
+    } else if (normTargetSub === 'quality-check') {
+      isApprovedAtThisStage = Boolean(item.partialQualityCheckData?.passedCount);
+    } else if (normTargetSub === 'packaging') {
+      isApprovedAtThisStage = Boolean(item.partialPackagingData?.packedCount);
+    } else if (normTargetSub === 'staging-room') {
+      isApprovedAtThisStage = Boolean(item.partialStagingRoomData?.dispatchReady);
+    } else if (normTargetSub === 'payment-confirmation') {
+      isApprovedAtThisStage = Boolean(item.partialPaymentConfirmationData?.paymentVerified);
     }
   } else if (normTargetStage === 'complete') {
-    if (normTargetSub === 'customer-support' && (item.completeCustomerSupportData?.clientRating || item.isCompleted)) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'delivered' && item.completeDeliveredData?.deliveredDate) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'delivery-pending' && item.completeDeliveryPendingData?.trackingNumber) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'packaging' && item.completePackagingData?.totalUnitsPacked) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'quality-check' && item.completeQualityCheckData?.passedCount) {
-      return { matches: true, status: 'approved', isCompleted: true };
-    }
-    if (normTargetSub === 'printing' && item.completePrintingData?.printingStatus) {
-      return { matches: true, status: 'approved', isCompleted: true };
+    if (normTargetSub === 'order') {
+      isApprovedAtThisStage = item.approvalStatus === 'Approved';
+    } else if (normTargetSub === 'printing') {
+      isApprovedAtThisStage = item.completePrintingData?.printingStatus === 'Complete';
+    } else if (normTargetSub === 'quality-check') {
+      isApprovedAtThisStage = Boolean(item.completeQualityCheckData?.passedCount);
+    } else if (normTargetSub === 'packaging') {
+      isApprovedAtThisStage = Boolean(item.completePackagingData?.totalUnitsPacked);
+    } else if (normTargetSub === 'delivery-pending') {
+      isApprovedAtThisStage = Boolean(item.completeDeliveryPendingData?.trackingNumber);
+    } else if (normTargetSub === 'delivered') {
+      isApprovedAtThisStage = Boolean(item.completeDeliveredData?.deliveredDate);
+    } else if (normTargetSub === 'customer-support') {
+      isApprovedAtThisStage = Boolean(item.completeCustomerSupportData?.clientRating || item.isCompleted || item.approvalStatus === 'Completed');
     }
   }
 
-  return { matches: false, status: 'none', isCompleted: false };
+  return {
+    matches: true,
+    status: isApprovedAtThisStage ? 'approved' : 'in_progress',
+    isCompleted: isApprovedAtThisStage,
+  };
 };
 
 const STAGE_ROUTE_MAP = {
@@ -359,7 +331,7 @@ function OrderManagement() {
     
     // Partial
     partialPrintingStatus: 'Complete',
-    partialPrintedCount: 80,
+    partialPrintedCount: 0,
     partialQcPassedCount: 80,
     partialQcRejectedCount: 0,
     partialPackedCount: 80,
@@ -534,6 +506,7 @@ function OrderManagement() {
   const leadAppr = getLeadApproval();
   const stockAppr = getStockApproval();
   const prodAppr = getProductionApproval();
+  const isLeadSubmitted = leadAppr.status === 'Approved';
   const isOrderReferredBack =
     orderApprovalData?.approvalStatus === 'Referred Back' ||
     leadAppr.status === 'Referred Back' ||
@@ -541,7 +514,8 @@ function OrderManagement() {
     prodAppr.status === 'Referred Back';
 
   const handleLeadManagerAction = async (status) => {
-    if (!editId) return;
+    if (!editId || submittingLeadAction) return;
+    if (status === 'Approved' && isLeadSubmitted) return;
 
     if (status === 'Referred Back' && !leadManagerNote.trim()) {
       alert('Additional note is mandatory with every refer back. Please enter instructions or changes required for the sales executive.');
@@ -556,14 +530,14 @@ function OrderManagement() {
         department: 'lead_manager',
         role: 'Lead Manager',
         author: currentUser?.name || 'Sarah Jenkins',
-        comment: leadManagerNote.trim() || (status === 'Approved' ? 'Approved by Lead Manager' : 'Referred back by Lead Manager'),
+        comment: leadManagerNote.trim() || (status === 'Approved' ? (currentUser?.id === 'admin' ? 'Submitted by CEO' : 'Submitted by Lead Manager') : 'Referred back by Lead Manager'),
       };
 
       const res = await api.patch(`/api/leads/${editId}/approval`, payload);
       if (res.data?.success) {
         setOrderApprovalData(res.data.data);
         const msg = status === 'Approved'
-          ? `Order #${res.data.data?.orderId || 'Order'} approved successfully! Sent to Stock Room and Production Room managers.`
+          ? `Order #${res.data.data?.orderId || 'Order'} submitted successfully! Sent to Stock Room and Production Room managers.`
           : `Order #${res.data.data?.orderId || 'Order'} referred back to sales executive with mandatory correction note.`;
         setActionSuccessMsg(msg);
         setLeadManagerNote('');
@@ -622,7 +596,7 @@ function OrderManagement() {
                 stageNote = d.printingStageData?.note || '';
               }
 
-              const partialDefaultQty = Math.min(totalQty, 80);
+              const partialDefaultQty = totalQty || 18;
 
               setStageForm({
                 // Sample
@@ -637,7 +611,7 @@ function OrderManagement() {
 
                 // Partial
                 partialPrintingStatus: d.partialPrintingData?.printingStatus || 'Complete',
-                partialPrintedCount: d.partialPrintingData?.printedCount || partialDefaultQty,
+                partialPrintedCount: d.partialPrintingData?.printedCount !== undefined ? d.partialPrintingData.printedCount : partialDefaultQty,
                 partialQcPassedCount: d.partialQualityCheckData?.passedCount || partialDefaultQty,
                 partialQcRejectedCount: d.partialQualityCheckData?.rejectedCount || 0,
                 partialPackedCount: d.partialPackagingData?.packedCount || partialDefaultQty,
@@ -650,7 +624,7 @@ function OrderManagement() {
 
                 // Complete
                 completePrintingStatus: d.completePrintingData?.printingStatus || 'Complete',
-                completePrintedCount: d.completePrintingData?.printedCount || totalQty,
+                completePrintedCount: d.completePrintingData?.printedCount !== undefined ? d.completePrintingData.printedCount : (d.totalQuantity || totalQty),
                 completeQcPassedCount: d.completeQualityCheckData?.passedCount || totalQty,
                 completeQcRejectedCount: d.completeQualityCheckData?.rejectedCount || 0,
                 completeMasterCartonsCount: d.completePackagingData?.masterCartonsCount || 4,
@@ -817,10 +791,10 @@ function OrderManagement() {
   }, [formData.totalAmount, formData.netAmount, formData.gst, formData.advanceAmount]);
 
   const getActiveDefinition = () => {
-    if (location.pathname.startsWith('/order/sample')) return 'sample';
-    if (location.pathname.startsWith('/order/partial')) return 'partial';
-    if (location.pathname.startsWith('/order/complete')) return 'complete';
-
+    if (orderApprovalData?.orderStage) {
+      const os = orderApprovalData.orderStage.toLowerCase().trim();
+      if (['sample', 'partial', 'complete'].includes(os)) return os;
+    }
     if (orderStage) {
       const os = orderStage.toLowerCase().trim();
       if (['sample', 'partial', 'complete'].includes(os)) return os;
@@ -831,6 +805,9 @@ function OrderManagement() {
       if (from.startsWith('/order/partial')) return 'partial';
       if (from.startsWith('/order/complete')) return 'complete';
     }
+    if (location.pathname.startsWith('/order/sample')) return 'sample';
+    if (location.pathname.startsWith('/order/partial')) return 'partial';
+    if (location.pathname.startsWith('/order/complete')) return 'complete';
     if (editId) return 'sample';
     return '';
   };
@@ -852,9 +829,9 @@ function OrderManagement() {
   useEffect(() => {
     if (editId) {
       const activeStages = getCurrentStages();
-      if (subStage) {
-        const normSub = subStage.toLowerCase().replace(/\s+/g, '-');
-        const matched = activeStages.find(s => s.toLowerCase().replace(/\s+/g, '-') === normSub);
+      const currentSub = (orderApprovalData?.subStage || subStage || '').toLowerCase().replace(/\s+/g, '-');
+      if (currentSub) {
+        const matched = activeStages.find(s => s.toLowerCase().replace(/\s+/g, '-') === currentSub);
         if (matched) {
           setSelectedStage(matched);
           return;
@@ -871,7 +848,7 @@ function OrderManagement() {
         setSelectedStage(currentStages[0]);
       }
     }
-  }, [location.pathname, editId, subStage, orderStage]);
+  }, [location.pathname, editId, subStage, orderStage, orderApprovalData?.subStage, orderApprovalData?.orderStage]);
 
   const renderDefinitionBar = () => {
     const currentDefinition = getActiveDefinition();
@@ -883,32 +860,16 @@ function OrderManagement() {
           {ORDER_DEFINITIONS.map((def) => {
             const isActive = currentDefinition === def.slug;
             return (
-              <button
+              <div
                 key={def.slug}
-                type="button"
                 role="tab"
                 aria-selected={isActive}
-                className={`change-mgmt-step definition-step ${isActive ? 'active' : ''}`}
-                onClick={() => {
-                  if (location.pathname === '/order/create-lead') {
-                    setOrderStage(def.slug);
-                    const targetAllowedSubStages = (SUB_STAGES_BY_ORDER_STAGE[def.slug] || []).map(s => s.toLowerCase());
-                    const currentSubNorm = (subStage || 'order').toLowerCase().replace(/\s+/g, '-').replace(/-/g, ' ');
-                    if (!targetAllowedSubStages.includes(currentSubNorm)) {
-                      setSubStage('order');
-                      setSelectedStage('Order');
-                    }
-                  } else {
-                    const currentSub = pathParts[2]?.toLowerCase() || 'order';
-                    const targetAllowedSubStages = (SUB_STAGES_BY_ORDER_STAGE[def.slug] || []).map(s => s.toLowerCase().replace(/\s+/g, '-'));
-                    const targetSub = targetAllowedSubStages.includes(currentSub) ? currentSub : 'order';
-                    navigate(`/order/${def.slug}/${targetSub}`);
-                  }
-                }}
+                className={`change-mgmt-step definition-step is-static ${isActive ? 'active' : ''}`}
+                style={{ cursor: 'default', pointerEvents: 'none' }}
                 title={`Definition: ${def.label}`}
               >
                 <span className="step-label">{def.label}</span>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -924,26 +885,16 @@ function OrderManagement() {
           {stages.map((stage) => {
             const isActive = selectedStage === stage;
             return (
-              <button
+              <div
                 key={stage}
-                type="button"
                 role="tab"
                 aria-selected={isActive}
-                className={`change-mgmt-step ${isActive ? 'active' : ''}`}
-                onClick={() => {
-                  setSelectedStage(stage);
-                  if (location.pathname === '/order/create-lead') {
-                    setSubStage(stage.toLowerCase());
-                  } else {
-                    const stageSlug = stage.toLowerCase().replace(/\s+/g, '-');
-                    const activeDef = getActiveDefinition() || 'sample';
-                    navigate(`/order/${activeDef}/${stageSlug}`);
-                  }
-                }}
+                className={`change-mgmt-step is-static ${isActive ? 'active' : ''}`}
+                style={{ cursor: 'default', pointerEvents: 'none' }}
                 title={`Stage: ${stage}`}
               >
                 <span className="step-label">{stage}</span>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -976,8 +927,9 @@ function OrderManagement() {
     const action = e.nativeEvent?.submitter?.name;
     if (action === 'save') {
       try {
+        const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
         const payload = {
-          employeeName: editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'),
+          employeeName: currentEmpName,
           createdBy: currentUser?.id || 'sales',
           query: query || 'lead',
           queryStatus,
@@ -1037,6 +989,10 @@ function OrderManagement() {
   };
 
   const handleOrderSubmit = async () => {
+    if (editId) {
+      handleExecuteStageTransition('submit');
+      return;
+    }
     const phone = (formData.phoneNumber || '').trim();
     if (!/^\d{10}$/.test(phone)) {
       setPhoneTouched(true);
@@ -1068,8 +1024,9 @@ function OrderManagement() {
           if (idRes.data?.nextOrderId) finalOrderId = idRes.data.nextOrderId;
         } catch (_) {}
       }
+      const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
       const payload = {
-        employeeName: editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'),
+        employeeName: currentEmpName,
         createdBy: currentUser?.id || 'sales',
         query: 'order',
         queryStatus,
@@ -1502,7 +1459,7 @@ function OrderManagement() {
       (activeSub === 'order' || activeSub === 'leads');
 
     const isRecognizedWorkflowStage = Boolean(
-      isSampleDtfPending || isSampleStock || isSamplePrinting || isSampleReadyToPickup || isSampleStagingGround || isSampleCustomerApproval ||
+      isSamplePrinting || isSampleReadyToPickup || isSampleStagingGround || isSampleCustomerApproval ||
       isPartialPrinting || isPartialQualityCheck || isPartialPackaging || isPartialStagingRoom || isPartialPaymentConfirmation ||
       isCompletePrinting || isCompleteQualityCheck || isCompletePackaging || isCompleteDeliveryPending || isCompleteDelivered || isCompleteCustomerSupport ||
       isAwaitingTaskClearance
@@ -1559,89 +1516,9 @@ function OrderManagement() {
         }}
       >
         {/* Stage Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '14px' }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <LayoutGrid size={18} color="#0284c7" />
-              <span>
-                {isSamplePrinting
-                  ? 'Printing Workspace & Stage Clearance'
-                  : isSampleDtfPending
-                  ? 'DTF Pending Workspace & Clearance'
-                  : isSampleStock
-                  ? 'Stock Allocation & Verification'
-                  : isSampleReadyToPickup
-                  ? 'Ready to Pick Up Verification'
-                  : isSampleStagingGround
-                  ? 'Staging Ground Verification'
-                  : isSampleCustomerApproval
-                  ? 'Customer Approval & Sign-Off'
-                  : isPartialPrinting
-                  ? 'Partial Production — Printing Workspace'
-                  : isPartialQualityCheck
-                  ? 'Partial Production — Quality Check'
-                  : isPartialPackaging
-                  ? 'Partial Production — Packaging'
-                  : isPartialStagingRoom
-                  ? 'Partial Production — Staging Room'
-                  : isPartialPaymentConfirmation
-                  ? 'Partial Production — Payment Confirmation & Sign-Off'
-                  : isCompletePrinting
-                  ? 'Complete Bulk Production — Printing'
-                  : isCompleteQualityCheck
-                  ? 'Complete Bulk Production — Final Quality Check'
-                  : isCompletePackaging
-                  ? 'Complete Bulk Production — Packaging'
-                  : isCompleteDeliveryPending
-                  ? 'Complete Bulk Production — Delivery Pending & Dispatch'
-                  : isCompleteDelivered
-                  ? 'Complete Bulk Production — Delivered Confirmation'
-                  : isCompleteCustomerSupport
-                  ? 'Complete Bulk Production — Customer Support & Final Sign-Off'
-                  : `${currentOrderStage.toUpperCase()} — ${activeSub.replace(/-/g, ' ').toUpperCase()}`}
-              </span>
-            </h3>
-            <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: '#64748b' }}>
-              {isSamplePrinting
-                ? 'Review clearance data from Logo Cutting, Ready to Pick, and Staging Room. Select execution status to proceed.'
-                : isSampleDtfPending
-                ? 'Review artwork, logo designs, and DTF film printing readiness.'
-                : isSampleStock
-                ? 'Verify raw garment counts and stock readiness for sample printing.'
-                : isSampleReadyToPickup
-                ? 'Verify sample garments prepared from Printing stage and confirm handover readiness.'
-                : isSampleStagingGround
-                ? 'Verify staged garments match client order requirements.'
-                : isSampleCustomerApproval
-                ? 'Record customer sample feedback and approval before advancing to Partial production.'
-                : isPartialPrinting
-                ? 'Review Stock & Production task clearances. Record partial printing run metrics.'
-                : isPartialQualityCheck
-                ? 'Inspect printed garments for stitch integrity, color accuracy, and defects.'
-                : isPartialPackaging
-                ? 'Package verified garments into polybags and cartons with barcoded labeling.'
-                : isPartialStagingRoom
-                ? 'Stage packaged cartons into dispatch racks and verify carton quantities.'
-                : isPartialPaymentConfirmation
-                ? 'Verify partial payment received against invoice before advancing to Complete stage.'
-                : isCompletePrinting
-                ? 'Execute final bulk printing run and verify curing and logo registration.'
-                : isCompleteQualityCheck
-                ? 'Conduct 100% final batch quality inspection and issue QA pass certification.'
-                : isCompletePackaging
-                ? 'Pack finished garments into export-grade master cartons with packing slips.'
-                : isCompleteDeliveryPending
-                ? 'Assign logistics partner, generate consignment tracking number, and record dispatch.'
-                : isCompleteDelivered
-                ? 'Verify delivery receipt, recipient acknowledgement, and upload Proof of Delivery (POD).'
-                : isCompleteCustomerSupport
-                ? 'Collect client feedback, customer satisfaction rating, and archive completed order.'
-                : 'Process stage workflow execution and submit to advance.'}
-            </p>
-          </div>
-
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Stage Status:</span>
+            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>Stage Status:</span>
             {isSamplePrinting ? (
               <span
                 style={{
@@ -1690,45 +1567,9 @@ function OrderManagement() {
           </div>
         </div>
 
-        {/* Stage Approved & Advanced Banner */}
-        {isCurrentStageApproved && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <CheckCircle size={20} color="#16a34a" />
-              <div>
-                <strong style={{ color: '#15803d', fontSize: '13.5px' }}>
-                  {isSampleStagingGround
-                    ? 'Staging Ground Verification Approved'
-                    : isSampleReadyToPickup
-                    ? 'Ready to Pick Up Verified'
-                    : isSampleCustomerApproval
-                    ? 'Customer Approval Verified'
-                    : isSamplePrinting
-                    ? 'Printing Execution Approved'
-                    : 'Stage Execution Verified'}
-                </strong>
-                <div style={{ fontSize: '12px', color: '#166534', marginTop: '2px' }}>
-                  Stage verification recorded • Current Order Location: <strong>{(orderApprovalData.subStage || 'next stage').replace(/-/g, ' ')}</strong>
-                </div>
-              </div>
-            </div>
-            <span style={{ fontSize: '11.5px', fontWeight: 700, padding: '4px 10px', background: '#dcfce7', color: '#166534', borderRadius: '20px' }}>
-              ✓ Completed
-            </span>
-          </div>
-        )}
-
         {/* 0.A CASE: SAMPLE -> DTF PENDING */}
         {isSampleDtfPending && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#f0fdf4', padding: '16px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#166534', marginBottom: '8px' }}>
-                DTF Printing & Film Preparation
-              </div>
-              <p style={{ margin: 0, fontSize: '13px', color: '#15803d' }}>
-                Artwork, logo designs, and film ready for garment transfer.
-              </p>
-            </div>
             <div>
               <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
                 DTF Remarks / Instructions
@@ -1747,14 +1588,6 @@ function OrderManagement() {
         {/* 0.B CASE: SAMPLE -> STOCK */}
         {isSampleStock && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e40af', marginBottom: '8px' }}>
-                Stock Room Allocation & Garment Readiness
-              </div>
-              <p style={{ margin: 0, fontSize: '13px', color: '#1d4ed8' }}>
-                Verify raw garment counts and readiness for sample printing.
-              </p>
-            </div>
             <div>
               <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
                 Stock Remarks / Instructions
@@ -1948,12 +1781,12 @@ function OrderManagement() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#475569' }}>Sample Deduction:</span>
-                    <strong style={{ color: '#166534' }}>{orderApprovalData.stockTaskData?.sampleDeduction || 5} pcs</strong>
+                    <strong style={{ color: '#166534' }}>{orderApprovalData.stockTaskData?.sampleDeduction !== undefined ? orderApprovalData.stockTaskData.sampleDeduction : 0} pcs</strong>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <span style={{ color: '#475569' }}>Stock Depreciation:</span>
                     <span style={{ fontSize: '11.5px', color: '#14532d', background: '#dcfce7', padding: '4px 6px', borderRadius: '4px' }}>
-                      {orderApprovalData.stockTaskData?.stockDepreciation || `Giving ${orderApprovalData.stockTaskData?.sampleDeduction || 5} for sample. Remaining: ${Math.max(0, (orderApprovalData.totalQuantity || 100) - (orderApprovalData.stockTaskData?.sampleDeduction || 5))} in stock.`}
+                      {orderApprovalData.stockTaskData?.stockDepreciation || (orderApprovalData.stockTaskData?.sampleDeduction ? `Giving ${orderApprovalData.stockTaskData.sampleDeduction} for sample. Remaining: ${Math.max(0, (orderApprovalData.totalQuantity || 100) - orderApprovalData.stockTaskData.sampleDeduction)} in stock.` : 'Stock allocation pending')}
                     </span>
                   </div>
                   {orderApprovalData.stockApproval?.note && (
@@ -1996,11 +1829,11 @@ function OrderManagement() {
                 <div style={{ fontSize: '12px', color: '#0f172a', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#475569' }}>Received at Staging:</span>
-                    <strong style={{ color: '#7e22ce' }}>{orderApprovalData.stockTaskData?.receivedCount || orderApprovalData.stockTaskData?.sampleDeduction || 5} pcs</strong>
+                    <strong style={{ color: '#7e22ce' }}>{orderApprovalData.stockTaskData?.receivedCount !== undefined ? orderApprovalData.stockTaskData.receivedCount : (orderApprovalData.stockTaskData?.sampleDeduction || 0)} pcs</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#475569' }}>Given for Sample:</span>
-                    <strong>{orderApprovalData.stockTaskData?.sampleDeduction || 5} pcs</strong>
+                    <strong>{orderApprovalData.stockTaskData?.sampleDeduction !== undefined ? orderApprovalData.stockTaskData.sampleDeduction : 0} pcs</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#475569' }}>Pending at Staging:</span>
@@ -2312,23 +2145,6 @@ function OrderManagement() {
         {/* 5.A CASE: PARTIAL -> PRINTING */}
         {isPartialPrinting && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#eff6ff', padding: '16px', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e40af', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={16} color="#1e40af" /> Partial Stage Task Clearance (Stock & DTF Verified)
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '13px', color: '#1e3a8a' }}>
-                <div>Stock Clearance: <strong style={{ color: '#166534' }}>✓ Approved by Stock Room</strong> ({orderApprovalData.stockApproval?.author || 'Elena Rostova'})</div>
-                <div>DTF / Logo Clearance: <strong style={{ color: '#166534' }}>✓ Approved by Production Lead</strong> ({orderApprovalData.productionApproval?.author || 'Marcus Vance'})</div>
-                <div>Sample Customer Sign-Off: <strong style={{ color: '#166534' }}>✓ Approved by Customer</strong></div>
-                <div>Total Order Quantity: <strong>{orderApprovalData.totalQuantity || 100} pcs</strong></div>
-              </div>
-              {orderApprovalData.customerApprovalData?.note && (
-                <div style={{ fontSize: '12px', color: '#1e3a8a', background: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #bfdbfe', marginTop: '6px' }}>
-                  <strong>Sample Customer Feedback:</strong> "{orderApprovalData.customerApprovalData.note}"
-                </div>
-              )}
-            </div>
-
             {/* Garments Breakdown */}
             <div style={{ padding: '14px 18px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -2336,7 +2152,7 @@ function OrderManagement() {
                   Garments for Partial Printing ({itemsList.length})
                 </span>
                 <span style={{ fontSize: '12px', fontWeight: 700, color: '#0284c7' }}>
-                  Target Partial Run: {stageForm.partialPrintedCount || 80} pcs
+                  Target Partial Run: {stageForm.partialPrintedCount || orderApprovalData.totalQuantity || 18} pcs
                 </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -2701,18 +2517,6 @@ function OrderManagement() {
         {/* 6.A CASE: COMPLETE -> PRINTING */}
         {isCompletePrinting && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#eff6ff', padding: '16px', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e40af', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={16} color="#1e40af" /> Complete Stage Bulk Clearance Verified
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '13px', color: '#1e3a8a' }}>
-                <div>Partial Stage: <strong style={{ color: '#166534' }}>✓ 100% Completed & Payment Confirmed</strong></div>
-                <div>Stock Clearance (Bulk): <strong style={{ color: '#166534' }}>✓ Approved by Stock Room</strong></div>
-                <div>Production Clearance (Bulk): <strong style={{ color: '#166534' }}>✓ Approved by Production Lead</strong></div>
-                <div>Total Remaining Quantity: <strong>{orderApprovalData.totalQuantity || 100} pcs</strong></div>
-              </div>
-            </div>
-
             <div style={{ background: '#f0f9ff', padding: '16px', borderRadius: '10px', border: '1px solid #bae6fd' }}>
               <div style={{ fontWeight: 700, fontSize: '14px', color: '#0369a1', marginBottom: '10px' }}>
                 Complete Bulk Printing Metrics
@@ -3109,33 +2913,6 @@ function OrderManagement() {
           </div>
         )}
 
-        {/* 7. CASE: AWAITING TASK CLEARANCE IN PARTIAL OR COMPLETE */}
-        {isAwaitingTaskClearance && (
-          <div style={{ background: '#fefce8', border: '1px solid #fef08a', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ fontWeight: 700, fontSize: '14px', color: '#854d0e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={18} color="#ca8a04" />
-              <span>Awaiting Stock Room and Production Room Clearance for {currentOrderStage.toUpperCase()} Production</span>
-            </div>
-            <div style={{ fontSize: '13px', color: '#713f12', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
-              <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '6px', border: '1px solid #fde68a' }}>
-                <div><strong>Task 1: Stock Room Manager</strong></div>
-                <div style={{ fontSize: '12px', color: '#854d0e', marginTop: '2px' }}>
-                  Stage: <strong>{orderApprovalData.stockTaskStage?.replace(/_/g, ' ') || 'Ready to Pick'}</strong> • Status: <strong>{orderApprovalData.stockApproval?.status || 'Pending'}</strong>
-                </div>
-              </div>
-              <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '6px', border: '1px solid #fde68a' }}>
-                <div><strong>Task 2: Production Room Manager</strong></div>
-                <div style={{ fontSize: '12px', color: '#854d0e', marginTop: '2px' }}>
-                  Stage: <strong>Logo Cutting</strong> • Status: <strong>{orderApprovalData.productionApproval?.status || 'Pending'}</strong>
-                </div>
-              </div>
-            </div>
-            <div style={{ fontSize: '12.5px', color: '#854d0e', marginTop: '4px' }}>
-              Once both managers approve in <strong>Tasks</strong>, this order will automatically advance to <strong>{currentOrderStage.toUpperCase()} Printing</strong>.
-            </div>
-          </div>
-        )}
-
         {/* Actions Toolbar on the page */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
           <button
@@ -3166,7 +2943,7 @@ function OrderManagement() {
             onClick={() => handleExecuteStageTransition('submit')}
             disabled={submittingStageAction}
             style={{
-              display: 'inline-flex',
+              display: 'none',
               alignItems: 'center',
               gap: '6px',
               background: isSamplePrinting
@@ -3260,16 +3037,29 @@ function OrderManagement() {
   }
 
   const allStageLeads = leadsList.filter((item) => {
-    // Profile orientation: Sales Executives see their own leads/orders, as well as any orders referred back for revisions
-    if (isSales) {
-      const isReferred =
-        item.approvalStatus === 'Referred Back' ||
-        item.leadApproval?.status === 'Referred Back';
-      const myName = (currentUser?.name || '').toLowerCase().trim();
-      const itemEmp = (item.employeeName || '').toLowerCase().trim();
-      if (!isReferred && itemEmp && itemEmp !== myName && !['sarah jenkins', 'admin', 'manager', ''].includes(itemEmp)) {
-        return false;
-      }
+    // Profile orientation: each user only sees leads/orders created by or belonging to their employee profile
+    const myName = (currentUser?.name || '').toLowerCase().trim();
+    const myId = (currentUser?.id || '').toLowerCase().trim();
+    const itemEmp = (item.employeeName || '').toLowerCase().trim();
+    const itemCreatedBy = (item.createdBy || '').toLowerCase().trim();
+
+    let isOwner = false;
+    if (itemEmp && myName && (itemEmp === myName || itemEmp.includes(myName) || myName.includes(itemEmp))) {
+      isOwner = true;
+    } else if (itemCreatedBy && myId && itemCreatedBy === myId) {
+      isOwner = true;
+    } else if ((myName.startsWith('divyansh') || myId === 'sales') && (itemEmp.startsWith('divyansh') || itemEmp === 'sales executive' || itemCreatedBy === 'sales')) {
+      isOwner = true;
+    } else if ((myName.startsWith('marcus') || myId === 'production') && (itemEmp.startsWith('marcus') || itemCreatedBy === 'production')) {
+      isOwner = true;
+    } else if ((myName.startsWith('adam') || myId === 'admin') && (itemEmp.startsWith('adam') || itemCreatedBy === 'admin')) {
+      isOwner = true;
+    } else if ((myName.startsWith('elena') || myId === 'stock') && (itemEmp.startsWith('elena') || itemCreatedBy === 'stock')) {
+      isOwner = true;
+    }
+
+    if (!isOwner) {
+      return false;
     }
 
     const info = getLeadStageInfo(item, currentStage, currentSubStage);
@@ -3328,10 +3118,12 @@ function OrderManagement() {
       )
     );
 
+    const isSamplePrinting = currentStage === 'sample' && activeSub === 'printing';
+
     return (
       <div className="dashboard-page">
         {editId ? (
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <button
               type="button"
               onClick={handleBackToOrder}
@@ -3340,6 +3132,63 @@ function OrderManagement() {
               <ArrowLeft size={18} />
               <span>Back to Order</span>
             </button>
+
+            {/* Top Right Action Buttons opposite to Back to Order */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => handleExecuteStageTransition('refer_back')}
+                disabled={submittingStageAction}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#fef2f2',
+                  color: '#dc2626',
+                  border: '1px solid #fecaca',
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: submittingStageAction ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <RotateCcw size={15} />
+                <span>Refer Back</span>
+              </button>
+
+              <button
+                type="button"
+                id="btn-stage-submit-top"
+                onClick={() => handleExecuteStageTransition('submit')}
+                disabled={submittingStageAction}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: isSamplePrinting
+                    ? stageForm.stageStatus === 'Work in Progress'
+                      ? '#2563eb'
+                      : stageForm.stageStatus === 'On Hold'
+                      ? '#d97706'
+                      : '#10b981'
+                    : '#10b981',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '9px 22px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: submittingStageAction ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                }}
+              >
+                <CheckCircle size={15} />
+                <span>
+                  {submittingStageAction ? 'Processing...' : 'Submit'}
+                </span>
+              </button>
+            </div>
           </div>
         ) : (
           <div className="page-header">
@@ -3381,38 +3230,17 @@ function OrderManagement() {
           {/* Stage Clearance & Execution Workflow Card (Directly on the page) */}
           {editId && orderApprovalData && renderStageWorkflowCard()}
 
-          {/* Lead Manager Decision & Additional Notes on Top (No heading or subheading) */}
+          {/* Lead Manager Decision & Actions on Top */}
           {editId && isLeadManagerOrAdmin && !isExecutionStageView && (
             <div className="lead-manager-top-actions" style={{
               background: '#ffffff',
               border: '1px solid #e2e8f0',
-              borderLeft: leadAppr.status === 'Approved' ? '4px solid #10b981' : leadAppr.status === 'Referred Back' ? '4px solid #ef4444' : '4px solid #f59e0b',
+              borderLeft: isLeadSubmitted ? '4px solid #10b981' : leadAppr.status === 'Referred Back' ? '4px solid #ef4444' : '4px solid #f59e0b',
               borderRadius: '10px',
               padding: '16px 20px',
               marginBottom: '20px',
               boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
-                <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#334155' }}>
-                  Additional Notes
-                </span>
-                <span style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '5px 12px',
-                  borderRadius: '20px',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  background: leadAppr.status === 'Approved' ? '#d1fae5' : leadAppr.status === 'Referred Back' ? '#fee2e2' : '#fef3c7',
-                  color: leadAppr.status === 'Approved' ? '#065f46' : leadAppr.status === 'Referred Back' ? '#991b1b' : '#92400e',
-                  border: `1px solid ${leadAppr.status === 'Approved' ? '#a7f3d0' : leadAppr.status === 'Referred Back' ? '#fecaca' : '#fde68a'}`
-                }}>
-                  {leadAppr.status === 'Approved' ? <CheckCircle size={13} /> : leadAppr.status === 'Referred Back' ? <RotateCcw size={13} /> : <Clock size={13} />}
-                  <span>{leadAppr.status === 'Approved' ? 'Approved' : leadAppr.status === 'Referred Back' ? 'Referred Back' : 'Pending'}</span>
-                </span>
-              </div>
-
               {leadAppr.note && (
                 <div style={{
                   background: leadAppr.status === 'Referred Back' ? '#fff5f5' : '#f8fafc',
@@ -3477,27 +3305,52 @@ function OrderManagement() {
                   <span>Refer Back</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleLeadManagerAction('Approved')}
-                  disabled={submittingLeadAction}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 22px',
-                    borderRadius: '6px',
-                    background: '#059669',
-                    border: 'none',
-                    color: '#fff',
-                    fontSize: '13.5px',
-                    fontWeight: 600,
-                    cursor: submittingLeadAction ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  <CheckCircle size={15} />
-                  <span>{submittingLeadAction ? 'Processing...' : 'Approve'}</span>
-                </button>
+                {isLeadSubmitted ? (
+                  <button
+                    type="button"
+                    disabled={true}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 22px',
+                      borderRadius: '6px',
+                      background: '#10b981',
+                      border: 'none',
+                      color: '#fff',
+                      fontSize: '13.5px',
+                      fontWeight: 600,
+                      cursor: 'not-allowed',
+                      opacity: 0.95
+                    }}
+                    title="Order already submitted"
+                  >
+                    <CheckCircle size={15} />
+                    <span>Submitted</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleLeadManagerAction('Approved')}
+                    disabled={submittingLeadAction}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 22px',
+                      borderRadius: '6px',
+                      background: '#059669',
+                      border: 'none',
+                      color: '#fff',
+                      fontSize: '13.5px',
+                      fontWeight: 600,
+                      cursor: submittingLeadAction ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <CheckCircle size={15} />
+                    <span>{submittingLeadAction ? 'Submitting...' : 'Submit'}</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -3537,9 +3390,9 @@ function OrderManagement() {
                   <label>Employee Name</label>
                   <input
                     type="text"
-                    value={editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || '')}
-                    readOnly
-                    style={{ background: 'rgba(0,0,0,0.02)', cursor: 'not-allowed', color: '#64748b' }}
+                    value={formData.employeeName !== undefined ? formData.employeeName : (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || ''))}
+                    onChange={(e) => setFormData({ ...formData, employeeName: e.target.value })}
+                    style={{ background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
                   />
                 </div>
                 

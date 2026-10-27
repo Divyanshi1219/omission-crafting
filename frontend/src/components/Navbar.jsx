@@ -37,6 +37,7 @@ function Navbar({ darkMode, setDarkMode }) {
   const handleProfileSwitch = (profileId) => {
     switchProfile(profileId);
     setShowDropdown(false);
+    navigate("/");
   };
 
   const handleLogout = () => {
@@ -116,7 +117,7 @@ function Navbar({ darkMode, setDarkMode }) {
 
             <div className="user-details">
               <span className="user-name">{currentUser.name}</span>
-              <span className="user-role">{currentUser.role}</span>
+              <span className="user-role">{currentUser.department || currentUser.role}</span>
             </div>
 
             <ChevronDown
@@ -142,7 +143,7 @@ function Navbar({ darkMode, setDarkMode }) {
                   <div className="dropdown-user-name">{currentUser.name}</div>
                   <div className="dropdown-user-role">
                     <span className="status-dot-active"></span>
-                    <span>{currentUser.role} • Active</span>
+                    <span>{currentUser.department || currentUser.role} • Active</span>
                   </div>
                 </div>
               </div>
@@ -170,7 +171,7 @@ function Navbar({ darkMode, setDarkMode }) {
                         </div>
                         <div className="dropdown-profile-meta">
                           <h5>{prof.name}</h5>
-                          <span>{prof.role}</span>
+                          <span>{prof.department || prof.role}</span>
                         </div>
                       </div>
                       {isActive && (

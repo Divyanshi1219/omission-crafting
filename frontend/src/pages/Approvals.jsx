@@ -117,19 +117,19 @@ export default function Approvals({ defaultTab = "all" }) {
     taskType: "ready_to_pick", // "ready_to_pick" | "staging_room" | "logo_cutting"
     note: "",
     isStockAvailable: true,
-    sampleDeduction: 5,
+    sampleDeduction: 0,
     notInStockCount: 0,
     stockDepreciation: "",
-    receivedCount: 5,
+    receivedCount: 0,
     pendingCount: 0,
     logosPrinted: 100,
     logosCutGiven: 100,
-    sampleLogosCount: 5,
+    sampleLogosCount: 0,
   });
 
   const handleOpenTaskModal = (order, actionType, taskType) => {
     const totalQty = order.totalQuantity || order.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-    const sampleQty = order.stockTaskData?.sampleDeduction || order.productionTaskData?.sampleLogosCount || 5;
+    const sampleQty = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
 
     setTaskActionModal({
       isOpen: true,
@@ -140,12 +140,12 @@ export default function Approvals({ defaultTab = "all" }) {
       isStockAvailable: order.stockTaskData?.isStockAvailable !== false,
       sampleDeduction: sampleQty,
       notInStockCount: 0,
-      stockDepreciation: order.stockTaskData?.stockDepreciation || `Giving ${sampleQty} for sample. Remaining: ${Math.max(0, totalQty - sampleQty)} in stock.`,
-      receivedCount: order.stockTaskData?.receivedCount || sampleQty,
+      stockDepreciation: order.stockTaskData?.stockDepreciation || (sampleQty > 0 ? `Giving ${sampleQty} for sample. Remaining: ${Math.max(0, totalQty - sampleQty)} in stock.` : ""),
+      receivedCount: order.stockTaskData?.receivedCount !== undefined ? Number(order.stockTaskData.receivedCount) : sampleQty,
       pendingCount: order.stockTaskData?.pendingCount || 0,
       logosPrinted: order.productionTaskData?.logosPrinted || totalQty,
       logosCutGiven: order.productionTaskData?.logosCutGiven || totalQty,
-      sampleLogosCount: order.productionTaskData?.sampleLogosCount || sampleQty,
+      sampleLogosCount: order.productionTaskData?.sampleLogosCount !== undefined ? Number(order.productionTaskData.sampleLogosCount) : sampleQty,
     });
   };
 
@@ -157,14 +157,14 @@ export default function Approvals({ defaultTab = "all" }) {
   const [prodForm, setProdForm] = useState({
     logosPrinted: 100,
     logosCutGiven: 100,
-    sampleLogosCount: 5,
+    sampleLogosCount: 0,
     note: "",
   });
 
   useEffect(() => {
     if (selectedOrder) {
       const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-      const sampleQty = selectedOrder.productionTaskData?.sampleLogosCount || 5;
+      const sampleQty = selectedOrder.productionTaskData?.sampleLogosCount !== undefined ? Number(selectedOrder.productionTaskData.sampleLogosCount) : 0;
       setProdForm({
         logosPrinted: selectedOrder.productionTaskData?.logosPrinted ?? totalQty,
         logosCutGiven: selectedOrder.productionTaskData?.logosCutGiven ?? totalQty,
@@ -178,9 +178,9 @@ export default function Approvals({ defaultTab = "all" }) {
   const [stockForm, setStockForm] = useState({
     isStockAvailable: true,
     notInStockCount: "",
-    sampleDeduction: 5,
+    sampleDeduction: 0,
     stockDepreciation: "",
-    receivedCount: 5,
+    receivedCount: 0,
     pendingCount: 0,
     note: "",
   });
@@ -188,17 +188,17 @@ export default function Approvals({ defaultTab = "all" }) {
   useEffect(() => {
     if (selectedOrder) {
       const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-      const sampleDeduction = selectedOrder.stockTaskData?.sampleDeduction ?? 5;
+      const sampleDeduction = selectedOrder.stockTaskData?.sampleDeduction !== undefined ? Number(selectedOrder.stockTaskData.sampleDeduction) : 0;
       const isAvail = selectedOrder.stockTaskData?.isStockAvailable !== false;
       const remaining = Math.max(0, totalQty - sampleDeduction);
-      const defaultDeprec = selectedOrder.stockTaskData?.stockDepreciation || `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.`;
+      const defaultDeprec = selectedOrder.stockTaskData?.stockDepreciation || (sampleDeduction > 0 ? `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.` : "");
 
       setStockForm({
         isStockAvailable: isAvail,
         notInStockCount: selectedOrder.stockTaskData?.notInStockCount || "",
         sampleDeduction: sampleDeduction,
         stockDepreciation: defaultDeprec,
-        receivedCount: selectedOrder.stockTaskData?.receivedCount ?? sampleDeduction,
+        receivedCount: selectedOrder.stockTaskData?.receivedCount !== undefined ? Number(selectedOrder.stockTaskData.receivedCount) : sampleDeduction,
         pendingCount: selectedOrder.stockTaskData?.pendingCount ?? 0,
         note: "",
       });
@@ -271,7 +271,7 @@ export default function Approvals({ defaultTab = "all" }) {
             author: currentUser?.name || "Elena Rostova",
             stockTaskData: {
               isStockAvailable: stockForm.isStockAvailable,
-              sampleDeduction: Number(stockForm.sampleDeduction) || 5,
+              sampleDeduction: Number(stockForm.sampleDeduction) >= 0 ? Number(stockForm.sampleDeduction) : 0,
               stockDepreciation: stockForm.stockDepreciation.trim() || (stockForm.isStockAvailable ? "Full stock available" : "Low stock"),
               notInStockCount: Number(stockForm.notInStockCount) || 0,
             }
@@ -283,9 +283,9 @@ export default function Approvals({ defaultTab = "all" }) {
             comment: stockForm.note.trim(),
             author: currentUser?.name || "Elena Rostova",
             stockTaskData: {
-              receivedCount: Number(stockForm.receivedCount) || Number(stockForm.sampleDeduction) || 5,
+              receivedCount: Number(stockForm.receivedCount) >= 0 ? Number(stockForm.receivedCount) : 0,
               pendingCount: Number(stockForm.pendingCount) || 0,
-              sampleDeduction: Number(stockForm.sampleDeduction) || 5,
+              sampleDeduction: Number(stockForm.sampleDeduction) >= 0 ? Number(stockForm.sampleDeduction) : 0,
             }
           };
         }
@@ -346,7 +346,7 @@ export default function Approvals({ defaultTab = "all" }) {
           author: currentUser?.name || "Elena Rostova",
           stockTaskData: {
             isStockAvailable,
-            sampleDeduction: Number(sampleDeduction) || 5,
+            sampleDeduction: Number(sampleDeduction) >= 0 ? Number(sampleDeduction) : 0,
             stockDepreciation: stockDepreciation.trim() || (isStockAvailable ? "Full stock available" : "Low stock"),
           }
         };
@@ -367,7 +367,7 @@ export default function Approvals({ defaultTab = "all" }) {
           comment: note.trim(),
           author: currentUser?.name || "Elena Rostova",
           stockTaskData: {
-            receivedCount: Number(receivedCount) || Number(sampleDeduction) || 5,
+            receivedCount: Number(receivedCount) >= 0 ? Number(receivedCount) : 0,
             pendingCount: Number(pendingCount) || 0,
           }
         };
@@ -854,7 +854,7 @@ export default function Approvals({ defaultTab = "all" }) {
                          ========================================================================= */
                       if (currentTaskTab === "ready-to-pick") {
                         const isAvail = order.stockTaskData?.isStockAvailable !== false;
-                        const sampleDeduction = order.stockTaskData?.sampleDeduction || 5;
+                        const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
                         const remaining = Math.max(0, totalStockQty - sampleDeduction);
 
                         return (
@@ -958,8 +958,8 @@ export default function Approvals({ defaultTab = "all" }) {
                          2. STAGING ROOM (Stock Room Manager Task)
                          ========================================================================= */
                       if (currentTaskTab === "staging-room") {
-                        const sampleDeduction = order.stockTaskData?.sampleDeduction || 5;
-                        const receivedCount = order.stockTaskData?.receivedCount || sampleDeduction;
+                        const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
+                        const receivedCount = order.stockTaskData?.receivedCount !== undefined ? Number(order.stockTaskData.receivedCount) : sampleDeduction;
                         const pendingCount = order.stockTaskData?.pendingCount || 0;
                         const breakdown = itemsList.length > 0
                           ? itemsList.map((it) => `${it.quantity || 0} ${it.color ? it.color + " " : ""}${it.item || it.enterItem || "pcs"}`).join(", ")
@@ -1759,13 +1759,13 @@ export default function Approvals({ defaultTab = "all" }) {
                           onChange={(e) => {
                             const isAvail = e.target.value === "yes";
                             const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-                            const sampleDeduction = Number(stockForm.sampleDeduction) || 5;
+                            const sampleDeduction = Number(stockForm.sampleDeduction) >= 0 ? Number(stockForm.sampleDeduction) : 0;
                             const remaining = Math.max(0, totalQty - sampleDeduction);
                             setStockForm(prev => ({
                               ...prev,
                               isStockAvailable: isAvail,
                               stockDepreciation: isAvail
-                                ? `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.`
+                                ? (sampleDeduction > 0 ? `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
                                 : `Deficit in stock. Giving ${sampleDeduction} for sample.`
                             }));
                           }}
@@ -1822,18 +1822,18 @@ export default function Approvals({ defaultTab = "all" }) {
                         </label>
                         <input
                           type="number"
-                          min="1"
+                          min="0"
                           value={stockForm.sampleDeduction}
                           onChange={(e) => {
                             const val = e.target.value;
                             const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-                            const sampleNum = Number(val) || 0;
+                            const sampleNum = Number(val) >= 0 ? Number(val) : 0;
                             const remaining = Math.max(0, totalQty - sampleNum);
                             setStockForm(prev => ({
                               ...prev,
                               sampleDeduction: val,
                               stockDepreciation: prev.isStockAvailable
-                                ? `Giving ${sampleNum} for sample. Remaining: ${remaining} in stock.`
+                                ? (sampleNum > 0 ? `Giving ${sampleNum} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
                                 : `Deficit in stock. Giving ${sampleNum} for sample.`
                             }));
                           }}
@@ -2724,7 +2724,7 @@ export default function Approvals({ defaultTab = "all" }) {
                     <label>How many giving for sample? (pcs)</label>
                     <input
                       type="number"
-                      min="1"
+                      min="0"
                       value={taskActionModal.sampleDeduction}
                       onChange={(e) =>
                         setTaskActionModal({

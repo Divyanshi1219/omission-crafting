@@ -230,6 +230,12 @@ function AllEmployees() {
                 <div className="form-group">
                   <label>Department *</label>
                   <select name="department" value={form.department} onChange={handleChange}>
+                    <option>CEO</option>
+                    <option>Production Lead</option>
+                    <option>Stock Room</option>
+                    <option>Production Room</option>
+                    <option>Lead Manager</option>
+                    <option>Sales</option>
                     <option>IT</option>
                     <option>HR</option>
                     <option>Finance</option>

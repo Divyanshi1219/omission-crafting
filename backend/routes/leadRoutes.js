@@ -51,24 +51,30 @@ router.get("/", async (req, res) => {
     if (req.query.employeeName) {
       filter.employeeName = new RegExp(`^${req.query.employeeName.trim()}$`, "i");
     }
-    const leads = await Lead.find(filter).sort({ createdAt: -1 });
-    // Ensure all orders have a unique auto-generated, persistent taskId
-    const updatedLeads = await Promise.all(
-      leads.map(async (l) => {
-        if (!l.taskId && (l.query === "order" || l.orderId || l.orderStage)) {
-          let derivedTaskId = "";
-          if (l.orderId) {
-            derivedTaskId = `TSK-${l.orderId.replace(/^ORD-?/i, "")}`;
-          } else {
-            derivedTaskId = await getNextTaskId();
-          }
+    // Option A (photo-safe): the Approvals page fetches with ?query=order and renders
+    // direct artwork download links, so it gets the full attachment. Every other list
+    // caller (orders/leads tables, dashboard, inventory, invoices) never reads the photo,
+    // so we skip the heavy base64 `attachment` field there. Detail view (GET /:id) is
+    // untouched and always returns the full photo. Nothing is lost or hidden in the DB.
+    const includesAttachment = req.query.query === "order";
+    const leads = await Lead.find(
+      filter,
+      includesAttachment ? undefined : { attachment: 0 }
+    ).sort({ createdAt: -1 });
+    // Fast check: only run update if any orders are actually missing a taskId
+    const missingTaskLeads = leads.filter(l => !l.taskId && (l.query === "order" || l.orderId || l.orderStage));
+    if (missingTaskLeads.length > 0) {
+      await Promise.all(
+        missingTaskLeads.map(async (l) => {
+          const derivedTaskId = l.orderId
+            ? `TSK-${l.orderId.replace(/^ORD-?/i, "")}`
+            : await getNextTaskId();
           l.taskId = derivedTaskId;
           await Lead.updateOne({ _id: l._id }, { $set: { taskId: derivedTaskId } });
-        }
-        return l;
-      })
-    );
-    res.json({ success: true, count: updatedLeads.length, data: updatedLeads });
+        })
+      );
+    }
+    res.json({ success: true, count: leads.length, data: leads });
   } catch (error) {
     console.error("Error fetching leads:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -184,6 +190,16 @@ router.get("/:id", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const { _id, ...leadData } = req.body;
+
+    // Normalize subStage: real orders must always sit in the 'order' sub-stage.
+    // Prevents "" / "new" / "leads" values on order records, which previously
+    // made the list show "Leads" while the detail view treated them as 'order'.
+    if (leadData.query === "order") {
+      const ss = String(leadData.subStage || "").toLowerCase().trim();
+      if (!ss || ss === "new" || ss === "leads") {
+        leadData.subStage = "order";
+      }
+    }
 
     if ((leadData.query === "order" || leadData.orderStage) && !leadData.orderId) {
       leadData.orderId = await getNextOrderId();

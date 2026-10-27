@@ -72,16 +72,19 @@ function Dashboard() {
 
   useEffect(() => {
     if (isOnlyInventory) {
-      if (activeTab !== "inventory") setActiveTab("inventory");
+      setActiveTab("inventory");
     } else if (isOnlyOrderManagement) {
-      if (activeTab !== "case") setActiveTab("case");
-    } else if (!isAdmin && activeTab === "employee") {
+      setActiveTab("case");
+    } else {
       setActiveTab("overview");
     }
-  }, [isAdmin, isOnlyOrderManagement, isOnlyInventory, activeTab]);
+  }, [currentUser?.id, isOnlyInventory, isOnlyOrderManagement]);
 
   // Live Leads and Production Data from Backend
   const [leads, setLeads] = useState([]);
+  // True once the leads fetch succeeded — lets profiles with zero orders
+  // display their real (0) numbers instead of the demo baseline data.
+  const [leadsLoaded, setLeadsLoaded] = useState(false);
 
   // UI Interactive States
   const [chartViewMode, setChartViewMode] = useState("volume"); // "volume" | "revenue"
@@ -384,7 +387,30 @@ function Dashboard() {
     api.get("/api/leads")
       .then((res) => {
         if (res.data?.data) {
-          setLeads(res.data.data);
+          let fetchedLeads = res.data.data;
+          // CEO (admin) sees the complete company data — unchanged.
+          // Every other profile sees only their own profile-specific data:
+          // orders they created/own (employeeName / createdBy) or that
+          // involve them as an approver (Lead Manager / Stock / Production).
+          if (!isAdmin) {
+            const myName = (currentUser?.name || "").toLowerCase().trim();
+            const myId = (currentUser?.id || "").toLowerCase();
+            fetchedLeads = fetchedLeads.filter((l) => {
+              const itemEmp = (l.employeeName || "").toLowerCase().trim();
+              const itemCreatedBy = (l.createdBy || "").toLowerCase();
+              const itemLeadApprover = (l.leadApproval?.author || "").toLowerCase();
+              const itemStockApprover = (l.stockApproval?.author || "").toLowerCase();
+              const itemProdApprover = (l.productionApproval?.author || "").toLowerCase();
+              return (
+                (myName && itemEmp && itemEmp === myName) ||
+                (myName && itemEmp && (itemEmp.startsWith(myName) || myName.startsWith(itemEmp))) ||
+                (myId && itemCreatedBy && itemCreatedBy.includes(myId)) ||
+                (myName && [itemLeadApprover, itemStockApprover, itemProdApprover].some((a) => a.includes(myName)))
+              );
+            });
+          }
+          setLeads(fetchedLeads);
+          setLeadsLoaded(true);
         }
       })
       .catch((err) => {
@@ -394,7 +420,8 @@ function Dashboard() {
 
   // Compute live repeat customer rate linked to lead form field `repeatedOrder`
   const repeatCustomerStats = useMemo(() => {
-    const hasLiveLeads = leads.length > 0;
+    // CEO keeps the original behavior; other profiles are live even with 0 orders
+    const hasLiveLeads = isAdmin ? leads.length > 0 : leadsLoaded;
     const totalCount = hasLiveLeads ? leads.length : 25;
     
     // Count leads where repeatedOrder === "Yes" (matching create lead form radio value)
@@ -410,7 +437,8 @@ function Dashboard() {
     
     const repeatCount = hasLiveLeads ? repeatLeads.length : 17;
     const firstTimeCount = totalCount - repeatCount;
-    const rate = Math.round((repeatCount / totalCount) * 100);
+    // Zero-division safe (only reachable for profiles with 0 orders)
+    const rate = totalCount > 0 ? Math.round((repeatCount / totalCount) * 100) : 0;
     const target = 80;
 
     return {
@@ -422,12 +450,13 @@ function Dashboard() {
       isLive: hasLiveLeads,
       repeatLeads
     };
-  }, [leads]);
+  }, [leads, leadsLoaded]);
 
   // Compute live stage counts for Sample, Partial, Complete
   const stageStats = useMemo(() => {
-    const hasLiveLeads = leads.length > 0;
-    
+    // CEO keeps the original behavior; other profiles are live even with 0 orders
+    const hasLiveLeads = isAdmin ? leads.length > 0 : leadsLoaded;
+
     const sampleLeads = leads.filter(l => (l.orderStage || "sample").toLowerCase().trim() === "sample");
     const partialLeads = leads.filter(l => (l.orderStage || "").toLowerCase().trim() === "partial");
     const completeLeads = leads.filter(l => (l.orderStage || "").toLowerCase().trim() === "complete");
@@ -437,13 +466,16 @@ function Dashboard() {
     const completeCount = hasLiveLeads ? (completeLeads.length || 1) : 41;
     const total = sampleCount + partialCount + completeCount;
 
+    // Zero-division safe (only reachable for profiles with 0 orders)
+    const pctOf = (count) => (total > 0 ? Math.round((count / total) * 100) : 0);
+
     return {
-      sample: { count: sampleCount, pct: Math.round((sampleCount / total) * 100) },
-      partial: { count: partialCount, pct: Math.round((partialCount / total) * 100) },
-      complete: { count: completeCount, pct: 100 - Math.round((sampleCount / total) * 100) - Math.round((partialCount / total) * 100) },
+      sample: { count: sampleCount, pct: pctOf(sampleCount) },
+      partial: { count: partialCount, pct: pctOf(partialCount) },
+      complete: { count: completeCount, pct: 100 - pctOf(sampleCount) - pctOf(partialCount) },
       total
     };
-  }, [leads]);
+  }, [leads, leadsLoaded]);
 
   // Monthly dataset for the Sample / Partial / Complete Production & Orders Overview
   const monthlyStageData = useMemo(() => {

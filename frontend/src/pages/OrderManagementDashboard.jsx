@@ -97,10 +97,18 @@ export default function OrderManagementDashboard() {
       .filter(l => l.query === 'order' || l.orderStage || l.totalQuantity);
 
     if (isSales && currentUser?.name) {
+      // Option 1: use the SAME ownership rule the stage list pages use
+      // (OrderManagement.jsx), so dashboard numbers always match what
+      // clicking "View all" opens.
       const currentEmp = currentUser.name.toLowerCase().trim();
+      const currentId = (currentUser?.id || '').toLowerCase();
       valid = valid.filter(l => {
         const leadEmp = (l.employeeName || '').toLowerCase().trim();
-        return leadEmp === currentEmp;
+        const leadCreatedBy = (l.createdBy || '').toLowerCase();
+        const isOwner =
+          (currentEmp.startsWith('divyansh') || currentId === 'sales') &&
+          (leadEmp.startsWith('divyansh') || leadEmp === 'sales executive' || leadCreatedBy === 'sales');
+        return isOwner || (leadEmp && leadEmp === currentEmp);
       });
     }
 
@@ -130,6 +138,14 @@ export default function OrderManagementDashboard() {
   const sampleOrders = useMemo(() => orders.filter(o => o.normStage === 'sample'), [orders]);
   const partialOrders = useMemo(() => orders.filter(o => o.normStage === 'partial'), [orders]);
   const completeOrders = useMemo(() => orders.filter(o => o.normStage === 'complete'), [orders]);
+
+  // Option 1: Cards/distribution count ONLY orders currently sitting in the
+  // stage's entry sub-stage ('Order') — the exact scope the stage list pages
+  // show when you click "View all". Advanced orders (stock/printing/etc.)
+  // are still visible as pipeline totals in the stage bar charts below.
+  const sampleCardOrders = useMemo(() => sampleOrders.filter(o => o.normSub === 'order'), [sampleOrders]);
+  const partialCardOrders = useMemo(() => partialOrders.filter(o => o.normSub === 'order'), [partialOrders]);
+  const completeCardOrders = useMemo(() => completeOrders.filter(o => o.normSub === 'order'), [completeOrders]);
 
   // Stage counts for each pipeline with quantity sums
   const sampleCounts = useMemo(() => {
@@ -237,10 +253,10 @@ export default function OrderManagementDashboard() {
     );
   };
 
-  const totalOrdersCount = orders.length;
-  const samplePct = totalOrdersCount > 0 ? Math.round((sampleOrders.length / totalOrdersCount) * 100) : 0;
-  const partialPct = totalOrdersCount > 0 ? Math.round((partialOrders.length / totalOrdersCount) * 100) : 0;
-  const completePct = totalOrdersCount > 0 ? Math.round((completeOrders.length / totalOrdersCount) * 100) : 0;
+  const totalOrdersCount = sampleCardOrders.length + partialCardOrders.length + completeCardOrders.length;
+  const samplePct = totalOrdersCount > 0 ? Math.round((sampleCardOrders.length / totalOrdersCount) * 100) : 0;
+  const partialPct = totalOrdersCount > 0 ? Math.round((partialCardOrders.length / totalOrdersCount) * 100) : 0;
+  const completePct = totalOrdersCount > 0 ? Math.round((completeCardOrders.length / totalOrdersCount) * 100) : 0;
 
   return (
     <div className="order-simple-dashboard">
@@ -260,10 +276,10 @@ export default function OrderManagementDashboard() {
             <span className="order-tile-badge sample">5 Stages</span>
           </div>
           <div className="order-tile-count" style={{ color: '#0284c7' }}>
-            {sampleOrders.length}
+            {sampleCardOrders.length}
           </div>
           <div className="order-tile-sub">
-            <span>{sampleOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs in pipeline</span>
+            <span>{sampleCardOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs in pipeline</span>
             <span className="tile-action-hint">View all <ArrowRight size={13} /></span>
           </div>
         </div>
@@ -282,10 +298,10 @@ export default function OrderManagementDashboard() {
             <span className="order-tile-badge partial">6 Stages</span>
           </div>
           <div className="order-tile-count" style={{ color: '#7c3aed' }}>
-            {partialOrders.length}
+            {partialCardOrders.length}
           </div>
           <div className="order-tile-sub">
-            <span>{partialOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs in production</span>
+            <span>{partialCardOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs in production</span>
             <span className="tile-action-hint">View all <ArrowRight size={13} /></span>
           </div>
         </div>
@@ -304,10 +320,10 @@ export default function OrderManagementDashboard() {
             <span className="order-tile-badge complete">8 Stages</span>
           </div>
           <div className="order-tile-count" style={{ color: '#059669' }}>
-            {completeOrders.length}
+            {completeCardOrders.length}
           </div>
           <div className="order-tile-sub">
-            <span>{completeOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs fulfilled</span>
+            <span>{completeCardOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs fulfilled</span>
             <span className="tile-action-hint">View all <ArrowRight size={13} /></span>
           </div>
         </div>
@@ -426,13 +442,13 @@ export default function OrderManagementDashboard() {
               {(() => {
                 const total = totalOrdersCount || 1;
                 const circumference = 2 * Math.PI * 38;
-                const sampleArc = (sampleOrders.length / total) * circumference;
-                const partialArc = (partialOrders.length / total) * circumference;
-                const completeArc = (completeOrders.length / total) * circumference;
+                const sampleArc = (sampleCardOrders.length / total) * circumference;
+                const partialArc = (partialCardOrders.length / total) * circumference;
+                const completeArc = (completeCardOrders.length / total) * circumference;
 
                 return (
                   <>
-                    {sampleOrders.length > 0 && (
+                    {sampleCardOrders.length > 0 && (
                       <circle
                         cx="50"
                         cy="50"
@@ -444,7 +460,7 @@ export default function OrderManagementDashboard() {
                         strokeDashoffset="0"
                       />
                     )}
-                    {partialOrders.length > 0 && (
+                    {partialCardOrders.length > 0 && (
                       <circle
                         cx="50"
                         cy="50"
@@ -456,7 +472,7 @@ export default function OrderManagementDashboard() {
                         strokeDashoffset={-sampleArc}
                       />
                     )}
-                    {completeOrders.length > 0 && (
+                    {completeCardOrders.length > 0 && (
                       <circle
                         cx="50"
                         cy="50"
@@ -489,7 +505,7 @@ export default function OrderManagementDashboard() {
                 <span className="donut-dot-marker" style={{ background: '#0284c7' }}></span> Sample
               </span>
               <span className="donut-legend-right">
-                {sampleOrders.length} ({samplePct}%)
+                {sampleCardOrders.length} ({samplePct}%)
               </span>
             </div>
 
@@ -502,7 +518,7 @@ export default function OrderManagementDashboard() {
                 <span className="donut-dot-marker" style={{ background: '#7c3aed' }}></span> Partial
               </span>
               <span className="donut-legend-right">
-                {partialOrders.length} ({partialPct}%)
+                {partialCardOrders.length} ({partialPct}%)
               </span>
             </div>
 
@@ -515,7 +531,7 @@ export default function OrderManagementDashboard() {
                 <span className="donut-dot-marker" style={{ background: '#059669' }}></span> Complete
               </span>
               <span className="donut-legend-right">
-                {completeOrders.length} ({completePct}%)
+                {completeCardOrders.length} ({completePct}%)
               </span>
             </div>
           </div>

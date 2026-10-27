@@ -129,6 +129,21 @@
   border-bottom-left-radius: 4px;
 }
 
+.change-mgmt-step.is-static {
+  cursor: default !important;
+  pointer-events: none !important;
+}
+
+.change-mgmt-step.is-static:hover:not(.active) {
+  background-color: #eaedf1 !important;
+  color: #334155 !important;
+}
+
+.app.dark .change-mgmt-step.is-static:hover:not(.active) {
+  background-color: #1e293b !important;
+  color: #94a3b8 !important;
+}
+
 .change-mgmt-step:hover:not(.active) {
   background-color: #dde2e8;
   color: #0f172a;
@@ -157,7 +172,22 @@
   color: #cbd5e1;
 }
 
-.app.dark .change-mgmt-step:hover:not(.active) {
+.app.dark .change-mgmt-step.is-static {
+  cursor: default !important;
+  pointer-events: none !important;
+}
+
+.change-mgmt-step.is-static:hover:not(.active) {
+  background-color: #eaedf1 !important;
+  color: #334155 !important;
+}
+
+.app.dark .change-mgmt-step.is-static:hover:not(.active) {
+  background-color: #1e293b !important;
+  color: #94a3b8 !important;
+}
+
+.change-mgmt-step:hover:not(.active) {
   background-color: #475569;
   color: #f8fafc;
 }
