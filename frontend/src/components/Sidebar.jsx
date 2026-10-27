@@ -8,7 +8,8 @@ import {
   ChevronRight,
   ReceiptText,
   CheckSquare,
-  ClipboardCheck
+  ClipboardCheck,
+  Lightbulb
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -317,6 +318,19 @@ function Sidebar() {
               </div>
             )}
           </div>
+        )}
+
+        {/* TEMP: Demo Page Ideas — Divyanshi (sales) only. Temporary for client review; remove after idea is approved. */}
+        {currentUser?.id === "sales" && (
+          <NavLink
+            to="/demo-ideas"
+            className={({ isActive }) =>
+              `sidebar-item ${isActive ? "active" : ""}`
+            }
+          >
+            <Lightbulb size={20} />
+            <span>Demo Page Ideas</span>
+          </NavLink>
         )}
 
         {/* Task Section for Stock Room Manager & Production Manager (and Admin) */}

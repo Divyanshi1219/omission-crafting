@@ -4060,11 +4060,11 @@ function OrderManagement() {
                 </div>
                 
                 {!isLeadManager && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '32px' }}>
-                    <button 
-                      type="button" 
+                  <div style={{ display: editId ? 'none' : 'flex', justifyContent: 'flex-end', marginTop: '32px' }}>
+                    <button
+                      type="button"
                       onClick={handleOrderSubmit}
-                      className="btn-primary" 
+                      className="btn-primary"
                       style={{ padding: '10px 32px' }}
                     >
                       Submit

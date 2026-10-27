@@ -12,6 +12,7 @@ import CreateInvoice from "./pages/Invoices/CreateInvoice";
 import TasksPage from "./pages/Tasks/TasksPage";
 import Approvals from "./pages/Approvals";
 import Login from "./pages/Login";
+import DemoIdeasPage from "./pages/DemoIdeasPage"; // TEMP demo page ideas (delete after client approves)
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
 import "./App.css";
@@ -78,6 +79,12 @@ function AppContent({ darkMode, setDarkMode }) {
             <Route
               path="/invoices/create"
               element={isSalesOrAdmin ? <CreateInvoice /> : <Navigate to="/" replace />}
+            />
+
+            {/* TEMP demo page ideas (mock UI concepts — not connected to app data) */}
+            <Route
+              path="/demo-ideas"
+              element={<DemoIdeasPage />}
             />
 
             <Route
