@@ -1095,23 +1095,7 @@ export default function Approvals({ defaultTab = "all" }) {
                                   download={order.attachmentName || "artwork-attachment"}
                                   onClick={(e) => e.stopPropagation()}
                                   title={order.attachmentName || "Download Artwork Attachment"}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "5px",
-                                    padding: "3px 8px",
-                                    borderRadius: "6px",
-                                    backgroundColor: "#eff6ff",
-                                    color: "#2563eb",
-                                    fontSize: "12px",
-                                    fontWeight: 600,
-                                    textDecoration: "none",
-                                    border: "1px solid #bfdbfe",
-                                    maxWidth: "140px",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap"
-                                  }}
+                                  className="table-attachment-link"
                                 >
                                   <Paperclip size={12} style={{ flexShrink: 0 }} />
                                   <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -1130,18 +1114,18 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span className="qty-tag blue" style={{ fontWeight: 700 }}>
+                              <span className="qty-tag">
                                 {totalStockQty} pcs
                               </span>
                             </td>
                             <td>
-                              <span className="qty-tag green">{logosPrinted} pcs</span>
+                              <span className="qty-tag">{logosPrinted} pcs</span>
                             </td>
                             <td>
-                              <span className="qty-tag blue">{logosCutGiven} pcs</span>
+                              <span className="qty-tag">{logosCutGiven} pcs</span>
                             </td>
                             <td>
-                              <span className="qty-tag" style={{ background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", fontWeight: 700 }}>
+                              <span className="qty-tag">
                                 {sampleLogos} pcs
                               </span>
                             </td>
@@ -1317,23 +1301,7 @@ export default function Approvals({ defaultTab = "all" }) {
                                     download={order.attachmentName || "artwork-attachment"}
                                     onClick={(e) => e.stopPropagation()}
                                     title={order.attachmentName || "Download Artwork Attachment"}
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "5px",
-                                      padding: "3px 8px",
-                                      borderRadius: "6px",
-                                      backgroundColor: "#eff6ff",
-                                      color: "#2563eb",
-                                      fontSize: "12px",
-                                      fontWeight: 600,
-                                      textDecoration: "none",
-                                      border: "1px solid #bfdbfe",
-                                      maxWidth: "180px",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap"
-                                    }}
+                                    className="table-attachment-link"
                                   >
                                     <Paperclip size={12} style={{ flexShrink: 0 }} />
                                     <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -1734,13 +1702,13 @@ export default function Approvals({ defaultTab = "all" }) {
                   <div>
                     <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
                       {currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room"
-                        ? "Staging Room: Stock Allocation & Clearance"
-                        : "Ready to Pick: Stock Clearance Specifications"}
+                        ? "Staging Room: Check & Receive Stock"
+                        : "Ready to Pick: Check Stock"}
                     </h3>
                     <span className="card-subtitle">
                       {currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room"
-                        ? "Verify received pieces at staging, track pending sample items, and add remarks."
-                        : "Verify inventory availability, specify sample deduction count, and record stock depreciation."}
+                        ? "Check received pieces at packing, see pending sample items, and add notes."
+                        : "Check if items are in stock, enter sample pieces, and add stock notes."}
                     </span>
                   </div>
                 </div>
@@ -1766,7 +1734,7 @@ export default function Approvals({ defaultTab = "all" }) {
                               isStockAvailable: isAvail,
                               stockDepreciation: isAvail
                                 ? (sampleDeduction > 0 ? `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
-                                : `Deficit in stock. Giving ${sampleDeduction} for sample.`
+                                : `Shortage in stock. Giving ${sampleDeduction} for sample.`
                             }));
                           }}
                           style={{
@@ -1782,8 +1750,8 @@ export default function Approvals({ defaultTab = "all" }) {
                             boxSizing: "border-box"
                           }}
                         >
-                          <option value="yes">Yes, in stock (Stock Available)</option>
-                          <option value="no">No, deficit (Not Fully in Stock)</option>
+                          <option value="yes">Yes, in stock</option>
+                          <option value="no">No, not enough stock</option>
                         </select>
                       </div>
 
@@ -1791,7 +1759,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       {!stockForm.isStockAvailable && (
                         <div>
                           <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "#dc2626", marginBottom: "6px" }}>
-                            How many not in stock? (Deficit pcs)
+                            How many pieces are missing? (Shortage pcs)
                           </label>
                           <input
                             type="number"
@@ -1818,7 +1786,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       {/* Field 3: How many giving for sample? */}
                       <div>
                         <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
-                          How many giving for sample? (pcs)
+                          Sample pieces to give (pcs)
                         </label>
                         <input
                           type="number"
@@ -1834,7 +1802,7 @@ export default function Approvals({ defaultTab = "all" }) {
                               sampleDeduction: val,
                               stockDepreciation: prev.isStockAvailable
                                 ? (sampleNum > 0 ? `Giving ${sampleNum} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
-                                : `Deficit in stock. Giving ${sampleNum} for sample.`
+                                : `Shortage in stock. Giving ${sampleNum} for sample.`
                             }));
                           }}
                           style={{
@@ -1855,7 +1823,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       {/* Field 4: Stock Depreciation */}
                       <div>
                         <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
-                          Stock Depreciation / Inventory Notes
+                          Stock Notes / Items Taken Out
                         </label>
                         <input
                           type="text"
@@ -1881,11 +1849,11 @@ export default function Approvals({ defaultTab = "all" }) {
                     {/* Field 5: Correction Notes / Remarks */}
                     <div>
                       <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                        Correction Notes / Remarks (Mandatory if referring back to Sales):
+                        Notes / Reason (Required if sending back to Sales):
                       </label>
                       <textarea
                         rows={2}
-                        placeholder="Add stock notes, shortages or reasons if referring back..."
+                        placeholder="Write stock notes, missing items, or reasons for sending back..."
                         value={stockForm.note}
                         onChange={(e) => setStockForm({ ...stockForm, note: e.target.value })}
                         style={{
@@ -2082,7 +2050,7 @@ export default function Approvals({ defaultTab = "all" }) {
 
                 <div className="production-focused-grid" style={{ marginBottom: "20px" }}>
                   {/* Field 1: Order ID */}
-                  <div className="prod-field-card highlight-accent">
+                  <div className="prod-field-card">
                     <div className="prod-field-header">
                       <Package size={16} />
                       <span>Order ID</span>
@@ -2130,15 +2098,15 @@ export default function Approvals({ defaultTab = "all" }) {
                   </div>
 
                   {/* Field 5: Logos Needed by Client */}
-                  <div className="prod-field-card highlight-accent" style={{ backgroundColor: "#eff6ff", borderColor: "#bfdbfe" }}>
+                  <div className="prod-field-card">
                     <div className="prod-field-header">
-                      <Tag size={16} style={{ color: "#2563eb" }} />
-                      <span style={{ color: "#1d4ed8", fontWeight: 700 }}>Logos Needed by Client</span>
+                      <Tag size={16} />
+                      <span>Logos Needed by Client</span>
                     </div>
-                    <div className="prod-field-value" style={{ color: "#1d4ed8", fontWeight: 800 }}>
+                    <div className="prod-field-value">
                       {selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0} pcs
                     </div>
-                    <span className="prod-field-note" style={{ color: "#2563eb" }}>
+                    <span className="prod-field-note">
                       Total Order Volume ({selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0} shirts ordered)
                     </span>
                   </div>
@@ -2697,14 +2665,14 @@ export default function Approvals({ defaultTab = "all" }) {
                         })
                       }
                     >
-                      <option value="yes">Yes, in stock (Stock Available)</option>
-                      <option value="no">No, deficit (Not Fully in Stock)</option>
+                      <option value="yes">Yes, in stock</option>
+                      <option value="no">No, not enough stock</option>
                     </select>
                   </div>
 
                   {!taskActionModal.isStockAvailable && (
                     <div className="task-modal-field">
-                      <label>How many are not in stock? (Deficit pieces)</label>
+                      <label>How many pieces are missing? (Shortage pcs)</label>
                       <input
                         type="number"
                         min="1"
@@ -2721,7 +2689,7 @@ export default function Approvals({ defaultTab = "all" }) {
                   )}
 
                   <div className="task-modal-field">
-                    <label>How many giving for sample? (pcs)</label>
+                    <label>Sample pieces to give (pcs)</label>
                     <input
                       type="number"
                       min="0"
@@ -2736,10 +2704,10 @@ export default function Approvals({ defaultTab = "all" }) {
                   </div>
 
                   <div className="task-modal-field">
-                    <label>Stock Depreciation / Notes</label>
+                    <label>Stock Notes / Items Taken Out</label>
                     <input
                       type="text"
-                      placeholder="e.g. 5 pcs deducted from inventory for sample"
+                      placeholder="e.g. 5 pcs taken from stock for sample"
                       value={taskActionModal.stockDepreciation}
                       onChange={(e) =>
                         setTaskActionModal({

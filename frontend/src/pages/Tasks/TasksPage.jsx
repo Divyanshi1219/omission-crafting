@@ -226,19 +226,16 @@ function TasksPage() {
   const getPriorityStyle = (priority) => {
     switch (priority) {
       case "High":
-        return { color: "#e11d48", bg: "#ffe4e6", border: "#fecdd3" };
+        return { color: "#991b1b", bg: "#fef2f2", border: "#fecaca" };
       case "Medium":
-        return { color: "#d97706", bg: "#fef3c7", border: "#fde68a" };
+        return { color: "#92400e", bg: "#fffbeb", border: "#fde68a" };
       default:
-        return { color: "#475569", bg: "#f1f5f9", border: "#e2e8f0" };
+        return { color: "#334155", bg: "#f1f5f9", border: "#cbd5e1" };
     }
   };
 
   const getDepartmentStyle = (dept = "") => {
-    const isStock = dept.toLowerCase().includes("stock");
-    return isStock
-      ? { color: "#047857", bg: "#d1fae5", border: "#a7f3d0" }
-      : { color: "#4338ca", bg: "#e0e7ff", border: "#c7d2fe" };
+    return { color: "#334155", bg: "#f1f5f9", border: "#cbd5e1" };
   };
 
   return (
