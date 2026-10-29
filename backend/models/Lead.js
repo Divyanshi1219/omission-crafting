@@ -206,7 +206,7 @@ const leadSchema = new mongoose.Schema(
     // Workflow tracking fields across Sample, Partial, and Complete
     stockTaskStage: {
       type: String,
-      default: "ready_to_pick", // "ready_to_pick", "staging_room", "completed"
+      default: "verification", // "verification", "ready_to_pick", "staging_room", "completed"
     },
     stockTaskData: {
       type: mongoose.Schema.Types.Mixed,
@@ -214,7 +214,7 @@ const leadSchema = new mongoose.Schema(
     },
     productionTaskStage: {
       type: String,
-      default: "logo_cutting", // "logo_cutting", "completed"
+      default: "logo_printing", // "logo_printing", "logo_cutting", "completed"
     },
     productionTaskData: {
       type: mongoose.Schema.Types.Mixed,

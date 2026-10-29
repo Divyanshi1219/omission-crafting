@@ -28,7 +28,11 @@ import {
   SlidersHorizontal,
   Check,
   CheckSquare,
-  Paperclip
+  Paperclip,
+  Upload,
+  Printer,
+  Scissors,
+  X
 } from "lucide-react";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
@@ -73,6 +77,7 @@ export default function Approvals({ defaultTab = "all" }) {
     if (isProdProfile) {
       return [
         { key: "all", label: "ALL", path: "/tasks/all" },
+        { key: "logo-printing", label: "Logo Printing", path: "/tasks/logo-printing" },
         { key: "logo-cutting", label: "Logo Cutting", path: "/tasks/logo-cutting" },
       ];
     }
@@ -81,6 +86,7 @@ export default function Approvals({ defaultTab = "all" }) {
       { key: "verification", label: "Verification", path: "/tasks/verification" },
       { key: "ready-to-pick", label: "Ready to Pick", path: "/tasks/ready-to-pick" },
       { key: "staging-room", label: "Staging Room", path: "/tasks/staging-room" },
+      { key: "logo-printing", label: "Logo Printing", path: "/tasks/logo-printing" },
       { key: "logo-cutting", label: "Logo Cutting", path: "/tasks/logo-cutting" },
     ];
   }, [isStockProfile, isProdProfile]);
@@ -142,7 +148,7 @@ export default function Approvals({ defaultTab = "all" }) {
       isStockAvailable: order.stockTaskData?.isStockAvailable !== false,
       sampleDeduction: sampleQty,
       notInStockCount: 0,
-      stockDepreciation: order.stockTaskData?.stockDepreciation || (sampleQty > 0 ? `Giving ${sampleQty} for sample. Remaining: ${Math.max(0, totalQty - sampleQty)} in stock.` : ""),
+      stockDepreciation: order.stockTaskData?.stockDepreciation || `${Math.max(0, totalQty - sampleQty)} pcs`,
       receivedCount: order.stockTaskData?.receivedCount !== undefined ? Number(order.stockTaskData.receivedCount) : sampleQty,
       pendingCount: order.stockTaskData?.pendingCount || 0,
       logosPrinted: order.productionTaskData?.logosPrinted || totalQty,
@@ -157,63 +163,240 @@ export default function Approvals({ defaultTab = "all" }) {
 
   // Production Room Form State (on-page form instead of modal)
   const [prodForm, setProdForm] = useState({
-    logosPrinted: 100,
-    logosCutGiven: 100,
+    logosPrinted: "",
+    logosGivenForCutting: "",
+    logosReceivedForCutting: "",
+    logosForPrinting: "",
     sampleLogosCount: 0,
     note: "",
   });
 
   useEffect(() => {
     if (selectedOrder) {
-      const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-      const sampleQty = selectedOrder.productionTaskData?.sampleLogosCount !== undefined ? Number(selectedOrder.productionTaskData.sampleLogosCount) : 0;
+      const prevData = selectedOrder.productionTaskData || {};
+      const isSubmitted = Boolean(prevData.printingSubmitted);
+      const printed = (isSubmitted && prevData.logosPrinted !== undefined && prevData.logosPrinted !== null && prevData.logosPrinted !== "")
+        ? prevData.logosPrinted
+        : "";
+      const givenForCut = (isSubmitted && (prevData.logosGivenForCutting !== undefined || prevData.logosCutGiven !== undefined))
+        ? (prevData.logosGivenForCutting ?? prevData.logosCutGiven)
+        : "";
+      const recForCut = prevData.logosReceivedForCutting !== undefined && prevData.logosReceivedForCutting !== null ? prevData.logosReceivedForCutting : "";
+      const forPrint = prevData.logosForPrinting !== undefined && prevData.logosForPrinting !== null ? prevData.logosForPrinting : "";
+      const sampleCount = prevData.sampleLogosCount !== undefined && prevData.sampleLogosCount !== null ? prevData.sampleLogosCount : 0;
+
       setProdForm({
-        logosPrinted: selectedOrder.productionTaskData?.logosPrinted ?? totalQty,
-        logosCutGiven: selectedOrder.productionTaskData?.logosCutGiven ?? totalQty,
-        sampleLogosCount: selectedOrder.productionTaskData?.sampleLogosCount ?? sampleQty,
-        note: "",
+        logosPrinted: printed,
+        logosGivenForCutting: givenForCut,
+        logosReceivedForCutting: recForCut,
+        logosForPrinting: forPrint,
+        sampleLogosCount: sampleCount,
+        note: prevData.note || "",
       });
     }
   }, [selectedOrder]);
 
-  // Stock Room Form State (on-page form instead of modal)
-  const [stockForm, setStockForm] = useState({
-    isStockAvailable: true,
-    notInStockCount: "",
-    sampleDeduction: 0,
-    stockDepreciation: "",
-    receivedCount: 0,
-    pendingCount: 0,
-    note: "",
-  });
+  // Per-item stock verification state (for Verification & previous stage review)
+  const [itemsStockData, setItemsStockData] = useState([]);
+
+  // Ready to pick state
+  const [readyToPickReceived, setReadyToPickReceived] = useState("yes"); // "yes" | "no"
+  const [readyToPickAttachments, setReadyToPickAttachments] = useState([]); // [{ name, url, size, type }]
+  const [readyToPickNotReceivedCount, setReadyToPickNotReceivedCount] = useState("");
+
+  // Staging room state
+  const [stagingSampleCorrect, setStagingSampleCorrect] = useState("yes"); // "yes" | "no"
+  const [stagingNotReceivedCount, setStagingNotReceivedCount] = useState("");
+
+  // Stock note for remarks / feedback
+  const [stockNote, setStockNote] = useState("");
+
+  // Helper to determine exact stock stage of an order
+  const getStockStage = (order) => {
+    if (!order) return "verification";
+    if (order.stockTaskStage === "completed") return "completed";
+    if (order.stockTaskStage === "staging_room") return "staging_room";
+    if (
+      order.stockTaskStage === "ready_to_pick" ||
+      order.stockTaskData?.verificationSubmitted === true
+    ) {
+      return "ready_to_pick";
+    }
+    return "verification";
+  };
+
+  // Helper for stock ALL view stage badges
+  const getStageBadgeInfo = (order) => {
+    const stage = getStockStage(order);
+    if (stage === "completed") return { label: "Completed", color: "#059669", bg: "#f8fafc", border: "#cbd5e1" };
+    if (stage === "staging_room") return { label: "Staging Room", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
+    if (stage === "ready_to_pick") return { label: "Ready to Pick", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
+    return { label: "Verification", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
+  };
+
+  // Helper to determine exact production stage of an order
+  const getProductionStage = (order) => {
+    if (!order) return "logo_printing";
+    if (order.productionTaskStage === "completed") {
+      return "completed";
+    }
+
+    // Only move to logo_cutting if logo printing has been submitted or stage is logo_cutting
+    if (
+      order.productionTaskStage === "logo_cutting" ||
+      order.productionTaskData?.printingSubmitted === true ||
+      order.productionTaskData?.submittedToLogoCutting === true
+    ) {
+      return "logo_cutting";
+    }
+
+    // Default starting stage for production is ALWAYS logo_printing
+    return "logo_printing";
+  };
+
+  // Helper for production ALL view stage badges
+  const getProductionStageBadgeInfo = (order) => {
+    const stage = getProductionStage(order);
+    if (stage === "completed") return { label: "Completed", color: "#059669", bg: "#f8fafc", border: "#cbd5e1" };
+    if (stage === "logo_cutting") return { label: "Logo Cutting", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
+    return { label: "Logo Printing", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
+  };
 
   useEffect(() => {
     if (selectedOrder) {
-      const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-      const sampleDeduction = selectedOrder.stockTaskData?.sampleDeduction !== undefined ? Number(selectedOrder.stockTaskData.sampleDeduction) : 0;
-      const isAvail = selectedOrder.stockTaskData?.isStockAvailable !== false;
-      const remaining = Math.max(0, totalQty - sampleDeduction);
-      const defaultDeprec = selectedOrder.stockTaskData?.stockDepreciation || (sampleDeduction > 0 ? `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.` : "");
+      const items = Array.isArray(selectedOrder.items) && selectedOrder.items.length > 0
+        ? selectedOrder.items
+        : [{ item: selectedOrder.item || "Apparel Item", quantity: selectedOrder.totalQuantity || 100 }];
 
-      setStockForm({
-        isStockAvailable: isAvail,
-        notInStockCount: selectedOrder.stockTaskData?.notInStockCount || "",
-        sampleDeduction: sampleDeduction,
-        stockDepreciation: defaultDeprec,
-        receivedCount: selectedOrder.stockTaskData?.receivedCount !== undefined ? Number(selectedOrder.stockTaskData.receivedCount) : sampleDeduction,
-        pendingCount: selectedOrder.stockTaskData?.pendingCount ?? 0,
-        note: "",
+      const prevItemsStockData = selectedOrder.stockTaskData?.itemsStockData || [];
+
+      const initializedItemsData = items.map((it, idx) => {
+        const saved = prevItemsStockData[idx] || {};
+        const isAvail = saved.isStockAvailable !== undefined ? saved.isStockAvailable : (selectedOrder.stockTaskData?.isStockAvailable !== false);
+        const sampleCount = saved.sampleDeduction !== undefined ? Number(saved.sampleDeduction) || 0 : (idx === 0 ? (Number(selectedOrder.stockTaskData?.sampleDeduction) || 0) : 0);
+        const deficitCount = saved.notInStockCount !== undefined ? saved.notInStockCount : (selectedOrder.stockTaskData?.notInStockCount || "");
+        const qty = Number(it.quantity) || 0;
+        const deficitNum = Number(deficitCount) || 0;
+        const rem = isAvail ? Math.max(0, qty - sampleCount) : Math.max(0, qty - deficitNum - sampleCount);
+
+        let defaultDeprec = saved.stockDepreciation;
+        if (!defaultDeprec || /full\s*stock|deficit|giving|available/i.test(defaultDeprec)) {
+          defaultDeprec = `${rem} pcs`;
+        }
+
+        return {
+          id: it.id || it._id || idx,
+          item: it.item || it.enterItem || it.itemType || "Apparel Item",
+          printingType: it.printingType || "",
+          sublimationOption: it.sublimationOption || it.sublimation || "",
+          fabric: it.fabric || "-",
+          quantity: it.quantity || 0,
+          size: it.size || "M",
+          color: it.color || "-",
+          isStockAvailable: isAvail,
+          notInStockCount: deficitCount,
+          sampleDeduction: sampleCount,
+          stockDepreciation: defaultDeprec,
+        };
       });
+
+      setItemsStockData(initializedItemsData);
+
+      // Ready to Pick state
+      setReadyToPickReceived(selectedOrder.stockTaskData?.readyToPickReceived === false ? "no" : "yes");
+      setReadyToPickAttachments(selectedOrder.stockTaskData?.readyToPickAttachments || []);
+      setReadyToPickNotReceivedCount(selectedOrder.stockTaskData?.readyToPickNotReceivedCount || "");
+
+      // Staging Room state
+      setStagingSampleCorrect(selectedOrder.stockTaskData?.stagingSampleCorrect === false ? "no" : "yes");
+      setStagingNotReceivedCount(selectedOrder.stockTaskData?.stagingNotReceivedCount || "");
+
+      // Reset stockNote
+      setStockNote("");
     }
   }, [selectedOrder]);
+
+  const handleItemStockChange = (idx, field, value) => {
+    setItemsStockData((prev) => {
+      const copy = [...prev];
+      const current = { ...copy[idx], [field]: value };
+
+      if (field !== "stockDepreciation") {
+        const qty = Number(current.quantity) || 0;
+        const sample = Number(field === "sampleDeduction" ? value : current.sampleDeduction) || 0;
+        const isAvail = field === "isStockAvailable" ? (value === true || value === "yes") : (current.isStockAvailable !== false);
+        const deficit = field === "notInStockCount" ? value : current.notInStockCount;
+        const deficitNum = Number(deficit) || 0;
+
+        current.isStockAvailable = isAvail;
+        if (isAvail) {
+          current.notInStockCount = "";
+          const rem = Math.max(0, qty - sample);
+          current.stockDepreciation = `${rem} pcs`;
+        } else {
+          current.notInStockCount = deficit;
+          const rem = Math.max(0, qty - deficitNum - sample);
+          current.stockDepreciation = `${rem} pcs`;
+        }
+      }
+
+      copy[idx] = current;
+      return copy;
+    });
+  };
+
+  const handleMultiFileUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setReadyToPickAttachments((prev) => [
+          ...prev,
+          {
+            name: file.name,
+            url: reader.result,
+            size: (file.size / 1024).toFixed(1) + " KB",
+            type: file.type,
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemoveReadyToPickAttachment = (idxToRemove) => {
+    setReadyToPickAttachments((prev) => prev.filter((_, idx) => idx !== idxToRemove));
+  };
 
   const handleExecutePageAction = async (actionType) => {
     if (!selectedOrder) return;
     const orderId = selectedOrder._id || selectedOrder.id;
 
-    if (roleView === "production" || currentTaskTab === "logo-cutting") {
+    if (roleView === "production" || currentTaskTab === "logo-printing" || currentTaskTab === "logo-cutting") {
+      if (currentTaskTab === "all") {
+        alert("Cannot submit or refer back from ALL view. Please select Logo Printing or Logo Cutting.");
+        return;
+      }
+
+      const activeProdStage = currentTaskTab === "logo-printing"
+        ? "logo_printing"
+        : "logo_cutting";
+
+      if (actionType === "submit" && activeProdStage === "logo_printing") {
+        if (prodForm.logosPrinted === "" || prodForm.logosGivenForCutting === "") {
+          alert("Please fill in Printed (pcs) and For Cutting (pcs) before submitting.");
+          return;
+        }
+      }
+
       if (actionType === "refer_back" && !prodForm.note.trim()) {
-        alert("Please provide production remarks/feedback explaining why this order is being referred back.");
+        alert(
+          activeProdStage === "logo_printing"
+            ? "Please provide production remarks/feedback explaining why this order is being referred back to Sales."
+            : "Please provide production remarks/feedback explaining why this order is being referred back to Logo Printing."
+        );
         return;
       }
 
@@ -221,12 +404,18 @@ export default function Approvals({ defaultTab = "all" }) {
       try {
         const payload = {
           action: actionType,
+          stage: activeProdStage,
           comment: prodForm.note.trim(),
           author: currentUser?.name || "Marcus Vance",
           productionTaskData: {
-            logosPrinted: Number(prodForm.logosPrinted) || selectedOrder.totalQuantity || 100,
-            logosCutGiven: Number(prodForm.logosCutGiven) || selectedOrder.totalQuantity || 100,
-            sampleLogosCount: Number(prodForm.sampleLogosCount) || 5,
+            printingSubmitted: activeProdStage === "logo_printing" ? (actionType === "submit") : true,
+            logosPrinted: prodForm.logosPrinted !== "" ? Number(prodForm.logosPrinted) : "",
+            logosGivenForCutting: prodForm.logosGivenForCutting !== "" ? Number(prodForm.logosGivenForCutting) : "",
+            logosCutGiven: prodForm.logosGivenForCutting !== "" ? Number(prodForm.logosGivenForCutting) : "",
+            logosReceivedForCutting: Number(prodForm.logosReceivedForCutting) || Number(prodForm.logosGivenForCutting) || 0,
+            logosForPrinting: Number(prodForm.logosForPrinting) || 0,
+            sampleLogosCount: Number(prodForm.sampleLogosCount) || 0,
+            note: prodForm.note.trim(),
           }
         };
 
@@ -234,13 +423,17 @@ export default function Approvals({ defaultTab = "all" }) {
         if (res.data?.success) {
           showToast(
             actionType === "submit"
-              ? `Order #${selectedOrder.orderId || "Order"} logo cutting approved!`
-              : `Order #${selectedOrder.orderId || "Order"} referred back.`
+              ? (activeProdStage === "logo_printing"
+                  ? `Order #${selectedOrder.orderId || "Order"} submitted to Logo Cutting!`
+                  : `Order #${selectedOrder.orderId || "Order"} logo cutting cleared & approved!`)
+              : (activeProdStage === "logo_cutting"
+                  ? `Order #${selectedOrder.orderId || "Order"} referred back to Logo Printing.`
+                  : `Order #${selectedOrder.orderId || "Order"} referred back to Sales.`)
           );
           setSelectedOrder(null);
           setManagerComment("");
           setSearchParams({});
-          navigate("/tasks/all");
+          navigate(activeProdStage === "logo_printing" && actionType === "submit" ? "/tasks/logo-cutting" : "/tasks/all");
           fetchOrders();
         }
       } catch (err) {
@@ -253,57 +446,122 @@ export default function Approvals({ defaultTab = "all" }) {
     }
 
     // For stock room:
-    if (roleView === "stock" || currentTaskTab === "ready-to-pick" || currentTaskTab === "staging-room") {
-      const isStaging = currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room";
-      const stage = isStaging ? "staging_room" : "ready_to_pick";
-
-      if (actionType === "refer_back" && !stockForm.note.trim()) {
-        alert("Please provide correction notes explaining why this order is being referred back.");
+    if (roleView === "stock" || isStockProfile) {
+      if (currentTaskTab === "all") {
+        alert("Cannot submit or refer back from ALL view. Please select the specific stage (Verification, Ready to Pick, or Staging Room).");
         return;
       }
+
+      const activeStage = currentTaskTab === "verification"
+        ? "verification"
+        : currentTaskTab === "ready-to-pick"
+        ? "ready_to_pick"
+        : "staging_room";
 
       setSubmittingAction(true);
       try {
         let payload;
-        if (stage === "ready_to_pick") {
+
+        if (activeStage === "verification") {
+          if (actionType === "refer_back" && !stockNote.trim()) {
+            alert("Please provide correction notes explaining why this order is being referred back to Sales.");
+            setSubmittingAction(false);
+            return;
+          }
+
+          const totalQty = itemsStockData.reduce((s, it) => s + (Number(it.quantity) || 0), 0);
+          const totalDeficit = itemsStockData.reduce((s, it) => s + (it.isStockAvailable === false ? (Number(it.notInStockCount) || 0) : 0), 0);
+          const totalSample = itemsStockData.reduce((s, it) => s + (Number(it.sampleDeduction) || 0), 0);
+          const allAvailable = itemsStockData.every(it => it.isStockAvailable !== false);
+          const totalRem = Math.max(0, totalQty - totalDeficit - totalSample);
+          const overallDeprec = `${totalRem} pcs`;
+
+          payload = {
+            action: actionType,
+            stage: "verification",
+            comment: stockNote.trim(),
+            author: currentUser?.name || "Elena Rostova",
+            stockTaskData: {
+              itemsStockData,
+              isStockAvailable: allAvailable,
+              sampleDeduction: totalSample,
+              stockDepreciation: overallDeprec,
+              verificationSubmitted: actionType === "submit",
+              verifiedAt: new Date(),
+            }
+          };
+        } else if (activeStage === "ready_to_pick") {
+          if (actionType === "submit" && readyToPickReceived === "no") {
+            alert("Sample is marked as not received. Please refer back to Verification or mark sample as received before submitting to Staging Room.");
+            setSubmittingAction(false);
+            return;
+          }
+          if (actionType === "refer_back" && !stockNote.trim()) {
+            alert("Please provide correction notes explaining why this order is being referred back to Verification.");
+            setSubmittingAction(false);
+            return;
+          }
+
           payload = {
             action: actionType,
             stage: "ready_to_pick",
-            comment: stockForm.note.trim(),
+            comment: stockNote.trim(),
             author: currentUser?.name || "Elena Rostova",
             stockTaskData: {
-              isStockAvailable: stockForm.isStockAvailable,
-              sampleDeduction: Number(stockForm.sampleDeduction) >= 0 ? Number(stockForm.sampleDeduction) : 0,
-              stockDepreciation: stockForm.stockDepreciation.trim() || (stockForm.isStockAvailable ? "Full stock available" : "Low stock"),
-              notInStockCount: Number(stockForm.notInStockCount) || 0,
+              readyToPickReceived: readyToPickReceived === "yes",
+              readyToPickAttachments: readyToPickReceived === "yes" ? readyToPickAttachments : [],
+              readyToPickNotReceivedCount: readyToPickReceived === "no" ? (Number(readyToPickNotReceivedCount) || 0) : 0,
+              readyToPickSubmitted: actionType === "submit",
+              readyToPickAt: new Date(),
             }
           };
-        } else {
+        } else if (activeStage === "staging_room") {
+          if (actionType === "submit" && stagingSampleCorrect === "no") {
+            alert("Sample count is marked as incorrect. Please refer back to Ready to Pick or verify sample count before submitting clearance.");
+            setSubmittingAction(false);
+            return;
+          }
+          if (actionType === "refer_back" && !stockNote.trim()) {
+            alert("Please provide correction notes explaining why this order is being referred back to Ready to Pick.");
+            setSubmittingAction(false);
+            return;
+          }
+
           payload = {
             action: actionType,
             stage: "staging_room",
-            comment: stockForm.note.trim(),
+            comment: stockNote.trim(),
             author: currentUser?.name || "Elena Rostova",
             stockTaskData: {
-              receivedCount: Number(stockForm.receivedCount) >= 0 ? Number(stockForm.receivedCount) : 0,
-              pendingCount: Number(stockForm.pendingCount) || 0,
-              sampleDeduction: Number(stockForm.sampleDeduction) >= 0 ? Number(stockForm.sampleDeduction) : 0,
+              stagingSampleCorrect: stagingSampleCorrect === "yes",
+              stagingNotReceivedCount: stagingSampleCorrect === "no" ? (Number(stagingNotReceivedCount) || 0) : 0,
+              stagingSubmitted: actionType === "submit",
+              stagingApprovedAt: new Date(),
             }
           };
         }
 
         const res = await api.patch(`/api/leads/${orderId}/stock-task`, payload);
         if (res.data?.success) {
-          if (stage === "ready_to_pick") {
+          if (activeStage === "verification") {
+            showToast(
+              actionType === "submit"
+                ? `Order #${selectedOrder.orderId || "Order"} verified and moved to Ready to Pick!`
+                : `Order #${selectedOrder.orderId || "Order"} referred back to Sales.`
+            );
+            setSelectedOrder(null);
+            setSearchParams({});
+            navigate(actionType === "submit" ? "/tasks/ready-to-pick" : "/tasks/all");
+            fetchOrders();
+          } else if (activeStage === "ready_to_pick") {
             showToast(
               actionType === "submit"
                 ? `Order #${selectedOrder.orderId || "Order"} moved to Staging Room!`
-                : `Order #${selectedOrder.orderId || "Order"} referred back.`
+                : `Order #${selectedOrder.orderId || "Order"} referred back to Verification.`
             );
             setSelectedOrder(null);
-            setManagerComment("");
             setSearchParams({});
-            navigate("/tasks/staging-room");
+            navigate(actionType === "submit" ? "/tasks/staging-room" : "/tasks/verification");
             fetchOrders();
           } else {
             showToast(
@@ -312,9 +570,8 @@ export default function Approvals({ defaultTab = "all" }) {
                 : `Order #${selectedOrder.orderId || "Order"} referred back to Ready to Pick.`
             );
             setSelectedOrder(null);
-            setManagerComment("");
             setSearchParams({});
-            navigate("/tasks/all");
+            navigate(actionType === "submit" ? "/tasks/all" : "/tasks/ready-to-pick");
             fetchOrders();
           }
         }
@@ -341,17 +598,19 @@ export default function Approvals({ defaultTab = "all" }) {
     try {
       const orderId = order._id || order.id;
       if (taskType === "ready_to_pick") {
-        const payload = {
-          action: actionType,
-          stage: "ready_to_pick",
-          comment: note.trim(),
-          author: currentUser?.name || "Elena Rostova",
-          stockTaskData: {
-            isStockAvailable,
-            sampleDeduction: Number(sampleDeduction) >= 0 ? Number(sampleDeduction) : 0,
-            stockDepreciation: stockDepreciation.trim() || (isStockAvailable ? "Full stock available" : "Low stock"),
-          }
-        };
+          const totalQty = order.totalQuantity || order.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
+          const rem = Math.max(0, totalQty - (Number(sampleDeduction) || 0));
+          const payload = {
+            action: actionType,
+            stage: "ready_to_pick",
+            comment: note.trim(),
+            author: currentUser?.name || "Elena Rostova",
+            stockTaskData: {
+              isStockAvailable,
+              sampleDeduction: Number(sampleDeduction) >= 0 ? Number(sampleDeduction) : 0,
+              stockDepreciation: stockDepreciation.trim() || `${rem} pcs`,
+            }
+          };
         const res = await api.patch(`/api/leads/${orderId}/stock-task`, payload);
         if (res.data?.success) {
           showToast(actionType === "submit" ? `Order #${order.orderId || "Order"} moved to Staging Room!` : `Order #${order.orderId || "Order"} referred back.`);
@@ -453,6 +712,15 @@ export default function Approvals({ defaultTab = "all" }) {
     }
   };
 
+  const formatPrintingType = (pt) => {
+    if (!pt) return "-";
+    const s = String(pt).trim();
+    if (s.toLowerCase() === "dtf") return "DTF";
+    if (s.toLowerCase() === "sublimation") return "Sublimation";
+    if (s.toLowerCase() === "embroidery") return "Embroidery";
+    return s;
+  };
+
   // Fetch all orders
   const fetchOrders = async () => {
     setLoading(true);
@@ -493,7 +761,7 @@ export default function Approvals({ defaultTab = "all" }) {
 
   // Select an order to review
   const handleSelectOrder = async (order) => {
-    if (currentTaskTab === "logo-cutting" || isProdProfile) {
+    if (currentTaskTab === "logo-printing" || currentTaskTab === "logo-cutting" || isProdProfile) {
       setRoleView("production");
     } else if (currentTaskTab === "verification" || currentTaskTab === "ready-to-pick" || currentTaskTab === "staging-room" || isStockProfile) {
       setRoleView("stock");
@@ -585,12 +853,14 @@ export default function Approvals({ defaultTab = "all" }) {
   const getOrderTaskStatus = (order) => {
     if (!order) return "Pending";
     if (roleView === "production" || isProdProfile) {
-      if (order.productionApproval?.status) return order.productionApproval.status;
+      if (order.productionApproval?.status === "Referred Back") return "Referred Back";
+      // Production is ONLY approved once productionTaskStage is completed
       if (order.productionTaskStage === "completed") return "Approved";
       return "Pending";
     }
     if (roleView === "stock" || isStockProfile) {
-      if (order.stockApproval?.status) return order.stockApproval.status;
+      if (order.stockApproval?.status === "Referred Back") return "Referred Back";
+      // Stock is ONLY approved once stockTaskStage is completed
       if (order.stockTaskStage === "completed") return "Approved";
       return "Pending";
     }
@@ -605,7 +875,10 @@ export default function Approvals({ defaultTab = "all" }) {
           o.orderStage === "partial" ||
           o.orderStage === "complete" ||
           o.leadApproval?.status === "Approved" ||
-          (!o.leadApproval && o.approvalStatus === "Approved")
+          (!o.leadApproval && o.approvalStatus === "Approved") ||
+          o.subStage === "dtf-pending" ||
+          o.subStage === "printing" ||
+          o.approvalComments?.some((c) => c.role === "Lead Manager" && c.status === "Approved")
       );
     }
     return orders;
@@ -614,21 +887,35 @@ export default function Approvals({ defaultTab = "all" }) {
   // Filtered orders for the active task tab
   const filteredOrders = useMemo(() => {
     return visibleOrders.filter((order) => {
-      // Role & tab-specific filtering
-      if (currentTaskTab === "verification") {
-        return false;
-      } else if (currentTaskTab === "ready-to-pick") {
-        if (order.stockTaskStage === "completed" || order.stockTaskStage === "staging_room") return false;
-      } else if (currentTaskTab === "staging-room") {
-        if (order.stockTaskStage !== "staging_room") return false;
+      // Direct tab-specific matching
+      if (currentTaskTab === "logo-printing") {
+        if (getProductionStage(order) !== "logo_printing") return false;
       } else if (currentTaskTab === "logo-cutting") {
-        if (order.productionTaskStage === "completed") return false;
+        if (getProductionStage(order) !== "logo_cutting") return false;
+      } else if (currentTaskTab === "verification") {
+        if (getStockStage(order) !== "verification") return false;
+      } else if (currentTaskTab === "ready-to-pick") {
+        if (getStockStage(order) !== "ready_to_pick") return false;
+      } else if (currentTaskTab === "staging-room") {
+        if (getStockStage(order) !== "staging_room") return false;
       } else if (currentTaskTab === "all") {
         const orderStatus = getOrderTaskStatus(order).toLowerCase();
-        // Tab filter within 'all' view
-        if (statusTab === "pending" && orderStatus !== "pending") return false;
-        if (statusTab === "referred-back" && orderStatus !== "referred back") return false;
-        if (statusTab === "approved" && orderStatus !== "approved") return false;
+        if (isProdProfile || roleView === "production") {
+          const prodStage = getProductionStage(order);
+          if (statusTab === "pending" && (prodStage === "completed" || orderStatus !== "pending")) return false;
+          if (statusTab === "referred-back" && orderStatus !== "referred back") return false;
+          if (statusTab === "approved" && (prodStage !== "completed" && orderStatus !== "approved")) return false;
+        } else if (isStockProfile || roleView === "stock") {
+          const stockStage = getStockStage(order);
+          if (statusTab === "pending" && (stockStage === "completed" || orderStatus !== "pending")) return false;
+          if (statusTab === "referred-back" && orderStatus !== "referred back") return false;
+          if (statusTab === "approved" && (stockStage !== "completed" && orderStatus !== "approved")) return false;
+        } else {
+          // Admin Master View
+          if (statusTab === "pending" && orderStatus !== "pending") return false;
+          if (statusTab === "referred-back" && orderStatus !== "referred back") return false;
+          if (statusTab === "approved" && orderStatus !== "approved") return false;
+        }
       }
 
       // Search filter
@@ -703,14 +990,16 @@ export default function Approvals({ defaultTab = "all" }) {
                 type="text"
                 placeholder={
                   currentTaskTab === "verification"
-                    ? "Search verification tasks..."
+                    ? "Search verification..."
                     : currentTaskTab === "ready-to-pick"
-                    ? "Search Order ID, employee, company, item..."
+                    ? "Search ready to pick..."
                     : currentTaskTab === "staging-room"
-                      ? "Search Order ID, company..."
-                      : currentTaskTab === "logo-cutting"
-                        ? "Search Order ID, logo, employee..."
-                        : "Search tasks & orders..."
+                      ? "Search staging room..."
+                      : currentTaskTab === "logo-printing"
+                        ? "Search logo printing..."
+                        : currentTaskTab === "logo-cutting"
+                          ? "Search logo cutting..."
+                          : "Search tasks..."
                 }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -730,6 +1019,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>Employee Name</th>
                       <th>Company Name</th>
                       <th>Date</th>
+                      <th>Items</th>
                       <th>Status</th>
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
@@ -738,14 +1028,14 @@ export default function Approvals({ defaultTab = "all" }) {
                   {/* READY TO PICK TABLE HEADERS */}
                   {currentTaskTab === "ready-to-pick" && (
                     <tr>
-                      <th>Is Stock Available?</th>
-                      <th>Total Stock</th>
                       <th>Order ID</th>
                       <th>Employee Name</th>
                       <th>Company Name</th>
-                      <th>Add Item's Items</th>
                       <th>Date</th>
-                      <th>Stock Depreciation / Sample</th>
+                      <th>Items</th>
+                      <th>Stock Status</th>
+                      <th>For Sample</th>
+                      <th>Status</th>
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -754,13 +1044,31 @@ export default function Approvals({ defaultTab = "all" }) {
                   {currentTaskTab === "staging-room" && (
                     <tr>
                       <th>Order ID</th>
+                      <th>Employee Name</th>
                       <th>Company Name</th>
                       <th>Date</th>
-                      <th>Stock Status</th>
-                      <th>Given for Sample</th>
-                      <th>Received Count</th>
-                      <th>Order Count Breakdown</th>
-                      <th>Pending</th>
+                      <th>Items</th>
+                      <th>For Sample</th>
+                      <th>Sample Received</th>
+                      <th>Sample Files</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: "right" }}>Action</th>
+                    </tr>
+                  )}
+
+                  {/* LOGO PRINTING TABLE HEADERS */}
+                  {currentTaskTab === "logo-printing" && (
+                    <tr>
+                      <th>Order ID</th>
+                      <th>Employee Name</th>
+                      <th>Company Name</th>
+                      <th>Date</th>
+                      <th>Attachments</th>
+                      <th>Logo Name</th>
+                      <th>Needed</th>
+                      <th>Printed</th>
+                      <th>For Cutting</th>
+                      <th>Status</th>
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -770,14 +1078,16 @@ export default function Approvals({ defaultTab = "all" }) {
                     <tr>
                       <th>Order ID</th>
                       <th>Employee Name</th>
-                      <th>Date</th>
-                      <th>Logo Name</th>
-                      <th>Attachment</th>
                       <th>Company Name</th>
-                      <th>Logos Needed</th>
-                      <th>Logos Printed</th>
-                      <th>Logos Cut / Given</th>
-                      <th>Giving for Sample</th>
+                      <th>Date</th>
+                      <th>Attachments</th>
+                      <th>Logo Name</th>
+                      <th>Printed</th>
+                      <th>For Cutting</th>
+                      <th>Received</th>
+                      <th>For Printing</th>
+                      <th>For Sample</th>
+                      <th>Status</th>
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -789,8 +1099,9 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>Order ID</th>
                       <th>Employee Name</th>
                       <th>Company Name</th>
-                      <th>Date Created</th>
-                      <th>Items of "Add Items"</th>
+                      <th>Date</th>
+                      <th>Stage</th>
+                      <th>Items</th>
                       <th>Status</th>
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
@@ -802,8 +1113,9 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>Order ID</th>
                       <th>Employee Name</th>
                       <th>Company Name</th>
-                      <th>Date Created</th>
-                      <th>Attachment & Logo</th>
+                      <th>Date</th>
+                      <th>Stage</th>
+                      <th>Logo Name</th>
                       <th>Status</th>
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
@@ -849,12 +1161,9 @@ export default function Approvals({ defaultTab = "all" }) {
                           color: "#64748b",
                         }}
                       >
-                        <ClipboardCheck size={40} color="#94a3b8" style={{ marginBottom: "10px", display: "inline-block" }} />
-                        <div style={{ fontWeight: 600, fontSize: "15px", color: "#334155" }}>
-                          No Orders in {currentTaskTab.replace(/-/g, " ").toUpperCase()}
-                        </div>
-                        <div style={{ fontSize: "13px", marginTop: "4px", color: "#94a3b8" }}>
-                          There are currently no orders waiting in this stage.
+                        <ClipboardCheck size={36} color="#94a3b8" style={{ marginBottom: "8px", display: "inline-block" }} />
+                        <div style={{ fontWeight: 600, fontSize: "14px", color: "#64748b" }}>
+                          No Orders Found
                         </div>
                       </td>
                     </tr>
@@ -868,31 +1177,16 @@ export default function Approvals({ defaultTab = "all" }) {
                       const taskIdDisplay = order.taskId || (order.orderId ? `TSK-${order.orderId.replace(/^ORD-?/i, "")}` : `TSK-${String(order._id || order.id).slice(-5).toUpperCase()}`);
 
                       /* =========================================================================
-                         1. READY TO PICK (Stock Room Manager Task)
+                         1. VERIFICATION (Stock Room Manager Task)
                          ========================================================================= */
-                      if (currentTaskTab === "ready-to-pick") {
-                        const isAvail = order.stockTaskData?.isStockAvailable !== false;
-                        const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
-                        const remaining = Math.max(0, totalStockQty - sampleDeduction);
-
+                      if (currentTaskTab === "verification") {
                         return (
                           <tr
                             key={order._id || order.id}
                             onClick={() => handleSelectOrder(order)}
                             style={{ cursor: "pointer" }}
-                            title="Click to view full order details"
+                            title="Click to view and verify stock"
                           >
-                            <td>
-                              <span style={{ color: isAvail ? "#059669" : "#dc2626", fontWeight: 600, fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                {isAvail ? <CheckCircle size={13} /> : <AlertCircle size={13} />}
-                                {isAvail ? "In Stock (Yes)" : "Not in Stock"}
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
-                                {totalStockQty} pcs
-                              </span>
-                            </td>
                             <td>
                               <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
@@ -907,6 +1201,9 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
+                              <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
+                            </td>
+                            <td>
                               <div className="items-summary-cell">
                                 <span className="items-preview-text">
                                   {itemsList.length > 0
@@ -918,42 +1215,13 @@ export default function Approvals({ defaultTab = "all" }) {
                               </div>
                             </td>
                             <td>
-                              <span className="date-value">{dateStr}</span>
-                            </td>
-                            <td>
-                              <div style={{ fontSize: "12px", color: "#334155", display: "flex", flexDirection: "column", gap: "2px" }}>
-                                <span>Giving for Sample: <strong>{sampleDeduction} pcs</strong></span>
-                                <span style={{ color: "#059669", fontSize: "11px" }}>
-                                  {order.stockTaskData?.stockDepreciation || `Stock remaining: ${remaining} pcs`}
-                                </span>
-                              </div>
+                              <span className={`status-pill ${st.toLowerCase().replace(/\s+/g, "-")}`}>
+                                <span className="status-dot"></span>
+                                {st}
+                              </span>
                             </td>
                             <td style={{ textAlign: "right" }}>
                               <div className="task-action-btn-group">
-                                <button
-                                  type="button"
-                                  className="action-btn view-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Open full order details"
-                                >
-                                  <Eye size={13} />
-                                  View
-                                </button>
-                                <button
-                                  type="button"
-                                  className="action-btn refer-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Open order details to refer back"
-                                >
-                                  <RotateCcw size={13} />
-                                  Refer Back
-                                </button>
                                 <button
                                   type="button"
                                   className="action-btn submit-btn"
@@ -961,10 +1229,10 @@ export default function Approvals({ defaultTab = "all" }) {
                                     e.stopPropagation();
                                     handleSelectOrder(order);
                                   }}
-                                  title="Open order details to review and submit"
+                                  title="Verify Stock"
                                 >
-                                  <CheckCircle size={13} />
-                                  Submit
+                                  <CheckSquare size={13} />
+                                  Verify
                                 </button>
                               </div>
                             </td>
@@ -973,27 +1241,26 @@ export default function Approvals({ defaultTab = "all" }) {
                       }
 
                       /* =========================================================================
-                         2. STAGING ROOM (Stock Room Manager Task)
+                         2. READY TO PICK (Stock Room Manager Task)
                          ========================================================================= */
-                      if (currentTaskTab === "staging-room") {
+                      if (currentTaskTab === "ready-to-pick") {
+                        const isAvail = order.stockTaskData?.isStockAvailable !== false;
                         const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
-                        const receivedCount = order.stockTaskData?.receivedCount !== undefined ? Number(order.stockTaskData.receivedCount) : sampleDeduction;
-                        const pendingCount = order.stockTaskData?.pendingCount || 0;
-                        const breakdown = itemsList.length > 0
-                          ? itemsList.map((it) => `${it.quantity || 0} ${it.color ? it.color + " " : ""}${it.item || it.enterItem || "pcs"}`).join(", ")
-                          : `${totalStockQty} pcs total`;
 
                         return (
                           <tr
                             key={order._id || order.id}
                             onClick={() => handleSelectOrder(order)}
                             style={{ cursor: "pointer" }}
-                            title="Click to view full order details"
+                            title="Click to view ready to pick details"
                           >
                             <td>
                               <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
                               </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>{order.employeeName || "Sales Executive"}</span>
                             </td>
                             <td>
                               <span style={{ fontWeight: 600, color: "#1e293b" }}>
@@ -1004,56 +1271,35 @@ export default function Approvals({ defaultTab = "all" }) {
                               <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
                             </td>
                             <td>
-                              <span style={{ color: "#059669", fontWeight: 600, fontSize: "13px" }}>
-                                In Stock ({totalStockQty} pcs)
+                              <div className="items-summary-cell">
+                                <span className="items-preview-text">
+                                  {itemsList.length > 0
+                                    ? itemsList
+                                      .map((it) => `${it.item || it.enterItem || "Apparel"} (${it.quantity || 0} pcs${it.fabric ? `, ${it.fabric}` : ""})`)
+                                      .join(", ")
+                                    : "No items"}
+                                </span>
+                              </div>
+                            </td>
+                            <td>
+                              <span style={{ color: isAvail ? "#059669" : "#dc2626", fontWeight: 600, fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                {isAvail ? <CheckCircle size={13} /> : <AlertCircle size={13} />}
+                                {isAvail ? "In Stock (Yes)" : `Deficit (${order.stockTaskData?.notInStockCount || "0"} pcs)`}
                               </span>
                             </td>
                             <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>
+                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
                                 {sampleDeduction} pcs
                               </span>
                             </td>
                             <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>
-                                {receivedCount} pcs
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ fontSize: "13px", color: "#334155" }}>
-                                {breakdown}
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: pendingCount > 0 ? "#b45309" : "#059669", fontSize: "13px", fontWeight: 600 }}>
-                                {pendingCount} pcs
+                              <span className={`status-pill ${st.toLowerCase().replace(/\s+/g, "-")}`}>
+                                <span className="status-dot"></span>
+                                {st}
                               </span>
                             </td>
                             <td style={{ textAlign: "right" }}>
                               <div className="task-action-btn-group">
-                                <button
-                                  type="button"
-                                  className="action-btn view-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Open full order details"
-                                >
-                                  <Eye size={13} />
-                                  View
-                                </button>
-                                <button
-                                  type="button"
-                                  className="action-btn refer-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Open order details to refer back"
-                                >
-                                  <RotateCcw size={13} />
-                                  Refer Back
-                                </button>
                                 <button
                                   type="button"
                                   className="action-btn submit-btn"
@@ -1061,10 +1307,10 @@ export default function Approvals({ defaultTab = "all" }) {
                                     e.stopPropagation();
                                     handleSelectOrder(order);
                                   }}
-                                  title="Open order details to review and submit"
+                                  title="Pick & Attach Sample"
                                 >
-                                  <CheckCircle size={13} />
-                                  Submit
+                                  <Package size={13} />
+                                  Pick
                                 </button>
                               </div>
                             </td>
@@ -1073,19 +1319,110 @@ export default function Approvals({ defaultTab = "all" }) {
                       }
 
                       /* =========================================================================
-                         3. LOGO CUTTING (Production Lead Task)
+                         3. STAGING ROOM (Stock Room Manager Task)
                          ========================================================================= */
-                      if (currentTaskTab === "logo-cutting") {
-                        const logosPrinted = order.productionTaskData?.logosPrinted || totalStockQty;
-                        const logosCutGiven = order.productionTaskData?.logosCutGiven || totalStockQty;
-                        const sampleLogos = order.productionTaskData?.sampleLogosCount || 5;
+                      if (currentTaskTab === "staging-room") {
+                        const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
+                        const sampleReceived = order.stockTaskData?.readyToPickReceived !== false;
+                        const attCount = order.stockTaskData?.readyToPickAttachments?.length || 0;
 
                         return (
                           <tr
                             key={order._id || order.id}
                             onClick={() => handleSelectOrder(order)}
                             style={{ cursor: "pointer" }}
-                            title="Click to view full order details"
+                            title="Click to view staging details"
+                          >
+                            <td>
+                              <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
+                                {order.orderId || "Pending ID"}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>{order.employeeName || "Sales Executive"}</span>
+                            </td>
+                            <td>
+                              <span style={{ fontWeight: 600, color: "#1e293b" }}>
+                                {order.companyName || order.clientName || "-"}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
+                            </td>
+                            <td>
+                              <div className="items-summary-cell">
+                                <span className="items-preview-text">
+                                  {itemsList.length > 0
+                                    ? itemsList
+                                      .map((it) => `${it.item || it.enterItem || "Apparel"} (${it.quantity || 0} pcs${it.fabric ? `, ${it.fabric}` : ""})`)
+                                      .join(", ")
+                                    : "No items"}
+                                </span>
+                              </div>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
+                                {sampleDeduction} pcs
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: sampleReceived ? "#059669" : "#dc2626", fontSize: "13px", fontWeight: 600 }}>
+                                {sampleReceived ? "Yes, Received" : "Not Received"}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#2563eb", fontSize: "12.5px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                <Paperclip size={12} /> {attCount} file{attCount === 1 ? "" : "s"}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`status-pill ${st.toLowerCase().replace(/\s+/g, "-")}`}>
+                                <span className="status-dot"></span>
+                                {st}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              <div className="task-action-btn-group">
+                                <button
+                                  type="button"
+                                  className="action-btn submit-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSelectOrder(order);
+                                  }}
+                                  title="Check & Verify Sample"
+                                >
+                                  <Boxes size={13} />
+                                  Check
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      /* =========================================================================
+                         3. LOGO PRINTING (Production Lead Task)
+                         ========================================================================= */
+                      if (currentTaskTab === "logo-printing") {
+                        const hasPrinted = order.productionTaskData?.logosPrinted !== undefined && order.productionTaskData?.logosPrinted !== "" && order.productionTaskData?.logosPrinted !== null;
+                        const logosPrinted = hasPrinted ? `${order.productionTaskData.logosPrinted} pcs` : "-";
+
+                        const hasCutting = (order.productionTaskData?.logosGivenForCutting !== undefined && order.productionTaskData?.logosGivenForCutting !== "" && order.productionTaskData?.logosGivenForCutting !== null)
+                          || (order.productionTaskData?.logosCutGiven !== undefined && order.productionTaskData?.logosCutGiven !== "" && order.productionTaskData?.logosCutGiven !== null);
+                        const cuttingVal = order.productionTaskData?.logosGivenForCutting ?? order.productionTaskData?.logosCutGiven;
+                        const logosGivenForCutting = hasCutting ? `${cuttingVal} pcs` : "-";
+                        const logoDesignFile = order.logoDesign || order.attachment;
+                        const logoDesignName = order.logoDesignName || order.attachmentName || "Logo Design";
+                        const digitalDesignFile = order.digitalDesign;
+                        const digitalDesignName = order.digitalDesignName || "Digital Design";
+
+                        return (
+                          <tr
+                            key={order._id || order.id}
+                            onClick={() => handleSelectOrder(order)}
+                            style={{ cursor: "pointer" }}
+                            title="Click to review and print logos"
                           >
                             <td>
                               <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
@@ -1096,49 +1433,75 @@ export default function Approvals({ defaultTab = "all" }) {
                               <span style={{ color: "#334155" }}>{order.employeeName || "Sales Executive"}</span>
                             </td>
                             <td>
+                              <span style={{ fontWeight: 600, color: "#1e293b" }}>
+                                {order.companyName || order.clientName || "-"}
+                              </span>
+                            </td>
+                            <td>
                               <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                                {logoDesignFile ? (
+                                  <a
+                                    href={logoDesignFile}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download={logoDesignName}
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={logoDesignName}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      color: "#2563eb",
+                                      fontSize: "12px",
+                                      textDecoration: "underline",
+                                      maxWidth: "140px",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                  >
+                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{logoDesignName}</span>
+                                  </a>
+                                ) : (
+                                  <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>No file</span>
+                                )}
+
+                                {digitalDesignFile ? (
+                                  <a
+                                    href={digitalDesignFile}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download={digitalDesignName}
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={digitalDesignName}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      color: "#2563eb",
+                                      fontSize: "12px",
+                                      textDecoration: "underline",
+                                      maxWidth: "140px",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                  >
+                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{digitalDesignName}</span>
+                                  </a>
+                                ) : (
+                                  <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>No file</span>
+                                )}
+                              </div>
                             </td>
                             <td>
                               <span style={{ color: "#334155", fontSize: "13px" }}>
                                 {order.logoName || "Plain / No Logo"}
-                              </span>
-                            </td>
-                            <td>
-                              {order.attachment ? (
-                                <a
-                                  href={order.attachment}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  download={order.attachmentName || "artwork-attachment"}
-                                  onClick={(e) => e.stopPropagation()}
-                                  title={order.attachmentName || "Download Artwork Attachment"}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "4px",
-                                    color: "#2563eb",
-                                    fontSize: "12.5px",
-                                    textDecoration: "underline",
-                                    maxWidth: "140px",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap"
-                                  }}
-                                >
-                                  <Paperclip size={12} style={{ flexShrink: 0 }} />
-                                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                                    {order.attachmentName || "Artwork"}
-                                  </span>
-                                </a>
-                              ) : (
-                                <span style={{ fontSize: "12px", color: "#94a3b8" }}>
-                                  No Artwork
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              <span style={{ fontWeight: 600, color: "#1e293b" }}>
-                                {order.companyName || order.clientName || "-"}
                               </span>
                             </td>
                             <td>
@@ -1147,42 +1510,23 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>{logosPrinted} pcs</span>
+                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
+                                {logosPrinted}
+                              </span>
                             </td>
                             <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>{logosCutGiven} pcs</span>
+                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
+                                {logosGivenForCutting}
+                              </span>
                             </td>
                             <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>
-                                {sampleLogos} pcs
+                              <span className={`status-pill ${st.toLowerCase().replace(/\s+/g, "-")}`}>
+                                <span className="status-dot"></span>
+                                {st}
                               </span>
                             </td>
                             <td style={{ textAlign: "right" }}>
                               <div className="task-action-btn-group">
-                                <button
-                                  type="button"
-                                  className="action-btn view-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Open full order details"
-                                >
-                                  <Eye size={13} />
-                                  View
-                                </button>
-                                <button
-                                  type="button"
-                                  className="action-btn refer-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Open order specifications to refer back"
-                                >
-                                  <RotateCcw size={13} />
-                                  Refer Back
-                                </button>
                                 <button
                                   type="button"
                                   className="action-btn submit-btn"
@@ -1190,10 +1534,169 @@ export default function Approvals({ defaultTab = "all" }) {
                                     e.stopPropagation();
                                     handleSelectOrder(order);
                                   }}
-                                  title="Open order specifications to review and submit"
+                                  title="Review & Print Logos"
                                 >
-                                  <CheckCircle size={13} />
-                                  Submit
+                                  <Printer size={13} />
+                                  Review
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      /* =========================================================================
+                         4. LOGO CUTTING (Production Lead Task)
+                         ========================================================================= */
+                      if (currentTaskTab === "logo-cutting") {
+                        const hasPrinted = order.productionTaskData?.logosPrinted !== undefined && order.productionTaskData?.logosPrinted !== "" && order.productionTaskData?.logosPrinted !== null;
+                        const logosPrinted = hasPrinted ? `${order.productionTaskData.logosPrinted} pcs` : "-";
+
+                        const hasCutting = (order.productionTaskData?.logosGivenForCutting !== undefined && order.productionTaskData?.logosGivenForCutting !== "" && order.productionTaskData?.logosGivenForCutting !== null)
+                          || (order.productionTaskData?.logosCutGiven !== undefined && order.productionTaskData?.logosCutGiven !== "" && order.productionTaskData?.logosCutGiven !== null);
+                        const cuttingVal = order.productionTaskData?.logosGivenForCutting ?? order.productionTaskData?.logosCutGiven;
+                        const logosGivenForCutting = hasCutting ? `${cuttingVal} pcs` : "-";
+
+                        const hasReceived = order.productionTaskData?.logosReceivedForCutting !== undefined && order.productionTaskData?.logosReceivedForCutting !== "";
+                        const logosReceivedForCutting = hasReceived ? `${order.productionTaskData.logosReceivedForCutting} pcs` : logosGivenForCutting;
+                        const forPrintingLogo = order.productionTaskData?.logosForPrinting || 0;
+                        const sampleLogos = order.productionTaskData?.sampleLogosCount !== undefined ? order.productionTaskData.sampleLogosCount : 0;
+                        const logoDesignFile = order.logoDesign || order.attachment;
+                        const logoDesignName = order.logoDesignName || order.attachmentName || "Logo Design";
+                        const digitalDesignFile = order.digitalDesign;
+                        const digitalDesignName = order.digitalDesignName || "Digital Design";
+
+                        return (
+                          <tr
+                            key={order._id || order.id}
+                            onClick={() => handleSelectOrder(order)}
+                            style={{ cursor: "pointer" }}
+                            title="Click to review and cut logos"
+                          >
+                            <td>
+                              <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
+                                {order.orderId || "Pending ID"}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155" }}>{order.employeeName || "Sales Executive"}</span>
+                            </td>
+                            <td>
+                              <span style={{ fontWeight: 600, color: "#1e293b" }}>
+                                {order.companyName || order.clientName || "-"}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                                {logoDesignFile ? (
+                                  <a
+                                    href={logoDesignFile}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download={logoDesignName}
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={logoDesignName}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      color: "#2563eb",
+                                      fontSize: "12px",
+                                      textDecoration: "underline",
+                                      maxWidth: "130px",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                  >
+                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{logoDesignName}</span>
+                                  </a>
+                                ) : (
+                                  <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>No file</span>
+                                )}
+
+                                {digitalDesignFile ? (
+                                  <a
+                                    href={digitalDesignFile}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download={digitalDesignName}
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={digitalDesignName}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      color: "#2563eb",
+                                      fontSize: "12px",
+                                      textDecoration: "underline",
+                                      maxWidth: "130px",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                  >
+                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{digitalDesignName}</span>
+                                  </a>
+                                ) : (
+                                  <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>No file</span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>
+                                {order.logoName || "Plain / No Logo"}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
+                                {logosPrinted}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
+                                {logosGivenForCutting}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
+                                {logosReceivedForCutting}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>
+                                {forPrintingLogo} pcs
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>
+                                {sampleLogos} pcs
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`status-pill ${st.toLowerCase().replace(/\s+/g, "-")}`}>
+                                <span className="status-dot"></span>
+                                {st}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              <div className="task-action-btn-group">
+                                <button
+                                  type="button"
+                                  className="action-btn submit-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSelectOrder(order);
+                                  }}
+                                  title="Review & Cut Logos"
+                                >
+                                  <Scissors size={13} />
+                                  Review
                                 </button>
                               </div>
                             </td>
@@ -1206,6 +1709,7 @@ export default function Approvals({ defaultTab = "all" }) {
                          ========================================================================= */
                       if (roleView === "stock") {
                         const stockStatus = getOrderTaskStatus(order);
+                        const stageInfo = getStageBadgeInfo(order);
                         return (
                           <tr
                             key={order._id || order.id}
@@ -1236,6 +1740,23 @@ export default function Approvals({ defaultTab = "all" }) {
                             </td>
                             <td>
                               <span className="date-value">{dateStr}</span>
+                            </td>
+                            <td>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "3px 8px",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  backgroundColor: stageInfo.bg,
+                                  color: stageInfo.color,
+                                  border: `1px solid ${stageInfo.border}`,
+                                }}
+                              >
+                                {stageInfo.label}
+                              </span>
                             </td>
                             <td>
                               <div className="items-summary-cell">
@@ -1272,13 +1793,14 @@ export default function Approvals({ defaultTab = "all" }) {
                             <td style={{ textAlign: "right" }}>
                               <button
                                 type="button"
-                                className="review-btn stock"
+                                className="action-btn view-btn"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleSelectOrder(order);
                                 }}
+                                title="View order details (read-only in ALL)"
                               >
-                                <Eye size={15} />
+                                <Eye size={13} />
                                 View
                               </button>
                             </td>
@@ -1288,6 +1810,7 @@ export default function Approvals({ defaultTab = "all" }) {
 
                       if (roleView === "production") {
                         const prodStatus = getOrderTaskStatus(order);
+                        const stageInfo = getProductionStageBadgeInfo(order);
                         return (
                           <tr
                             key={order._id || order.id}
@@ -1320,50 +1843,26 @@ export default function Approvals({ defaultTab = "all" }) {
                               <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
                             </td>
                             <td>
-                              <div className="logo-attachment-cell" style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-start" }}>
-                                {order.attachment ? (
-                                  <a
-                                    href={order.attachment}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    download={order.attachmentName || "artwork-attachment"}
-                                    onClick={(e) => e.stopPropagation()}
-                                    title={order.attachmentName || "Download Artwork Attachment"}
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "4px",
-                                      color: "#2563eb",
-                                      fontSize: "12.5px",
-                                      textDecoration: "underline",
-                                      maxWidth: "180px",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap"
-                                    }}
-                                  >
-                                    <Paperclip size={12} style={{ flexShrink: 0 }} />
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                                      {order.attachmentName || "Attachment"}
-                                    </span>
-                                  </a>
-                                ) : (
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "4px",
-                                      fontSize: "12px",
-                                      color: "#94a3b8"
-                                    }}
-                                  >
-                                    <Paperclip size={11} /> No Attachment
-                                  </span>
-                                )}
-                                <span style={{ color: "#334155", fontSize: "12.5px" }}>
-                                  {order.logoName || "Plain / No Logo"}
-                                </span>
-                              </div>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "3px 8px",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  backgroundColor: stageInfo.bg,
+                                  color: stageInfo.color,
+                                  border: `1px solid ${stageInfo.border}`,
+                                }}
+                              >
+                                {stageInfo.label}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>
+                                {order.logoName || "Plain / No Logo"}
+                              </span>
                             </td>
                             <td>
                               <span
@@ -1382,13 +1881,14 @@ export default function Approvals({ defaultTab = "all" }) {
                             <td style={{ textAlign: "right" }}>
                               <button
                                 type="button"
-                                className="review-btn production"
+                                className="action-btn view-btn"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleSelectOrder(order);
                                 }}
+                                title="View order details (read-only in ALL)"
                               >
-                                <Eye size={15} />
+                                <Eye size={13} />
                                 View
                               </button>
                             </td>
@@ -1492,7 +1992,7 @@ export default function Approvals({ defaultTab = "all" }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
               <button type="button" onClick={handleBackToList} className="back-link-btn">
                 <ArrowLeft size={18} />
-                <span>Back to Tasks</span>
+                <span>Back</span>
               </button>
 
               {!isAdminProfile && (
@@ -1509,29 +2009,61 @@ export default function Approvals({ defaultTab = "all" }) {
                       Approved
                     </span>
                   )}
-                  <button
-                    type="button"
-                    className="btn-refer-back"
-                    onClick={() => handleExecutePageAction("refer_back")}
-                    disabled={submittingAction}
-                  >
-                    <RotateCcw size={15} />
-                    <span>Refer Back</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-approve"
-                    onClick={() => handleExecutePageAction("submit")}
-                    disabled={submittingAction}
-                  >
-                    <CheckCircle size={15} />
-                    <span>
-                      {(roleView === "production" && (selectedOrder.productionApproval?.status === "Approved" || selectedOrder.productionTaskStage === "completed")) ||
-                      (roleView === "stock" && (selectedOrder.stockApproval?.status === "Approved" || selectedOrder.stockTaskStage === "completed"))
-                        ? "Update & Submit"
-                        : "Submit"}
+                  {((roleView === "stock" || roleView === "production") && currentTaskTab === "all") ? (
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        color: "#475569",
+                        fontWeight: 600,
+                        padding: "7px 14px",
+                        background: "#f8fafc",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <Eye size={15} color="#64748b" /> View Only ({roleView === "production" ? getProductionStageBadgeInfo(selectedOrder).label : getStageBadgeInfo(selectedOrder).label})
                     </span>
-                  </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-refer-back"
+                        onClick={() => handleExecutePageAction("refer_back")}
+                        disabled={submittingAction}
+                      >
+                        <RotateCcw size={15} />
+                        <span>Refer Back</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-approve"
+                        onClick={() => handleExecutePageAction("submit")}
+                        disabled={submittingAction}
+                      >
+                        <CheckCircle size={15} />
+                        <span>
+                          {roleView === "stock"
+                            ? (currentTaskTab === "verification"
+                              ? "Submit to Ready to Pick"
+                              : currentTaskTab === "ready-to-pick"
+                              ? "Submit to Staging Room"
+                              : currentTaskTab === "staging-room"
+                              ? "Submit Clearance"
+                              : "Submit")
+                            : (currentTaskTab === "logo-printing"
+                              ? "Submit to Logo Cutting"
+                              : currentTaskTab === "logo-cutting"
+                              ? "Submit Clearance"
+                              : (selectedOrder.productionApproval?.status === "Approved" || selectedOrder.productionTaskStage === "completed")
+                              ? "Update & Submit"
+                              : "Submit")}
+                        </span>
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1598,518 +2130,803 @@ export default function Approvals({ defaultTab = "all" }) {
              ========================================================================= */}
           {roleView === "stock" && (
             <div className="review-form-wrapper">
+              {(() => {
+                const activeStockStage = currentTaskTab === "all"
+                  ? getStockStage(selectedOrder)
+                  : (currentTaskTab === "verification" ? "verification" : currentTaskTab === "ready-to-pick" ? "ready_to_pick" : "staging_room");
+                const isViewOnlyStock = currentTaskTab === "all" || getStockStage(selectedOrder) === "completed";
+                const stageBadge = getStageBadgeInfo(selectedOrder);
+                const itemsToRender = itemsStockData.length > 0
+                  ? itemsStockData
+                  : (Array.isArray(selectedOrder.items) && selectedOrder.items.length > 0
+                    ? selectedOrder.items.map((it, idx) => ({
+                        id: it.id || it._id || idx,
+                        item: it.item || it.enterItem || it.itemType || "Apparel Item",
+                        printingType: it.printingType || "",
+                        sublimationOption: it.sublimationOption || it.sublimation || "",
+                        fabric: it.fabric || "-",
+                        quantity: it.quantity || 0,
+                        size: it.size || "M",
+                        color: it.color || "-",
+                        isStockAvailable: true,
+                        notInStockCount: "",
+                        sampleDeduction: 0,
+                        stockDepreciation: `${it.quantity || 0} pcs`,
+                      }))
+                    : [{
+                        id: 0,
+                        item: selectedOrder.item || "Apparel Item",
+                        printingType: selectedOrder.printingType || "",
+                        sublimationOption: selectedOrder.sublimationOption || selectedOrder.sublimation || "",
+                        fabric: selectedOrder.fabric || "-",
+                        quantity: selectedOrder.totalQuantity || 100,
+                        size: "M",
+                        color: "-",
+                        isStockAvailable: true,
+                        notInStockCount: "",
+                        sampleDeduction: 0,
+                        stockDepreciation: `${selectedOrder.totalQuantity || 100} pcs`,
+                      }]);
 
-              {/* SINGLE UNIFIED FORM CARD */}
-              <div className="form-card">
-                <div className="form-card-header">
-                  <Package size={18} />
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
-                    {currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room"
-                      ? "Staging Room"
-                      : "Ready to Pick"}
-                  </h3>
-                </div>
+                const hasSublimation = itemsToRender.some(
+                  (it) =>
+                    String(it.printingType || "").toLowerCase().trim() === "sublimation" ||
+                    (it.sublimationOption && it.sublimationOption !== "-" && it.sublimationOption !== "") ||
+                    (it.sublimation && it.sublimation !== "-" && it.sublimation !== "")
+                );
 
-                {/* 1. ORDER & LEAD DETAILS */}
-                <div className="form-grid-4" style={{ marginBottom: "20px" }}>
-                  {/* 1. Order ID */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Order ID</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.orderId || "Pending Order ID"}
-                      className="read-only-input bold"
-                      style={{ fontSize: "14px" }}
-                    />
-                  </div>
+                return (
+                  <div className="form-card">
+                    {/* Header */}
+                    <div className="form-card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <Package size={18} />
+                        <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
+                          {currentTaskTab === "verification"
+                            ? "Verification"
+                            : currentTaskTab === "ready-to-pick"
+                            ? "Ready to Pick"
+                            : currentTaskTab === "staging-room"
+                            ? "Staging Room"
+                            : `Overview (${stageBadge.label})`}
+                        </h3>
+                      </div>
+                      {currentTaskTab === "all" && (
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            padding: "4px 10px",
+                            borderRadius: "6px",
+                            backgroundColor: "#f8fafc",
+                            color: "#334155",
+                            border: "1px solid #e2e8f0",
+                          }}
+                        >
+                          Stage: {stageBadge.label}
+                        </span>
+                      )}
+                    </div>
 
-                  {/* 2. Employee Name */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Employee Name (Sales Rep)</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.employeeName || "Sales Executive"}
-                      className="read-only-input bold"
-                      style={{ fontSize: "14px" }}
-                    />
-                  </div>
+                    {/* 1. ORDER & LEAD DETAILS */}
+                    <div className="form-grid-4" style={{ marginBottom: "20px" }}>
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Order ID</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={selectedOrder.orderId || "Pending Order ID"}
+                          className="read-only-input bold"
+                          style={{ fontSize: "14px" }}
+                        />
+                      </div>
 
-                  {/* 3. Company Name */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Company Name</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.companyName || selectedOrder.clientName || "-"}
-                      className="read-only-input bold"
-                      style={{ fontSize: "14px" }}
-                    />
-                  </div>
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Employee Name</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={selectedOrder.employeeName || "Sales Executive"}
+                          className="read-only-input bold"
+                          style={{ fontSize: "14px" }}
+                        />
+                      </div>
 
-                  {/* 4. Date when the lead was created */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Date When Lead Was Created</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={formatLeadDate(selectedOrder.createdAt)}
-                      className="read-only-input bold"
-                      style={{ fontSize: "14px" }}
-                    />
-                  </div>
-                </div>
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Company Name</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={selectedOrder.companyName || selectedOrder.clientName || "-"}
+                          className="read-only-input bold"
+                          style={{ fontSize: "14px" }}
+                        />
+                      </div>
 
-                {/* 2. ITEMS ATTACHED TABLE WITH STOCK CLEARANCE FIELDS IN FRONT OF COLOR */}
-                <div className="table-responsive">
-                  <table className="items-review-table stock-review-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: "32px", textAlign: "center", padding: "10px 6px", fontSize: "12.5px" }}>#</th>
-                        <th style={{ minWidth: "90px", padding: "10px 8px", fontSize: "12.5px" }}>Item Description</th>
-                        <th style={{ minWidth: "75px", padding: "10px 8px", fontSize: "12.5px" }}>Printing Type</th>
-                        <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Sublimation</th>
-                        <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Fabric</th>
-                        <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Quantity</th>
-                        <th style={{ minWidth: "40px", padding: "10px 8px", fontSize: "12.5px" }}>Size</th>
-                        <th style={{ minWidth: "55px", padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
-                        {!(currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room") ? (
-                          <>
-                            <th style={{ minWidth: "130px", padding: "10px 8px", fontSize: "12.5px" }}>Is stock available?</th>
-                            <th style={{ minWidth: "90px", padding: "10px 8px", fontSize: "12.5px" }}>How many giving for sample? (pcs)</th>
-                            <th style={{ minWidth: "160px", padding: "10px 8px", fontSize: "12.5px" }}>Stock Depreciation</th>
-                          </>
-                        ) : (
-                          <>
-                            <th style={{ minWidth: "90px", padding: "10px 8px", fontSize: "12.5px" }}>Given for Sample (pcs)</th>
-                            <th style={{ minWidth: "105px", padding: "10px 8px", fontSize: "12.5px" }}>Received at Staging (pcs)</th>
-                            <th style={{ minWidth: "85px", padding: "10px 8px", fontSize: "12.5px" }}>Pending (pcs)</th>
-                          </>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(!selectedOrder.items || selectedOrder.items.length === 0) ? (
-                        <tr>
-                          <td style={{ textAlign: "center", padding: "9px 6px", fontSize: "13.5px" }}>1</td>
-                          <td className="item-name-cell" style={{ padding: "9px 8px", fontSize: "13.5px" }}>{selectedOrder.item || "Apparel Item"}</td>
-                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>Standard</td>
-                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>-</td>
-                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>Standard</td>
-                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{selectedOrder.totalQuantity || 0} pcs</td>
-                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>-</td>
-                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>-</td>
-                          {!(currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room") ? (
-                            <>
-                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                <select
-                                  value={stockForm.isStockAvailable ? "yes" : "no"}
-                                  onChange={(e) => {
-                                    const isAvail = e.target.value === "yes";
-                                    const totalQty = selectedOrder.totalQuantity || 100;
-                                    const sampleDeduction = Number(stockForm.sampleDeduction) >= 0 ? Number(stockForm.sampleDeduction) : 0;
-                                    const remaining = Math.max(0, totalQty - sampleDeduction);
-                                    setStockForm(prev => ({
-                                      ...prev,
-                                      isStockAvailable: isAvail,
-                                      stockDepreciation: isAvail
-                                        ? (sampleDeduction > 0 ? `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
-                                        : `Deficit in stock. Giving ${sampleDeduction} for sample.`
-                                    }));
-                                  }}
-                                  style={{
-                                    width: "100%",
-                                    padding: "7px 10px",
-                                    borderRadius: "6px",
-                                    border: "1px solid #cbd5e1",
-                                    fontSize: "13.5px",
-                                    fontWeight: 500,
-                                    color: "#1e293b",
-                                    backgroundColor: "#ffffff",
-                                    outline: "none",
-                                    boxSizing: "border-box"
-                                  }}
-                                >
-                                  <option value="yes">Yes, in stock</option>
-                                  <option value="no">No, deficit</option>
-                                </select>
-                                {!stockForm.isStockAvailable && (
-                                  <div style={{ marginTop: "6px" }}>
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      placeholder="Deficit pcs"
-                                      value={stockForm.notInStockCount}
-                                      onChange={(e) => setStockForm({ ...stockForm, notInStockCount: e.target.value })}
-                                      style={{
-                                        width: "100%",
-                                        padding: "6px 8px",
-                                        borderRadius: "6px",
-                                        border: "1px solid #cbd5e1",
-                                        fontSize: "13px",
-                                        color: "#1e293b",
-                                        backgroundColor: "#ffffff",
-                                        outline: "none",
-                                        boxSizing: "border-box"
-                                      }}
-                                    />
-                                  </div>
-                                )}
-                              </td>
-                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={stockForm.sampleDeduction}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    const totalQty = selectedOrder.totalQuantity || 100;
-                                    const sampleNum = Number(val) >= 0 ? Number(val) : 0;
-                                    const remaining = Math.max(0, totalQty - sampleNum);
-                                    setStockForm(prev => ({
-                                      ...prev,
-                                      sampleDeduction: val,
-                                      stockDepreciation: prev.isStockAvailable
-                                        ? (sampleNum > 0 ? `Giving ${sampleNum} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
-                                        : `Deficit in stock. Giving ${sampleNum} for sample.`
-                                    }));
-                                  }}
-                                  style={{
-                                    width: "100%",
-                                    padding: "7px 8px",
-                                    borderRadius: "6px",
-                                    border: "1px solid #cbd5e1",
-                                    fontSize: "13.5px",
-                                    fontWeight: 600,
-                                    color: "#1e293b",
-                                    backgroundColor: "#ffffff",
-                                    outline: "none",
-                                    textAlign: "center",
-                                    boxSizing: "border-box"
-                                  }}
-                                />
-                              </td>
-                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                <input
-                                  type="text"
-                                  value={stockForm.stockDepreciation}
-                                  onChange={(e) => setStockForm({ ...stockForm, stockDepreciation: e.target.value })}
-                                  placeholder="e.g. Giving 5 for sample. Remaining: 95 in stock."
-                                  style={{
-                                    width: "100%",
-                                    padding: "7px 10px",
-                                    borderRadius: "6px",
-                                    border: "1px solid #cbd5e1",
-                                    fontSize: "13.5px",
-                                    fontWeight: 500,
-                                    color: "#1e293b",
-                                    backgroundColor: "#ffffff",
-                                    outline: "none",
-                                    boxSizing: "border-box"
-                                  }}
-                                />
-                              </td>
-                            </>
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Date</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={formatLeadDate(selectedOrder.createdAt)}
+                          className="read-only-input bold"
+                          style={{ fontSize: "14px" }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 2. ITEMS ATTACHED TABLE (Stage-Specific Columns) */}
+                    <div className="table-responsive">
+                      <table className="items-review-table stock-review-table">
+                        <thead>
+                          {activeStockStage === "verification" ? (
+                            <tr>
+                              <th style={{ minWidth: "36px", textAlign: "center", padding: "10px 6px", fontSize: "12.5px" }}>S.N</th>
+                              <th style={{ minWidth: "90px", padding: "10px 8px", fontSize: "12.5px" }}>Item</th>
+                              <th style={{ minWidth: "75px", padding: "10px 8px", fontSize: "12.5px" }}>Printing Type</th>
+                              {hasSublimation && (
+                                <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Sublimation</th>
+                              )}
+                              <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Fabric</th>
+                              <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Quantity</th>
+                              <th style={{ minWidth: "40px", padding: "10px 8px", fontSize: "12.5px" }}>Size</th>
+                              <th style={{ minWidth: "55px", padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
+                              <th style={{ minWidth: "120px", padding: "10px 8px", fontSize: "12.5px" }}>Stock Available</th>
+                              <th style={{ minWidth: "100px", padding: "10px 8px", fontSize: "12.5px" }}>Deficit</th>
+                              <th style={{ minWidth: "110px", padding: "10px 8px", fontSize: "12.5px" }}>For Sample (pcs)</th>
+                              <th style={{ minWidth: "160px", padding: "10px 8px", fontSize: "12.5px" }}>Depreciation Note</th>
+                            </tr>
+                          ) : activeStockStage === "ready_to_pick" ? (
+                            <tr>
+                              <th style={{ minWidth: "36px", textAlign: "center", padding: "10px 6px", fontSize: "12.5px" }}>S.N</th>
+                              <th style={{ minWidth: "90px", padding: "10px 8px", fontSize: "12.5px" }}>Item</th>
+                              <th style={{ minWidth: "75px", padding: "10px 8px", fontSize: "12.5px" }}>Printing Type</th>
+                              {hasSublimation && (
+                                <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Sublimation</th>
+                              )}
+                              <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Fabric</th>
+                              <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Quantity</th>
+                              <th style={{ minWidth: "40px", padding: "10px 8px", fontSize: "12.5px" }}>Size</th>
+                              <th style={{ minWidth: "55px", padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
+                              <th style={{ minWidth: "120px", padding: "10px 8px", fontSize: "12.5px" }}>Stock Status</th>
+                              <th style={{ minWidth: "100px", padding: "10px 8px", fontSize: "12.5px" }}>For Sample</th>
+                              <th style={{ minWidth: "160px", padding: "10px 8px", fontSize: "12.5px" }}>Depreciation Note</th>
+                            </tr>
                           ) : (
-                            <>
-                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={stockForm.sampleDeduction}
-                                  onChange={(e) => setStockForm({ ...stockForm, sampleDeduction: e.target.value })}
-                                  style={{
-                                    width: "100%",
-                                    padding: "7px 8px",
-                                    borderRadius: "6px",
-                                    border: "1px solid #cbd5e1",
-                                    fontSize: "13.5px",
-                                    fontWeight: 600,
-                                    color: "#1e293b",
-                                    backgroundColor: "#ffffff",
-                                    outline: "none",
-                                    textAlign: "center",
-                                    boxSizing: "border-box"
-                                  }}
-                                />
-                              </td>
-                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={stockForm.receivedCount}
-                                  onChange={(e) => setStockForm({ ...stockForm, receivedCount: e.target.value })}
-                                  style={{
-                                    width: "100%",
-                                    padding: "7px 8px",
-                                    borderRadius: "6px",
-                                    border: "1px solid #cbd5e1",
-                                    fontSize: "13.5px",
-                                    fontWeight: 600,
-                                    color: "#1e293b",
-                                    backgroundColor: "#ffffff",
-                                    outline: "none",
-                                    textAlign: "center",
-                                    boxSizing: "border-box"
-                                  }}
-                                />
-                              </td>
-                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={stockForm.pendingCount}
-                                  onChange={(e) => setStockForm({ ...stockForm, pendingCount: e.target.value })}
-                                  style={{
-                                    width: "100%",
-                                    padding: "7px 8px",
-                                    borderRadius: "6px",
-                                    border: "1px solid #cbd5e1",
-                                    fontSize: "13.5px",
-                                    fontWeight: 600,
-                                    color: "#1e293b",
-                                    backgroundColor: "#ffffff",
-                                    outline: "none",
-                                    textAlign: "center",
-                                    boxSizing: "border-box"
-                                  }}
-                                />
-                              </td>
-                            </>
+                            <tr>
+                              <th style={{ minWidth: "36px", textAlign: "center", padding: "10px 6px", fontSize: "12.5px" }}>S.N</th>
+                              <th style={{ minWidth: "90px", padding: "10px 8px", fontSize: "12.5px" }}>Item</th>
+                              <th style={{ minWidth: "75px", padding: "10px 8px", fontSize: "12.5px" }}>Printing Type</th>
+                              {hasSublimation && (
+                                <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Sublimation</th>
+                              )}
+                              <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Fabric</th>
+                              <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Quantity</th>
+                              <th style={{ minWidth: "40px", padding: "10px 8px", fontSize: "12.5px" }}>Size</th>
+                              <th style={{ minWidth: "55px", padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
+                              <th style={{ minWidth: "120px", padding: "10px 8px", fontSize: "12.5px" }}>Stock Status</th>
+                              <th style={{ minWidth: "100px", padding: "10px 8px", fontSize: "12.5px" }}>For Sample</th>
+                              <th style={{ minWidth: "130px", padding: "10px 8px", fontSize: "12.5px" }}>Pickup Status</th>
+                            </tr>
                           )}
-                        </tr>
-                      ) : (
-                        selectedOrder.items.map((it, idx) => (
-                          <tr key={it.id || it._id || idx}>
-                            <td style={{ textAlign: "center", padding: "9px 6px", fontSize: "13.5px" }}>{idx + 1}</td>
-                            <td className="item-name-cell" style={{ padding: "9px 8px", fontSize: "13.5px" }}>
-                              {it.item || it.enterItem || it.itemType || "Apparel Item"}
-                            </td>
-                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.printingType || "Standard"}</td>
-                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.sublimationOption || "-"}</td>
-                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.fabric || "Standard Fabric"}</td>
-                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.quantity ? `${it.quantity} pcs` : "0 pcs"}</td>
-                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.size || "M"}</td>
-                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.color || "-"}</td>
+                        </thead>
+                        <tbody>
+                          {itemsToRender.map((it, idx) => {
+                            const isAvail = it.isStockAvailable !== false;
+                            const samplePcs = Number(it.sampleDeduction) || 0;
+                            const deficitPcs = it.notInStockCount || "";
+                            const deficitNum = Number(deficitPcs) || 0;
+                            const rem = isAvail ? Math.max(0, (Number(it.quantity) || 0) - samplePcs) : Math.max(0, (Number(it.quantity) || 0) - deficitNum - samplePcs);
+                            const rawDeprec = it.stockDepreciation;
+                            const deprecNote = (!rawDeprec || /full\s*stock|deficit|giving|available/i.test(rawDeprec))
+                              ? `${rem} pcs`
+                              : rawDeprec;
 
-                            {/* STOCK CLEARANCE FIELDS IN FRONT OF COLOR */}
-                            {idx === 0 && (
-                              !(currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room") ? (
-                                <>
-                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                    <select
-                                      value={stockForm.isStockAvailable ? "yes" : "no"}
-                                      onChange={(e) => {
-                                        const isAvail = e.target.value === "yes";
-                                        const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-                                        const sampleDeduction = Number(stockForm.sampleDeduction) >= 0 ? Number(stockForm.sampleDeduction) : 0;
-                                        const remaining = Math.max(0, totalQty - sampleDeduction);
-                                        setStockForm(prev => ({
-                                          ...prev,
-                                          isStockAvailable: isAvail,
-                                          stockDepreciation: isAvail
-                                            ? (sampleDeduction > 0 ? `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
-                                            : `Deficit in stock. Giving ${sampleDeduction} for sample.`
-                                        }));
-                                      }}
-                                      style={{
-                                        width: "100%",
-                                        padding: "7px 10px",
-                                        borderRadius: "6px",
-                                        border: "1px solid #cbd5e1",
-                                        fontSize: "13.5px",
-                                        fontWeight: 500,
-                                        color: "#1e293b",
-                                        backgroundColor: "#ffffff",
-                                        outline: "none",
-                                        boxSizing: "border-box"
-                                      }}
-                                    >
-                                      <option value="yes">Yes, in stock</option>
-                                      <option value="no">No, deficit</option>
-                                    </select>
-                                    {!stockForm.isStockAvailable && (
-                                      <div style={{ marginTop: "6px" }}>
-                                        <input
-                                          type="number"
-                                          min="1"
-                                          placeholder="Deficit pcs"
-                                          value={stockForm.notInStockCount}
-                                          onChange={(e) => setStockForm({ ...stockForm, notInStockCount: e.target.value })}
+                            return (
+                              <tr key={it.id || idx}>
+                                <td style={{ textAlign: "center", padding: "9px 6px", fontSize: "13.5px" }}>{idx + 1}</td>
+                                <td className="item-name-cell" style={{ padding: "9px 8px", fontSize: "13.5px" }}>
+                                  {it.item || it.enterItem || it.itemType || "Apparel Item"}
+                                </td>
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{formatPrintingType(it.printingType)}</td>
+                                {hasSublimation && (
+                                  <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.sublimationOption || it.sublimation || "-"}</td>
+                                )}
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.fabric || "-"}</td>
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.quantity ? `${it.quantity} pcs` : "0 pcs"}</td>
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.size || "M"}</td>
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.color || "-"}</td>
+
+                                {activeStockStage === "verification" ? (
+                                  <>
+                                    {/* Stock Available */}
+                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                      {isViewOnlyStock ? (
+                                        <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "13px" }}>
+                                          {isAvail ? "In Stock" : "Deficit"}
+                                        </span>
+                                      ) : (
+                                        <select
+                                          value={isAvail ? "yes" : "no"}
+                                          onChange={(e) => handleItemStockChange(idx, "isStockAvailable", e.target.value === "yes")}
                                           style={{
-                                            width: "100%",
-                                            padding: "6px 8px",
+                                            padding: "7px 10px",
                                             borderRadius: "6px",
                                             border: "1px solid #cbd5e1",
-                                            fontSize: "13px",
+                                            fontSize: "13.5px",
+                                            fontWeight: 500,
+                                            color: "#1e293b",
+                                            backgroundColor: "#ffffff",
+                                            outline: "none",
+                                            width: "100%",
+                                            minWidth: "115px",
+                                            boxSizing: "border-box"
+                                          }}
+                                        >
+                                          <option value="yes">In Stock</option>
+                                          <option value="no">Deficit</option>
+                                        </select>
+                                      )}
+                                    </td>
+
+                                    {/* Depreciation / Deficit */}
+                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                      {isAvail ? (
+                                        <span style={{ color: "#475569", fontSize: "13px", fontWeight: 500 }}>
+                                          Full ({it.quantity || 0} pcs)
+                                        </span>
+                                      ) : (
+                                        isViewOnlyStock ? (
+                                          <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
+                                            {deficitPcs ? `${deficitPcs} pcs` : "Deficit"}
+                                          </span>
+                                        ) : (
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            placeholder="Deficit"
+                                            value={deficitPcs}
+                                            onChange={(e) => handleItemStockChange(idx, "notInStockCount", e.target.value)}
+                                            style={{
+                                              width: "100%",
+                                              padding: "7px 10px",
+                                              borderRadius: "6px",
+                                              border: "1px solid #cbd5e1",
+                                              backgroundColor: "#ffffff",
+                                              fontSize: "13.5px",
+                                              fontWeight: 500,
+                                              color: "#1e293b",
+                                              outline: "none",
+                                              boxSizing: "border-box"
+                                            }}
+                                          />
+                                        )
+                                      )}
+                                    </td>
+
+                                    {/* How many given for sample */}
+                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                      {isViewOnlyStock ? (
+                                        <span style={{ fontWeight: 600, fontSize: "13.5px", color: "#1e293b" }}>
+                                          {samplePcs} pcs
+                                        </span>
+                                      ) : (
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={it.sampleDeduction ?? 0}
+                                          onChange={(e) => handleItemStockChange(idx, "sampleDeduction", e.target.value)}
+                                          style={{
+                                            width: "100%",
+                                            maxWidth: "80px",
+                                            padding: "7px 8px",
+                                            borderRadius: "6px",
+                                            border: "1px solid #cbd5e1",
+                                            fontSize: "13.5px",
+                                            fontWeight: 500,
+                                            color: "#1e293b",
+                                            backgroundColor: "#ffffff",
+                                            outline: "none",
+                                            textAlign: "center",
+                                            boxSizing: "border-box"
+                                          }}
+                                        />
+                                      )}
+                                    </td>
+
+                                    {/* Stock Depreciation Note */}
+                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                      {isViewOnlyStock ? (
+                                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>
+                                          {deprecNote}
+                                        </span>
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          value={deprecNote}
+                                          onChange={(e) => handleItemStockChange(idx, "stockDepreciation", e.target.value)}
+                                          placeholder={`${rem} pcs`}
+                                          style={{
+                                            width: "100%",
+                                            minWidth: "130px",
+                                            padding: "7px 10px",
+                                            borderRadius: "6px",
+                                            border: "1px solid #cbd5e1",
+                                            fontSize: "13.5px",
+                                            fontWeight: 600,
                                             color: "#1e293b",
                                             backgroundColor: "#ffffff",
                                             outline: "none",
                                             boxSizing: "border-box"
                                           }}
                                         />
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      value={stockForm.sampleDeduction}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-                                        const sampleNum = Number(val) >= 0 ? Number(val) : 0;
-                                        const remaining = Math.max(0, totalQty - sampleNum);
-                                        setStockForm(prev => ({
-                                          ...prev,
-                                          sampleDeduction: val,
-                                          stockDepreciation: prev.isStockAvailable
-                                            ? (sampleNum > 0 ? `Giving ${sampleNum} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
-                                            : `Deficit in stock. Giving ${sampleNum} for sample.`
-                                        }));
-                                      }}
-                                      style={{
-                                        width: "100%",
-                                        padding: "7px 8px",
-                                        borderRadius: "6px",
-                                        border: "1px solid #cbd5e1",
-                                        fontSize: "13.5px",
-                                        fontWeight: 600,
-                                        color: "#1e293b",
-                                        backgroundColor: "#ffffff",
-                                        outline: "none",
-                                        textAlign: "center",
-                                        boxSizing: "border-box"
-                                      }}
-                                    />
-                                  </td>
-                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                    <input
-                                      type="text"
-                                      value={stockForm.stockDepreciation}
-                                      onChange={(e) => setStockForm({ ...stockForm, stockDepreciation: e.target.value })}
-                                      placeholder="e.g. Giving 5 for sample. Remaining: 95 in stock."
-                                      style={{
-                                        width: "100%",
-                                        padding: "7px 10px",
-                                        borderRadius: "6px",
-                                        border: "1px solid #cbd5e1",
-                                        fontSize: "13.5px",
-                                        fontWeight: 500,
-                                        color: "#1e293b",
-                                        backgroundColor: "#ffffff",
-                                        outline: "none",
-                                        boxSizing: "border-box"
-                                      }}
-                                    />
-                                  </td>
-                                </>
-                              ) : (
-                                <>
-                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      value={stockForm.sampleDeduction}
-                                      onChange={(e) => setStockForm({ ...stockForm, sampleDeduction: e.target.value })}
-                                      style={{
-                                        width: "100%",
-                                        padding: "7px 8px",
-                                        borderRadius: "6px",
-                                        border: "1px solid #cbd5e1",
-                                        fontSize: "13.5px",
-                                        fontWeight: 600,
-                                        color: "#1e293b",
-                                        backgroundColor: "#ffffff",
-                                        outline: "none",
-                                        textAlign: "center",
-                                        boxSizing: "border-box"
-                                      }}
-                                    />
-                                  </td>
-                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      value={stockForm.receivedCount}
-                                      onChange={(e) => setStockForm({ ...stockForm, receivedCount: e.target.value })}
-                                      style={{
-                                        width: "100%",
-                                        padding: "7px 8px",
-                                        borderRadius: "6px",
-                                        border: "1px solid #cbd5e1",
-                                        fontSize: "13.5px",
-                                        fontWeight: 600,
-                                        color: "#1e293b",
-                                        backgroundColor: "#ffffff",
-                                        outline: "none",
-                                        textAlign: "center",
-                                        boxSizing: "border-box"
-                                      }}
-                                    />
-                                  </td>
-                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      value={stockForm.pendingCount}
-                                      onChange={(e) => setStockForm({ ...stockForm, pendingCount: e.target.value })}
-                                      style={{
-                                        width: "100%",
-                                        padding: "7px 8px",
-                                        borderRadius: "6px",
-                                        border: "1px solid #cbd5e1",
-                                        fontSize: "13.5px",
-                                        fontWeight: 600,
-                                        color: "#1e293b",
-                                        backgroundColor: "#ffffff",
-                                        outline: "none",
-                                        textAlign: "center",
-                                        boxSizing: "border-box"
-                                      }}
-                                    />
-                                  </td>
-                                </>
-                              )
-                            )}
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                                      )}
+                                    </td>
+                                  </>
+                                ) : activeStockStage === "ready_to_pick" ? (
+                                  <>
+                                    {/* Stock Status from Verification */}
+                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
+                                        {isAvail ? "In Stock" : `Deficit (${deficitPcs || "0"} pcs)`}
+                                      </span>
+                                    </td>
 
-                {/* 3. CORRECTION NOTES / REMARKS (UNDERNEATH TABLE) */}
-                <div style={{ marginTop: "18px" }}>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                    {currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room"
-                      ? "Staging Room Remarks / Correction Notes (Mandatory if referring back):"
-                      : "Correction Notes / Remarks (Mandatory if referring back to Sales):"}
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder={currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room"
-                      ? "Add staging remarks or correction reasons if referring back..."
-                      : "Add stock notes, shortages or reasons if referring back..."}
-                    value={stockForm.note}
-                    onChange={(e) => setStockForm({ ...stockForm, note: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "13.5px",
-                      color: "#1e293b",
-                      backgroundColor: "#ffffff",
-                      outline: "none",
-                      resize: "vertical",
-                      boxSizing: "border-box"
-                    }}
-                  />
-                </div>
-              </div>
+                                    {/* Given for Sample */}
+                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13.5px" }}>
+                                        {samplePcs} pcs
+                                      </span>
+                                    </td>
+
+                                    {/* Depreciation Note */}
+                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
+                                        {deprecNote}
+                                      </span>
+                                    </td>
+                                  </>
+                                ) : (
+                                  <>
+                                    {/* Stock Status */}
+                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
+                                        {isAvail ? "In Stock" : `Deficit (${deficitPcs || 0} pcs)`}
+                                      </span>
+                                    </td>
+
+                                    {/* Given for Sample */}
+                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13.5px" }}>
+                                        {samplePcs} pcs
+                                      </span>
+                                    </td>
+
+                                    {/* Ready to Pick Status */}
+                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
+                                        {selectedOrder.stockTaskData?.readyToPickReceived !== false
+                                          ? "Received"
+                                          : `Deficit (${selectedOrder.stockTaskData?.readyToPickNotReceivedCount || 0} pcs)`}
+                                      </span>
+                                    </td>
+                                  </>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* READY TO PICK CLEARANCE & MULTI-FILE ATTACHMENT */}
+                    {activeStockStage === "ready_to_pick" && (
+                      <div
+                        style={{
+                          marginTop: "24px",
+                          paddingTop: "20px",
+                          borderTop: "1px solid #e2e8f0"
+                        }}
+                      >
+                        <h4
+                          style={{
+                            margin: "0 0 14px 0",
+                            fontSize: "15px",
+                            fontWeight: 600,
+                            color: "#1e293b",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px"
+                          }}
+                        >
+                          <Package size={17} />
+                          Ready to Pick
+                        </h4>
+
+                        {/* Question: Sample Received? */}
+                        <div style={{ marginBottom: "16px" }}>
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "8px" }}>
+                            Sample Received?
+                          </label>
+                          {isViewOnlyStock ? (
+                            <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "13.5px" }}>
+                              {readyToPickReceived === "yes" ? "Yes" : `No (${readyToPickNotReceivedCount || 0} pcs)`}
+                            </span>
+                          ) : (
+                            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                              <button
+                                type="button"
+                                onClick={() => setReadyToPickReceived("yes")}
+                                style={{
+                                  padding: "8px 18px",
+                                  borderRadius: "6px",
+                                  fontSize: "13.5px",
+                                  fontWeight: 600,
+                                  border: readyToPickReceived === "yes" ? "2px solid #0f172a" : "1px solid #cbd5e1",
+                                  background: "#ffffff",
+                                  color: "#0f172a",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px"
+                                }}
+                              >
+                                <CheckCircle size={15} />
+                                Yes
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setReadyToPickReceived("no")}
+                                style={{
+                                  padding: "8px 18px",
+                                  borderRadius: "6px",
+                                  fontSize: "13.5px",
+                                  fontWeight: 600,
+                                  border: readyToPickReceived === "no" ? "2px solid #0f172a" : "1px solid #cbd5e1",
+                                  background: "#ffffff",
+                                  color: "#0f172a",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px"
+                                }}
+                              >
+                                <AlertCircle size={15} />
+                                No
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* IF YES: Multi-file attachment option */}
+                        {readyToPickReceived === "yes" && (
+                          <div style={{ marginTop: "16px" }}>
+                            <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "8px" }}>
+                              Sample Attachments:
+                            </label>
+                            {!isViewOnlyStock && (
+                              <div style={{ marginBottom: "12px" }}>
+                                <input
+                                  type="file"
+                                  id="multiSampleUploadInput"
+                                  multiple
+                                  onChange={handleMultiFileUpload}
+                                  style={{ display: "none" }}
+                                />
+                                <label
+                                  htmlFor="multiSampleUploadInput"
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "8px",
+                                    padding: "8px 16px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    background: "#ffffff",
+                                    color: "#0f172a",
+                                    fontSize: "13.5px",
+                                    fontWeight: 500,
+                                    cursor: "pointer"
+                                  }}
+                                >
+                                  <Upload size={15} />
+                                  Upload Files
+                                </label>
+                              </div>
+                            )}
+
+                            {/* Render Attached Files */}
+                            {readyToPickAttachments.length > 0 ? (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                                {readyToPickAttachments.map((file, fIdx) => (
+                                  <div
+                                    key={fIdx}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "8px",
+                                      padding: "6px 12px",
+                                      borderRadius: "6px",
+                                      background: "#ffffff",
+                                      border: "1px solid #cbd5e1",
+                                      fontSize: "13px",
+                                      color: "#1e293b"
+                                    }}
+                                  >
+                                    <Paperclip size={14} color="#64748b" />
+                                    <a
+                                      href={file.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      download={file.name}
+                                      style={{ color: "#0f172a", textDecoration: "none", fontWeight: 500, maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                      title={file.name}
+                                    >
+                                      {file.name}
+                                    </a>
+                                    <span style={{ color: "#94a3b8", fontSize: "11.5px" }}>({file.size})</span>
+                                    {!isViewOnlyStock && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveReadyToPickAttachment(fIdx)}
+                                        style={{
+                                          background: "none",
+                                          border: "none",
+                                          padding: "2px",
+                                          cursor: "pointer",
+                                          color: "#94a3b8",
+                                          display: "flex",
+                                          alignItems: "center"
+                                        }}
+                                        title="Remove file"
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: "13px", color: "#94a3b8" }}>
+                                No files attached.
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* IF NO: How many not received */}
+                        {readyToPickReceived === "no" && (
+                          <div style={{ marginTop: "16px" }}>
+                            <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                              Quantity Not Received:
+                            </label>
+                            {isViewOnlyStock ? (
+                              <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "14px" }}>
+                                {readyToPickNotReceivedCount || 0} pcs
+                              </span>
+                            ) : (
+                              <div style={{ maxWidth: "240px" }}>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  placeholder="Quantity"
+                                  value={readyToPickNotReceivedCount}
+                                  onChange={(e) => setReadyToPickNotReceivedCount(e.target.value)}
+                                  style={{
+                                    width: "100%",
+                                    padding: "8px 12px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "13.5px",
+                                    fontWeight: 500,
+                                    color: "#1e293b",
+                                    background: "#ffffff",
+                                    outline: "none"
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* STAGING ROOM CLEARANCE & VERIFICATION */}
+                    {activeStockStage === "staging_room" && (
+                      <div
+                        style={{
+                          marginTop: "24px",
+                          paddingTop: "20px",
+                          borderTop: "1px solid #e2e8f0",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "18px"
+                        }}
+                      >
+                        {/* Sample Attachments */}
+                        <div>
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "8px" }}>
+                            Sample Attachments:
+                          </label>
+                          {readyToPickAttachments.length > 0 ? (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                              {readyToPickAttachments.map((file, fIdx) => (
+                                <a
+                                  key={fIdx}
+                                  href={file.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  download={file.name}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "8px",
+                                    padding: "6px 12px",
+                                    borderRadius: "6px",
+                                    background: "#ffffff",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "13px",
+                                    color: "#0f172a",
+                                    textDecoration: "none",
+                                    fontWeight: 500
+                                  }}
+                                  title={file.name}
+                                >
+                                  <Paperclip size={14} color="#64748b" />
+                                  <span style={{ maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {file.name}
+                                  </span>
+                                  <span style={{ color: "#94a3b8", fontSize: "11.5px" }}>({file.size})</span>
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: "13px", color: "#94a3b8" }}>
+                              No sample attachments.
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Staging Room Verification Box */}
+                        <div>
+                          <h4
+                            style={{
+                              margin: "0 0 14px 0",
+                              fontSize: "15px",
+                              fontWeight: 600,
+                              color: "#1e293b",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px"
+                            }}
+                          >
+                            <Boxes size={17} />
+                            Staging Verification
+                          </h4>
+
+                          {/* Question: Sample Received Correct? */}
+                          <div style={{ marginBottom: "16px" }}>
+                            <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "8px" }}>
+                              Sample Received Correct?
+                            </label>
+                            {isViewOnlyStock ? (
+                              <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "13.5px" }}>
+                                {stagingSampleCorrect === "yes" ? "Yes" : `No (${stagingNotReceivedCount || 0} pcs)`}
+                              </span>
+                            ) : (
+                              <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setStagingSampleCorrect("yes")}
+                                  style={{
+                                    padding: "8px 18px",
+                                    borderRadius: "6px",
+                                    fontSize: "13.5px",
+                                    fontWeight: 600,
+                                    border: stagingSampleCorrect === "yes" ? "2px solid #0f172a" : "1px solid #cbd5e1",
+                                    background: "#ffffff",
+                                    color: "#0f172a",
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px"
+                                  }}
+                                >
+                                  <CheckCircle size={15} />
+                                  Yes
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setStagingSampleCorrect("no")}
+                                  style={{
+                                    padding: "8px 18px",
+                                    borderRadius: "6px",
+                                    fontSize: "13.5px",
+                                    fontWeight: 600,
+                                    border: stagingSampleCorrect === "no" ? "2px solid #0f172a" : "1px solid #cbd5e1",
+                                    background: "#ffffff",
+                                    color: "#0f172a",
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px"
+                                  }}
+                                >
+                                  <AlertCircle size={15} />
+                                  No
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* IF NO: How many not received */}
+                          {stagingSampleCorrect === "no" && (
+                            <div style={{ marginTop: "16px" }}>
+                              <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                                Quantity Not Received:
+                              </label>
+                              {isViewOnlyStock ? (
+                                <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "14px" }}>
+                                  {stagingNotReceivedCount || 0} pcs
+                                </span>
+                              ) : (
+                                <div style={{ maxWidth: "240px" }}>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    placeholder="Quantity"
+                                    value={stagingNotReceivedCount}
+                                    onChange={(e) => setStagingNotReceivedCount(e.target.value)}
+                                    style={{
+                                      width: "100%",
+                                      padding: "8px 12px",
+                                      borderRadius: "6px",
+                                      border: "1px solid #cbd5e1",
+                                      fontSize: "13.5px",
+                                      fontWeight: 500,
+                                      color: "#1e293b",
+                                      background: "#ffffff",
+                                      outline: "none"
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* REMARKS */}
+                    <div style={{ marginTop: "22px" }}>
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                        Remarks:
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder="Enter remarks..."
+                        value={stockNote}
+                        onChange={(e) => setStockNote(e.target.value)}
+                        disabled={isViewOnlyStock}
+                        style={{
+                          width: "100%",
+                          padding: "10px 12px",
+                          borderRadius: "8px",
+                          border: "1px solid #cbd5e1",
+                          fontSize: "13.5px",
+                          color: "#1e293b",
+                          backgroundColor: "#ffffff",
+                          outline: "none",
+                          resize: "vertical",
+                          boxSizing: "border-box"
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Audit Trail / History */}
               {selectedOrder.approvalComments && selectedOrder.approvalComments.length > 0 && (
@@ -2173,242 +2990,444 @@ export default function Approvals({ defaultTab = "all" }) {
              ========================================================================= */}
           {roleView === "production" && (
             <div className="review-form-wrapper">
+              {(() => {
+                const activeProdStage = currentTaskTab === "all"
+                  ? getProductionStage(selectedOrder)
+                  : (currentTaskTab === "logo-printing" ? "logo_printing" : "logo_cutting");
+                const isViewOnlyProd = currentTaskTab === "all" || getProductionStage(selectedOrder) === "completed";
+                const stageBadge = getProductionStageBadgeInfo(selectedOrder);
+                const totalStockQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
 
-              {/* SINGLE UNIFIED FORM CARD */}
-              <div className="form-card">
-                <div className="form-card-header">
-                  <Cpu size={18} />
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
-                    Logo Cutting
-                  </h3>
-                </div>
+                const logoDesignFile = selectedOrder.logoDesign || selectedOrder.attachment;
+                const logoDesignName = selectedOrder.logoDesignName || selectedOrder.attachmentName || "Logo Design";
+                const digitalDesignFile = selectedOrder.digitalDesign;
+                const digitalDesignName = selectedOrder.digitalDesignName || "Digital Design";
 
-                {/* 1. ORDER & LEAD DETAILS */}
-                <div className="form-grid-4" style={{ marginBottom: "20px" }}>
-                  {/* 1. Order ID */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Order ID</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.orderId || "Pending Order ID"}
-                      className="read-only-input bold"
-                      style={{ fontSize: "14px" }}
-                    />
-                  </div>
+                return (
+                  <div className="form-card">
+                    {/* Header */}
+                    <div className="form-card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <Cpu size={18} />
+                        <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
+                          {currentTaskTab === "logo-printing"
+                            ? "Logo Printing"
+                            : currentTaskTab === "logo-cutting"
+                            ? "Logo Cutting"
+                            : `Production (${stageBadge.label})`}
+                        </h3>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          padding: "3px 10px",
+                          borderRadius: "6px",
+                          background: "#f8fafc",
+                          color: "#334155",
+                          border: "1px solid #cbd5e1"
+                        }}
+                      >
+                        Stage: {stageBadge.label}
+                      </span>
+                    </div>
 
-                  {/* 2. Employee Name */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Employee Name (Sales Rep)</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.employeeName || "Sales Executive"}
-                      className="read-only-input bold"
-                      style={{ fontSize: "14px" }}
-                    />
-                  </div>
+                    {/* 1. ORDER & LEAD DETAILS */}
+                    <div className="form-grid-4" style={{ marginBottom: "20px" }}>
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Order ID</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={selectedOrder.orderId || "Pending Order ID"}
+                          className="read-only-input bold"
+                          style={{ fontSize: "14px" }}
+                        />
+                      </div>
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Employee Name</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={selectedOrder.employeeName || "Sales Executive"}
+                          className="read-only-input bold"
+                          style={{ fontSize: "14px" }}
+                        />
+                      </div>
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Company Name</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={selectedOrder.companyName || selectedOrder.clientName || "-"}
+                          className="read-only-input bold"
+                          style={{ fontSize: "14px" }}
+                        />
+                      </div>
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Date</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={formatLeadDate(selectedOrder.createdAt)}
+                          className="read-only-input bold"
+                          style={{ fontSize: "14px" }}
+                        />
+                      </div>
+                    </div>
 
-                  {/* 3. Company Name */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Company Name</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.companyName || selectedOrder.clientName || "-"}
-                      className="read-only-input bold"
-                      style={{ fontSize: "14px" }}
-                    />
-                  </div>
+                    {/* STAGE 1: LOGO PRINTING FIELDS */}
+                    <div style={{ marginBottom: "20px", borderTop: "1px solid #e2e8f0", paddingTop: "18px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+                        <Printer size={16} color="#334155" />
+                        <h4 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#1e293b" }}>
+                          {currentTaskTab === "logo-cutting" || activeProdStage === "logo_cutting"
+                            ? "Data from Logo Printing"
+                            : "Logo Printing"}
+                        </h4>
+                      </div>
 
-                  {/* 4. Date when the lead was created */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Date When Lead Was Created</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={formatLeadDate(selectedOrder.createdAt)}
-                      className="read-only-input bold"
-                      style={{ fontSize: "14px" }}
-                    />
-                  </div>
-                </div>
+                      {/* Attachments: Both Logo Design and Digital Design */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+                        {/* Logo Design Attachment */}
+                        <div className="form-field">
+                          <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                            Logo Design
+                          </label>
+                          <div
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: "8px",
+                              border: "1px solid #cbd5e1",
+                              backgroundColor: "#ffffff",
+                              minHeight: "42px",
+                              display: "flex",
+                              alignItems: "center"
+                            }}
+                          >
+                            {logoDesignFile ? (
+                              <a
+                                href={logoDesignFile}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download={logoDesignName}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  color: "#2563eb",
+                                  fontSize: "13.5px",
+                                  fontWeight: 600,
+                                  textDecoration: "underline"
+                                }}
+                              >
+                                <Paperclip size={15} />
+                                <span>{logoDesignName}</span>
+                              </a>
+                            ) : (
+                              <span style={{ fontSize: "13px", color: "#94a3b8" }}>
+                                No file
+                              </span>
+                            )}
+                          </div>
+                        </div>
 
-                {/* 2. ARTWORK & LOGO SPECIFICATIONS */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
-                  {/* Attachment */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                      Attachment (Artwork / Design File)
-                    </label>
-                    <div style={{
-                      padding: "8px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid #cbd5e1",
-                      backgroundColor: "#f8fafc",
-                      minHeight: "42px",
-                      display: "flex",
-                      alignItems: "center"
-                    }}>
-                      {selectedOrder.attachment ? (
-                        <a
-                          href={selectedOrder.attachment}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download={selectedOrder.attachmentName || "logo-artwork"}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            color: "#2563eb",
-                            fontSize: "13.5px",
-                            fontWeight: 600,
-                            textDecoration: "underline"
-                          }}
-                        >
-                          <Paperclip size={15} />
-                          <span>{selectedOrder.attachmentName || "Download Logo Attachment"}</span>
-                        </a>
-                      ) : (
-                        <span style={{ fontSize: "13.5px", color: "#94a3b8" }}>
-                          No file attachment uploaded for this lead
-                        </span>
-                      )}
+                        {/* Digital Design Attachment */}
+                        <div className="form-field">
+                          <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                            Digital Design
+                          </label>
+                          <div
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: "8px",
+                              border: "1px solid #cbd5e1",
+                              backgroundColor: "#ffffff",
+                              minHeight: "42px",
+                              display: "flex",
+                              alignItems: "center"
+                            }}
+                          >
+                            {digitalDesignFile ? (
+                              <a
+                                href={digitalDesignFile}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download={digitalDesignName}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  color: "#2563eb",
+                                  fontSize: "13.5px",
+                                  fontWeight: 600,
+                                  textDecoration: "underline"
+                                }}
+                              >
+                                <Paperclip size={15} />
+                                <span>{digitalDesignName}</span>
+                              </a>
+                            ) : (
+                              <span style={{ fontSize: "13px", color: "#94a3b8" }}>
+                                No file
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Logo Name, Needs by Client, Printed, Giving for Cutting */}
+                      <div className="form-grid-4">
+                        {/* Logo Name */}
+                        <div className="form-field">
+                          <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                            Logo Name
+                          </label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={selectedOrder.logoName || "Plain / No Logo"}
+                            className="read-only-input bold"
+                            style={{ fontSize: "14px" }}
+                          />
+                        </div>
+
+                        {/* Logo Needs by Client */}
+                        <div className="form-field">
+                          <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                            Logos Needed
+                          </label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={`${totalStockQty} pcs`}
+                            className="read-only-input bold"
+                            style={{ fontSize: "14px" }}
+                          />
+                        </div>
+
+                        {/* Logo Printed */}
+                        <div className="form-field">
+                          <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                            Printed (pcs)
+                          </label>
+                          {isViewOnlyProd || activeProdStage !== "logo_printing" ? (
+                            <input
+                              type="text"
+                              readOnly
+                              value={prodForm.logosPrinted !== "" && prodForm.logosPrinted !== undefined && prodForm.logosPrinted !== null ? `${prodForm.logosPrinted} pcs` : "-"}
+                              className="read-only-input bold"
+                              style={{ fontSize: "14px" }}
+                            />
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Enter printed..."
+                              value={prodForm.logosPrinted}
+                              onChange={(e) => setProdForm({ ...prodForm, logosPrinted: e.target.value })}
+                              style={{
+                                width: "100%",
+                                padding: "8px 12px",
+                                borderRadius: "8px",
+                                border: "1px solid #cbd5e1",
+                                fontSize: "14px",
+                                fontWeight: 600,
+                                color: "#1e293b",
+                                backgroundColor: "#ffffff",
+                                outline: "none",
+                                boxSizing: "border-box"
+                              }}
+                            />
+                          )}
+                        </div>
+
+                        {/* Logo Giving for Cutting */}
+                        <div className="form-field">
+                          <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                            For Cutting (pcs)
+                          </label>
+                          {isViewOnlyProd || activeProdStage !== "logo_printing" ? (
+                            <input
+                              type="text"
+                              readOnly
+                              value={prodForm.logosGivenForCutting !== "" && prodForm.logosGivenForCutting !== undefined && prodForm.logosGivenForCutting !== null ? `${prodForm.logosGivenForCutting} pcs` : "-"}
+                              className="read-only-input bold"
+                              style={{ fontSize: "14px" }}
+                            />
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Enter for cutting..."
+                              value={prodForm.logosGivenForCutting}
+                              onChange={(e) => setProdForm({ ...prodForm, logosGivenForCutting: e.target.value })}
+                              style={{
+                                width: "100%",
+                                padding: "8px 12px",
+                                borderRadius: "8px",
+                                border: "1px solid #cbd5e1",
+                                fontSize: "14px",
+                                fontWeight: 600,
+                                color: "#1e293b",
+                                backgroundColor: "#ffffff",
+                                outline: "none",
+                                boxSizing: "border-box"
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* STAGE 2: LOGO CUTTING SECTION */}
+                    {(activeProdStage === "logo_cutting" || currentTaskTab === "logo-cutting" || (currentTaskTab === "all" && (selectedOrder.productionTaskStage === "logo_cutting" || selectedOrder.productionTaskStage === "completed"))) && (
+                      <div style={{ marginBottom: "20px", borderTop: "1px solid #e2e8f0", paddingTop: "18px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+                          <Scissors size={16} color="#334155" />
+                          <h4 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#1e293b" }}>
+                            Logo Cutting
+                          </h4>
+                        </div>
+
+                        {/* Cutting Fields: Received for Cutting, For Printing Logo, Giving for Sample */}
+                        <div className="form-grid-3">
+                          {/* How many logo received for cutting */}
+                          <div className="form-field">
+                            <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                              Received for Cutting (pcs)
+                            </label>
+                            {isViewOnlyProd || activeProdStage !== "logo_cutting" ? (
+                              <input
+                                type="text"
+                                readOnly
+                                value={`${prodForm.logosReceivedForCutting || prodForm.logosGivenForCutting || totalStockQty} pcs`}
+                                className="read-only-input bold"
+                                style={{ fontSize: "14px" }}
+                              />
+                            ) : (
+                              <input
+                                type="number"
+                                min="0"
+                                value={prodForm.logosReceivedForCutting}
+                                onChange={(e) => setProdForm({ ...prodForm, logosReceivedForCutting: e.target.value })}
+                                style={{
+                                  width: "100%",
+                                  padding: "8px 12px",
+                                  borderRadius: "8px",
+                                  border: "1px solid #cbd5e1",
+                                  fontSize: "14px",
+                                  fontWeight: 600,
+                                  color: "#1e293b",
+                                  backgroundColor: "#ffffff",
+                                  outline: "none",
+                                  boxSizing: "border-box"
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          {/* How many for printing logo */}
+                          <div className="form-field">
+                            <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                              For Printing (pcs)
+                            </label>
+                            {isViewOnlyProd || activeProdStage !== "logo_cutting" ? (
+                              <input
+                                type="text"
+                                readOnly
+                                value={`${prodForm.logosForPrinting || 0} pcs`}
+                                className="read-only-input bold"
+                                style={{ fontSize: "14px" }}
+                              />
+                            ) : (
+                              <input
+                                type="number"
+                                min="0"
+                                value={prodForm.logosForPrinting}
+                                onChange={(e) => setProdForm({ ...prodForm, logosForPrinting: e.target.value })}
+                                style={{
+                                  width: "100%",
+                                  padding: "8px 12px",
+                                  borderRadius: "8px",
+                                  border: "1px solid #cbd5e1",
+                                  fontSize: "14px",
+                                  fontWeight: 600,
+                                  color: "#1e293b",
+                                  backgroundColor: "#ffffff",
+                                  outline: "none",
+                                  boxSizing: "border-box"
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          {/* How many giving for sample */}
+                          <div className="form-field">
+                            <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                              For Sample (pcs)
+                            </label>
+                            {isViewOnlyProd || activeProdStage !== "logo_cutting" ? (
+                              <input
+                                type="text"
+                                readOnly
+                                value={`${prodForm.sampleLogosCount || 0} pcs`}
+                                className="read-only-input bold"
+                                style={{ fontSize: "14px" }}
+                              />
+                            ) : (
+                              <input
+                                type="number"
+                                min="0"
+                                value={prodForm.sampleLogosCount}
+                                onChange={(e) => setProdForm({ ...prodForm, sampleLogosCount: e.target.value })}
+                                style={{
+                                  width: "100%",
+                                  padding: "8px 12px",
+                                  borderRadius: "8px",
+                                  border: "1px solid #cbd5e1",
+                                  fontSize: "14px",
+                                  fontWeight: 600,
+                                  color: "#1e293b",
+                                  backgroundColor: "#ffffff",
+                                  outline: "none",
+                                  boxSizing: "border-box"
+                                }}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CORRECTION NOTES / REMARKS (UNDERNEATH) */}
+                    <div style={{ marginTop: "18px", borderTop: "1px solid #e2e8f0", paddingTop: "16px" }}>
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                        Remarks:
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder="Enter remarks..."
+                        value={prodForm.note}
+                        onChange={(e) => setProdForm({ ...prodForm, note: e.target.value })}
+                        disabled={isViewOnlyProd}
+                        style={{
+                          width: "100%",
+                          padding: "10px 12px",
+                          borderRadius: "8px",
+                          border: "1px solid #cbd5e1",
+                          fontSize: "13.5px",
+                          color: "#1e293b",
+                          backgroundColor: "#ffffff",
+                          outline: "none",
+                          resize: "vertical",
+                          boxSizing: "border-box"
+                        }}
+                      />
                     </div>
                   </div>
-
-                  {/* Logo Name */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                      Logo Name
-                    </label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.logoName || "Plain / No Logo"}
-                      className="read-only-input bold"
-                      style={{ fontSize: "14px" }}
-                    />
-                  </div>
-                </div>
-
-                {/* 3. LOGO CUTTING PRODUCTION DATA (4 COLUMNS) */}
-                <div className="form-grid-4" style={{ marginBottom: "20px" }}>
-                  {/* Field 1: Logos Needed by Client */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                      Logos Needed by Client
-                    </label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={`${selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0} pcs`}
-                      className="read-only-input bold"
-                      style={{ fontSize: "14px" }}
-                    />
-                  </div>
-
-                  {/* Field 2: How many logos printed? */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                      Logos Printed (pcs)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={prodForm.logosPrinted}
-                      onChange={(e) => setProdForm({ ...prodForm, logosPrinted: e.target.value })}
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid #cbd5e1",
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        color: "#1e293b",
-                        backgroundColor: "#ffffff",
-                        outline: "none",
-                        boxSizing: "border-box"
-                      }}
-                    />
-                  </div>
-
-                  {/* Field 3: How many cut or given? */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                      Logos Cut / Given (pcs)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={prodForm.logosCutGiven}
-                      onChange={(e) => setProdForm({ ...prodForm, logosCutGiven: e.target.value })}
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid #cbd5e1",
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        color: "#1e293b",
-                        backgroundColor: "#ffffff",
-                        outline: "none",
-                        boxSizing: "border-box"
-                      }}
-                    />
-                  </div>
-
-                  {/* Field 4: How many giving for sample? */}
-                  <div className="form-field">
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                      Giving for Sample (pcs)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={prodForm.sampleLogosCount}
-                      onChange={(e) => setProdForm({ ...prodForm, sampleLogosCount: e.target.value })}
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid #cbd5e1",
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        color: "#1e293b",
-                        backgroundColor: "#ffffff",
-                        outline: "none",
-                        boxSizing: "border-box"
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* 4. CORRECTION NOTES / REMARKS (UNDERNEATH) */}
-                <div style={{ marginTop: "18px" }}>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                    Production Remarks / Feedback (Mandatory if referring back):
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Add production notes or correction reasons if referring back to sales..."
-                    value={prodForm.note}
-                    onChange={(e) => setProdForm({ ...prodForm, note: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "13.5px",
-                      color: "#1e293b",
-                      backgroundColor: "#ffffff",
-                      outline: "none",
-                      resize: "vertical",
-                      boxSizing: "border-box"
-                    }}
-                  />
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Audit Trail / History */}
               {selectedOrder.approvalComments && selectedOrder.approvalComments.length > 0 && (
@@ -2606,40 +3625,53 @@ export default function Approvals({ defaultTab = "all" }) {
                   </label>
                   {!selectedOrder.items || selectedOrder.items.length === 0 ? (
                     <p className="no-items-text" style={{ fontSize: "13.5px" }}>No detailed items attached.</p>
-                  ) : (
-                    <div className="table-responsive">
-                      <table className="items-review-table stock-review-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: "32px", textAlign: "center", padding: "10px 6px", fontSize: "12.5px" }}>#</th>
-                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Item Description</th>
-                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Printing Type</th>
-                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Sublimation</th>
-                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Fabric</th>
-                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Quantity</th>
-                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Size</th>
-                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedOrder.items.map((it, idx) => (
-                            <tr key={it.id || idx}>
-                              <td style={{ textAlign: "center", padding: "9px 6px", fontSize: "13.5px" }}>{idx + 1}</td>
-                              <td className="item-name-cell" style={{ padding: "9px 8px", fontSize: "13.5px" }}>
-                                {it.item || it.enterItem || it.itemType || "Apparel Item"}
-                              </td>
-                              <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.printingType || "-"}</td>
-                              <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.sublimationOption || "-"}</td>
-                              <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.fabric || "-"}</td>
-                              <td style={{ padding: "9px 8px", fontSize: "13.5px", fontWeight: 600 }}>{it.quantity || 0}</td>
-                              <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.size || "-"}</td>
-                              <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.color || "-"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  ) : (() => {
+                      const hasSublimation = selectedOrder.items.some(
+                        (it) =>
+                          String(it.printingType || "").toLowerCase().trim() === "sublimation" ||
+                          (it.sublimationOption && it.sublimationOption !== "-" && it.sublimationOption !== "") ||
+                          (it.sublimation && it.sublimation !== "-" && it.sublimation !== "")
+                      );
+
+                      return (
+                        <div className="table-responsive">
+                          <table className="items-review-table stock-review-table">
+                            <thead>
+                              <tr>
+                                <th style={{ minWidth: "36px", textAlign: "center", padding: "10px 6px", fontSize: "12.5px" }}>S.N</th>
+                                <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Item Description</th>
+                                <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Printing Type</th>
+                                {hasSublimation && (
+                                  <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Sublimation</th>
+                                )}
+                                <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Fabric</th>
+                                <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Quantity</th>
+                                <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Size</th>
+                                <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedOrder.items.map((it, idx) => (
+                                <tr key={it.id || idx}>
+                                  <td style={{ textAlign: "center", padding: "9px 6px", fontSize: "13.5px" }}>{idx + 1}</td>
+                                  <td className="item-name-cell" style={{ padding: "9px 8px", fontSize: "13.5px" }}>
+                                    {it.item || it.enterItem || it.itemType || "Apparel Item"}
+                                  </td>
+                                  <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{formatPrintingType(it.printingType)}</td>
+                                  {hasSublimation && (
+                                    <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.sublimationOption || it.sublimation || "-"}</td>
+                                  )}
+                                  <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.fabric || "-"}</td>
+                                  <td style={{ padding: "9px 8px", fontSize: "13.5px", fontWeight: 600 }}>{it.quantity || 0}</td>
+                                  <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.size || "-"}</td>
+                                  <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.color || "-"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                 </div>
 
                 {/* 3. MANAGER FEEDBACK & CORRECTION NOTES */}

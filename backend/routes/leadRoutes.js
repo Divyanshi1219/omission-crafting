@@ -61,6 +61,76 @@ router.get("/", async (req, res) => {
       filter,
       includesAttachment ? undefined : { attachment: 0, logoDesign: 0, digitalDesign: 0 }
     ).sort({ createdAt: -1 });
+    // Clean up contaminated approvals and ensure starting stage
+    await Promise.all(
+      leads.map(async (l) => {
+        let needsUpdate = false;
+        const updates = {};
+
+        if (
+          l.productionApproval &&
+          (l.productionApproval.note === "Approved by Lead Manager" ||
+            l.productionApproval.author === "Sarah Jenkins")
+        ) {
+          l.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
+          updates.productionApproval = l.productionApproval;
+          needsUpdate = true;
+        }
+
+        if (
+          l.stockApproval &&
+          (l.stockApproval.note === "Approved by Lead Manager" ||
+            l.stockApproval.author === "Sarah Jenkins")
+        ) {
+          l.stockApproval = { status: "Pending", note: "", author: "Elena Rostova", updatedAt: null };
+          updates.stockApproval = l.stockApproval;
+          needsUpdate = true;
+        }
+
+        const isLeadApproved =
+          l.leadApproval?.status === "Approved" ||
+          l.subStage === "dtf-pending" ||
+          l.orderStage === "partial" ||
+          l.orderStage === "complete";
+
+        if (isLeadApproved) {
+          if (!l.stockTaskStage) {
+            l.stockTaskStage = "verification";
+            updates.stockTaskStage = "verification";
+            needsUpdate = true;
+          }
+          // If printingSubmitted is true, but cutting not completed: stage is logo_cutting
+          if (l.productionTaskData?.printingSubmitted === true && l.productionTaskStage !== "completed") {
+            if (l.productionTaskStage !== "logo_cutting") {
+              l.productionTaskStage = "logo_cutting";
+              updates.productionTaskStage = "logo_cutting";
+              needsUpdate = true;
+            }
+            if (l.productionApproval?.status !== "Pending") {
+              l.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: new Date() };
+              updates.productionApproval = l.productionApproval;
+              needsUpdate = true;
+            }
+          } else if (l.productionTaskStage !== "completed" && !l.productionTaskData?.printingSubmitted) {
+            if (l.productionTaskStage !== "logo_printing") {
+              l.productionTaskStage = "logo_printing";
+              updates.productionTaskStage = "logo_printing";
+              needsUpdate = true;
+            }
+            if (l.productionApproval?.status !== "Pending") {
+              l.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
+              updates.productionApproval = l.productionApproval;
+              needsUpdate = true;
+            }
+          }
+        }
+
+        if (needsUpdate) {
+          await Lead.updateOne({ _id: l._id }, { $set: updates });
+        }
+      })
+    );
+
     // Fast check: only run update if any orders are actually missing a taskId
     const missingTaskLeads = leads.filter(l => !l.taskId && (l.query === "order" || l.orderId || l.orderStage));
     if (missingTaskLeads.length > 0) {
@@ -347,19 +417,15 @@ router.patch("/:id/approval", async (req, res) => {
         if (!lead.subStage || lead.subStage === "order" || lead.subStage === "leads" || lead.subStage === "new") {
           lead.subStage = "dtf-pending";
         }
-        lead.stockTaskStage = "ready_to_pick";
-        lead.productionTaskStage = "logo_cutting";
-        if (!lead.stockApproval || lead.stockApproval.status !== "Approved") {
-          lead.stockApproval = { status: "Pending", note: "", author: "Elena Rostova", updatedAt: null };
-        }
-        if (!lead.productionApproval || lead.productionApproval.status !== "Approved") {
-          lead.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
-        }
-        if (lead.stockApproval?.status === "Approved" && lead.productionApproval?.status === "Approved") {
-          lead.approvalStatus = "Approved";
-        } else {
-          lead.approvalStatus = "Pending";
-        }
+        lead.stockTaskStage = "verification";
+        lead.productionTaskStage = "logo_printing";
+        lead.stockApproval = { status: "Pending", note: "", author: "Elena Rostova", updatedAt: null };
+        lead.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
+        lead.productionTaskData = {
+          ...(lead.productionTaskData || {}),
+          printingSubmitted: false,
+        };
+        lead.approvalStatus = "Pending";
       }
     } else if (isStock) {
       lead.stockApproval = {
@@ -494,8 +560,12 @@ router.patch("/:id/stock-task", async (req, res) => {
     }
 
     if (action === "submit") {
-      if (stage === "ready_to_pick") {
+      if (stage === "verification") {
+        lead.stockTaskStage = "ready_to_pick";
+        if (lead.stockApproval) lead.stockApproval.status = "Pending";
+      } else if (stage === "ready_to_pick") {
         lead.stockTaskStage = "staging_room";
+        if (lead.stockApproval) lead.stockApproval.status = "Pending";
       } else if (stage === "staging_room") {
         lead.stockTaskStage = "completed";
         lead.stockApproval = {
@@ -515,8 +585,10 @@ router.patch("/:id/stock-task", async (req, res) => {
     } else if (action === "refer_back") {
       if (stage === "staging_room") {
         lead.stockTaskStage = "ready_to_pick";
+      } else if (stage === "ready_to_pick") {
+        lead.stockTaskStage = "verification";
       } else {
-        // Return to sales executive
+        // Return to sales executive (from verification)
         lead.stockApproval = {
           status: "Referred Back",
           note: comment || "Stock Room referred back for revision",
@@ -549,7 +621,7 @@ router.patch("/:id/stock-task", async (req, res) => {
 // PATCH /api/leads/:id/production-task - Advance or refer back Production Room task
 router.patch("/:id/production-task", async (req, res) => {
   try {
-    const { action, productionTaskData, comment, author } = req.body;
+    const { action, stage, productionTaskData, comment, author } = req.body;
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
 
@@ -559,28 +631,50 @@ router.patch("/:id/production-task", async (req, res) => {
     }
 
     if (action === "submit") {
-      lead.productionTaskStage = "completed";
-      lead.productionApproval = {
-        status: "Approved",
-        note: comment || "Approved by Production Lead",
-        author: author || "Marcus Vance",
-        updatedAt: new Date(),
-      };
+      if (stage === "logo_printing") {
+        lead.productionTaskStage = "logo_cutting";
+        lead.productionApproval = {
+          status: "Pending",
+          note: "",
+          author: author || "Marcus Vance",
+          updatedAt: new Date(),
+        };
+        lead.markModified("productionApproval");
+      } else if (stage === "logo_cutting" || !stage) {
+        lead.productionTaskStage = "completed";
+        lead.productionApproval = {
+          status: "Approved",
+          note: comment || "Approved by Production Lead",
+          author: author || "Marcus Vance",
+          updatedAt: new Date(),
+        };
+        lead.markModified("productionApproval");
 
-      // If Stock Room has also approved, advance to Printing of the active major stage!
-      if (lead.stockApproval?.status === "Approved") {
-        lead.approvalStatus = "Approved";
-        if (!lead.orderStage) lead.orderStage = "sample";
-        lead.subStage = "printing";
+        // If Stock Room has also approved, advance to Printing of the active major stage!
+        if (lead.stockApproval?.status === "Approved") {
+          lead.approvalStatus = "Approved";
+          if (!lead.orderStage) lead.orderStage = "sample";
+          lead.subStage = "printing";
+        }
       }
     } else if (action === "refer_back") {
-      lead.productionApproval = {
-        status: "Referred Back",
-        note: comment || "Production referred back for revision",
-        author: author || "Marcus Vance",
-        updatedAt: new Date(),
-      };
-      lead.approvalStatus = "Referred Back";
+      if (stage === "logo_cutting") {
+        lead.productionTaskStage = "logo_printing";
+        if (lead.productionApproval) {
+          lead.productionApproval.status = "Pending";
+        } else {
+          lead.productionApproval = { status: "Pending", note: "", author: author || "Marcus Vance", updatedAt: new Date() };
+        }
+      } else {
+        // Return to sales executive / lead manager (from logo_printing)
+        lead.productionApproval = {
+          status: "Referred Back",
+          note: comment || "Production referred back for revision",
+          author: author || "Marcus Vance",
+          updatedAt: new Date(),
+        };
+        lead.approvalStatus = "Referred Back";
+      }
     }
 
     if (comment) {
@@ -707,25 +801,33 @@ router.patch("/:id/stage-transition", async (req, res) => {
     if (toSubStage) lead.subStage = toSubStage;
     lead.query = "order";
 
-    // Transition 1: Customer Approval submitted in Sample -> Move to Partial & trigger Stock and Production tasks!
-    if (activeStage === "sample" && fromSubStage === "customer-approval-awaiting" && action === "submit") {
-      lead.orderStage = "partial";
-      lead.subStage = "order";
-      lead.approvalStatus = "Pending";
-      lead.stockApproval = {
-        status: "Pending",
-        note: comment || "Partial stage stock allocation required",
-        author: "Stock Room",
-        updatedAt: null,
-      };
-      lead.stockTaskStage = "ready_to_pick";
-      lead.productionApproval = {
-        status: "Pending",
-        note: comment || "Partial stage logo printing required",
-        author: "Production Lead",
-        updatedAt: null,
-      };
-      lead.productionTaskStage = "logo_cutting";
+    // Transition 1: Customer Approval in Sample -> Move to Partial if approved, otherwise back to Sample -> Order!
+    if (activeStage === "sample" && fromSubStage === "customer-approval-awaiting") {
+      const isApproved = stageData?.customerApproved === "yes" || stageData?.customerApproved === true;
+      if (action === "submit" && isApproved) {
+        lead.orderStage = "partial";
+        lead.subStage = "order";
+        lead.approvalStatus = "Pending";
+        lead.stockApproval = {
+          status: "Pending",
+          note: comment || "Partial stage stock allocation required",
+          author: "Stock Room",
+          updatedAt: null,
+        };
+        lead.stockTaskStage = "verification";
+        lead.productionApproval = {
+          status: "Pending",
+          note: comment || "Partial stage logo printing required",
+          author: "Production Lead",
+          updatedAt: null,
+        };
+        lead.productionTaskStage = "logo_printing";
+      } else {
+        // Customer not approved or refer back -> move back to sample -> order
+        lead.orderStage = "sample";
+        lead.subStage = "order";
+        lead.approvalStatus = "Pending";
+      }
     }
 
     // Transition 2: Payment Confirmation submitted in Partial -> Move to Complete & trigger Stock and Production tasks!
@@ -739,14 +841,14 @@ router.patch("/:id/stage-transition", async (req, res) => {
         author: "Stock Room",
         updatedAt: null,
       };
-      lead.stockTaskStage = "ready_to_pick";
+      lead.stockTaskStage = "verification";
       lead.productionApproval = {
         status: "Pending",
         note: comment || "Complete stage final logo cutting required",
         author: "Production Lead",
         updatedAt: null,
       };
-      lead.productionTaskStage = "logo_cutting";
+      lead.productionTaskStage = "logo_printing";
     }
 
     // Transition 3: Final step of Complete (Customer Support) completed -> Mark order as Completed!
@@ -767,14 +869,14 @@ router.patch("/:id/stage-transition", async (req, res) => {
         author: "Stock Room",
         updatedAt: new Date(),
       };
-      lead.stockTaskStage = "ready_to_pick";
+      lead.stockTaskStage = "verification";
       lead.productionApproval = {
         status: "Pending",
         note: comment || `${lead.orderStage || "Order"} printing requested production corrections`,
         author: "Production Lead",
         updatedAt: new Date(),
       };
-      lead.productionTaskStage = "logo_cutting";
+      lead.productionTaskStage = "logo_printing";
     }
 
     if (comment) {

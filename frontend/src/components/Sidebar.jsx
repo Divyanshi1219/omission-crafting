@@ -346,84 +346,97 @@ function Sidebar() {
 
         {/* Task Section */}
         {isTaskUser && (
-          isProductionUser ? (
-            <NavLink
-              to="/tasks/all"
-              className={({ isActive }) =>
-                `sidebar-item ${isActive || isTaskRoute ? "active" : ""}`
-              }
+          <div className="sidebar-accordion">
+            <div
+              className={`sidebar-item ${isTaskRoute ? "active" : ""}`}
+              onClick={() => setIsTaskMenuOpen(!isTaskMenuOpen)}
+              style={{ cursor: "pointer" }}
             >
               <CheckSquare size={20} />
               <span>Task</span>
-            </NavLink>
-          ) : (
-            <div className="sidebar-accordion">
-              <div
-                className={`sidebar-item ${isTaskRoute ? "active" : ""}`}
-                onClick={() => setIsTaskMenuOpen(!isTaskMenuOpen)}
-                style={{ cursor: "pointer" }}
-              >
-                <CheckSquare size={20} />
-                <span>Task</span>
-                <div className="menu-toggle" style={{ marginLeft: "auto", display: "flex" }}>
-                  {isTaskMenuOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </div>
+              <div className="menu-toggle" style={{ marginLeft: "auto", display: "flex" }}>
+                {isTaskMenuOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               </div>
-
-              {isTaskMenuOpen && (
-                <div className="sidebar-submenu">
-                  <NavLink
-                    to="/tasks/all"
-                    className={({ isActive }) =>
-                      `sidebar-submenu-item ${
-                        isActive || location.pathname === "/tasks"
-                          ? "active"
-                          : ""
-                      }`
-                    }
-                  >
-                    <span className="submenu-dot"></span>
-                    ALL
-                  </NavLink>
-
-                  {/* Stock Room Manager Submenus */}
-                  {(isStockUser || isAdmin) && (
-                    <>
-                      <NavLink
-                        to="/tasks/verification"
-                        className={({ isActive }) =>
-                          `sidebar-submenu-item ${isActive ? "active" : ""}`
-                        }
-                      >
-                        <span className="submenu-dot"></span>
-                        Verification
-                      </NavLink>
-
-                      <NavLink
-                        to="/tasks/ready-to-pick"
-                        className={({ isActive }) =>
-                          `sidebar-submenu-item ${isActive ? "active" : ""}`
-                        }
-                      >
-                        <span className="submenu-dot"></span>
-                        Ready to Pick
-                      </NavLink>
-
-                      <NavLink
-                        to="/tasks/staging-room"
-                        className={({ isActive }) =>
-                          `sidebar-submenu-item ${isActive ? "active" : ""}`
-                        }
-                      >
-                        <span className="submenu-dot"></span>
-                        Staging Room
-                      </NavLink>
-                    </>
-                  )}
-                </div>
-              )}
             </div>
-          )
+
+            {isTaskMenuOpen && (
+              <div className="sidebar-submenu">
+                <NavLink
+                  to="/tasks/all"
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${
+                      isActive || location.pathname === "/tasks"
+                        ? "active"
+                        : ""
+                    }`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  ALL
+                </NavLink>
+
+                {/* Stock Room Manager Submenus */}
+                {(isStockUser || isAdmin) && (
+                  <>
+                    <NavLink
+                      to="/tasks/verification"
+                      className={({ isActive }) =>
+                        `sidebar-submenu-item ${isActive ? "active" : ""}`
+                      }
+                    >
+                      <span className="submenu-dot"></span>
+                      Verification
+                    </NavLink>
+
+                    <NavLink
+                      to="/tasks/ready-to-pick"
+                      className={({ isActive }) =>
+                        `sidebar-submenu-item ${isActive ? "active" : ""}`
+                      }
+                    >
+                      <span className="submenu-dot"></span>
+                      Ready to Pick
+                    </NavLink>
+
+                    <NavLink
+                      to="/tasks/staging-room"
+                      className={({ isActive }) =>
+                        `sidebar-submenu-item ${isActive ? "active" : ""}`
+                      }
+                    >
+                      <span className="submenu-dot"></span>
+                      Staging Room
+                    </NavLink>
+                  </>
+                )}
+
+                {/* Production Lead Manager Submenus */}
+                {(isProductionUser || isAdmin) && (
+                  <>
+                    <NavLink
+                      to="/tasks/logo-printing"
+                      className={({ isActive }) =>
+                        `sidebar-submenu-item ${isActive ? "active" : ""}`
+                      }
+                    >
+                      <span className="submenu-dot"></span>
+                      Logo Printing
+                    </NavLink>
+
+                    <NavLink
+                      to="/tasks/logo-cutting"
+                      className={({ isActive }) =>
+                        `sidebar-submenu-item ${isActive ? "active" : ""}`
+                      }
+                    >
+                      <span className="submenu-dot"></span>
+                      Logo Cutting
+                    </NavLink>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
       </nav>
