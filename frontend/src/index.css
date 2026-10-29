@@ -17,13 +17,17 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font-family: inherit;
+  font-size: 14px;
 }
 
 /* Custom Navbar Styles */
@@ -1025,6 +1029,23 @@ input {
 .form-group input:focus,
 .form-group select:focus {
   border-color: #2563eb;
+}
+
+.form-group input:disabled,
+.form-group select:disabled,
+.form-group textarea:disabled {
+  background: #f8fafc;
+  color: #334155;
+  cursor: default;
+  opacity: 0.9;
+}
+
+.app.dark .form-group input:disabled,
+.app.dark .form-group select:disabled,
+.app.dark .form-group textarea:disabled {
+  background: #1e293b;
+  color: #cbd5e1;
+  opacity: 0.9;
 }
 
 .btn-secondary {

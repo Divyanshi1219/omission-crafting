@@ -11,6 +11,7 @@ import InvoicesList from "./pages/Invoices/InvoicesList";
 import CreateInvoice from "./pages/Invoices/CreateInvoice";
 import TasksPage from "./pages/Tasks/TasksPage";
 import Approvals from "./pages/Approvals";
+import LeadApprovals from "./pages/LeadApprovals";
 import Login from "./pages/Login";
 import DemoIdeasPage from "./pages/DemoIdeasPage"; // TEMP demo page ideas (delete after client approves)
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -104,7 +105,15 @@ function AppContent({ darkMode, setDarkMode }) {
 
             <Route
               path="/approvals"
-              element={<Navigate to="/tasks/all" replace />}
+              element={
+                (isLeadManager || isAdmin) ? (
+                  <LeadApprovals />
+                ) : isTaskUser ? (
+                  <Navigate to="/tasks/all" replace />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
             />
 
             <Route

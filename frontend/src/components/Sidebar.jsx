@@ -148,6 +148,18 @@ function Sidebar() {
           </NavLink>
         )}
 
+        {(isLeadManager || isAdmin) && (
+          <NavLink
+            to="/approvals"
+            className={({ isActive }) =>
+              `sidebar-item ${isActive ? "active" : ""}`
+            }
+          >
+            <ClipboardCheck size={20} />
+            <span>Approval</span>
+          </NavLink>
+        )}
+
         <div className="sidebar-accordion">
           <div
             className={`sidebar-item ${isOrderRoute ? 'active' : ''}`}
@@ -367,6 +379,16 @@ function Sidebar() {
                 {/* Stock Room Manager Submenus */}
                 {(isStockUser || isAdmin) && (
                   <>
+                    <NavLink
+                      to="/tasks/verification"
+                      className={({ isActive }) =>
+                        `sidebar-submenu-item ${isActive ? "active" : ""}`
+                      }
+                    >
+                      <span className="submenu-dot"></span>
+                      Verification
+                    </NavLink>
+
                     <NavLink
                       to="/tasks/ready-to-pick"
                       className={({ isActive }) =>

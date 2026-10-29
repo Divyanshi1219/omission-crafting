@@ -65,6 +65,7 @@ export default function Approvals({ defaultTab = "all" }) {
     if (isStockProfile) {
       return [
         { key: "all", label: "ALL", path: "/tasks/all" },
+        { key: "verification", label: "Verification", path: "/tasks/verification" },
         { key: "ready-to-pick", label: "Ready to Pick", path: "/tasks/ready-to-pick" },
         { key: "staging-room", label: "Staging Room", path: "/tasks/staging-room" },
       ];
@@ -77,6 +78,7 @@ export default function Approvals({ defaultTab = "all" }) {
     }
     return [
       { key: "all", label: "ALL", path: "/tasks/all" },
+      { key: "verification", label: "Verification", path: "/tasks/verification" },
       { key: "ready-to-pick", label: "Ready to Pick", path: "/tasks/ready-to-pick" },
       { key: "staging-room", label: "Staging Room", path: "/tasks/staging-room" },
       { key: "logo-cutting", label: "Logo Cutting", path: "/tasks/logo-cutting" },
@@ -493,7 +495,7 @@ export default function Approvals({ defaultTab = "all" }) {
   const handleSelectOrder = async (order) => {
     if (currentTaskTab === "logo-cutting" || isProdProfile) {
       setRoleView("production");
-    } else if (currentTaskTab === "ready-to-pick" || currentTaskTab === "staging-room" || isStockProfile) {
+    } else if (currentTaskTab === "verification" || currentTaskTab === "ready-to-pick" || currentTaskTab === "staging-room" || isStockProfile) {
       setRoleView("stock");
     }
     setSelectedOrder(order);
@@ -613,7 +615,9 @@ export default function Approvals({ defaultTab = "all" }) {
   const filteredOrders = useMemo(() => {
     return visibleOrders.filter((order) => {
       // Role & tab-specific filtering
-      if (currentTaskTab === "ready-to-pick") {
+      if (currentTaskTab === "verification") {
+        return false;
+      } else if (currentTaskTab === "ready-to-pick") {
         if (order.stockTaskStage === "completed" || order.stockTaskStage === "staging_room") return false;
       } else if (currentTaskTab === "staging-room") {
         if (order.stockTaskStage !== "staging_room") return false;
@@ -698,7 +702,9 @@ export default function Approvals({ defaultTab = "all" }) {
               <input
                 type="text"
                 placeholder={
-                  currentTaskTab === "ready-to-pick"
+                  currentTaskTab === "verification"
+                    ? "Search verification tasks..."
+                    : currentTaskTab === "ready-to-pick"
                     ? "Search Order ID, employee, company, item..."
                     : currentTaskTab === "staging-room"
                       ? "Search Order ID, company..."
@@ -717,6 +723,18 @@ export default function Approvals({ defaultTab = "all" }) {
             <div className="table-responsive">
               <table className="approvals-table">
                 <thead>
+                  {/* VERIFICATION TABLE HEADERS */}
+                  {currentTaskTab === "verification" && (
+                    <tr>
+                      <th>Order ID</th>
+                      <th>Employee Name</th>
+                      <th>Company Name</th>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: "right" }}>Action</th>
+                    </tr>
+                  )}
+
                   {/* READY TO PICK TABLE HEADERS */}
                   {currentTaskTab === "ready-to-pick" && (
                     <tr>
@@ -865,23 +883,23 @@ export default function Approvals({ defaultTab = "all" }) {
                             title="Click to view full order details"
                           >
                             <td>
-                              <span className={`stock-avail-badge ${isAvail ? "yes" : "no"}`}>
-                                {isAvail ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
+                              <span style={{ color: isAvail ? "#059669" : "#dc2626", fontWeight: 600, fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                {isAvail ? <CheckCircle size={13} /> : <AlertCircle size={13} />}
                                 {isAvail ? "In Stock (Yes)" : "Not in Stock"}
                               </span>
                             </td>
                             <td>
-                              <span className="qty-tag green" style={{ fontWeight: 700 }}>
+                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
                                 {totalStockQty} pcs
                               </span>
                             </td>
                             <td>
-                              <span className="order-id-badge stock-theme">
+                              <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
                               </span>
                             </td>
                             <td>
-                              <span className="rep-name bold">{order.employeeName || "Sales Executive"}</span>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>{order.employeeName || "Sales Executive"}</span>
                             </td>
                             <td>
                               <span style={{ fontWeight: 600, color: "#1e293b" }}>
@@ -973,7 +991,7 @@ export default function Approvals({ defaultTab = "all" }) {
                             title="Click to view full order details"
                           >
                             <td>
-                              <span className="order-id-badge stock-theme">
+                              <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
                               </span>
                             </td>
@@ -983,30 +1001,30 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span className="date-value">{dateStr}</span>
+                              <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
                             </td>
                             <td>
-                              <span className="stock-avail-badge yes">
+                              <span style={{ color: "#059669", fontWeight: 600, fontSize: "13px" }}>
                                 In Stock ({totalStockQty} pcs)
                               </span>
                             </td>
                             <td>
-                              <span className="qty-tag blue" style={{ fontWeight: 700 }}>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>
                                 {sampleDeduction} pcs
                               </span>
                             </td>
                             <td>
-                              <span className="qty-tag green" style={{ fontWeight: 700 }}>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>
                                 {receivedCount} pcs
                               </span>
                             </td>
                             <td>
-                              <span style={{ fontSize: "12px", color: "#334155", fontWeight: 500 }}>
+                              <span style={{ fontSize: "13px", color: "#334155" }}>
                                 {breakdown}
                               </span>
                             </td>
                             <td>
-                              <span className={`qty-tag ${pendingCount > 0 ? "grey" : "green"}`}>
+                              <span style={{ color: pendingCount > 0 ? "#b45309" : "#059669", fontSize: "13px", fontWeight: 600 }}>
                                 {pendingCount} pcs
                               </span>
                             </td>
@@ -1070,19 +1088,18 @@ export default function Approvals({ defaultTab = "all" }) {
                             title="Click to view full order details"
                           >
                             <td>
-                              <span className="order-id-badge prod-theme">
+                              <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
                               </span>
                             </td>
                             <td>
-                              <span className="rep-name bold">{order.employeeName || "Sales Executive"}</span>
+                              <span style={{ color: "#334155" }}>{order.employeeName || "Sales Executive"}</span>
                             </td>
                             <td>
-                              <span className="date-value">{dateStr}</span>
+                              <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
                             </td>
                             <td>
-                              <span className={`logo-tag ${order.logoName ? "has-logo" : "no-logo"}`}>
-                                <Tag size={12} />
+                              <span style={{ color: "#334155", fontSize: "13px" }}>
                                 {order.logoName || "Plain / No Logo"}
                               </span>
                             </td>
@@ -1098,15 +1115,10 @@ export default function Approvals({ defaultTab = "all" }) {
                                   style={{
                                     display: "inline-flex",
                                     alignItems: "center",
-                                    gap: "5px",
-                                    padding: "3px 8px",
-                                    borderRadius: "6px",
-                                    backgroundColor: "#eff6ff",
+                                    gap: "4px",
                                     color: "#2563eb",
-                                    fontSize: "12px",
-                                    fontWeight: 600,
-                                    textDecoration: "none",
-                                    border: "1px solid #bfdbfe",
+                                    fontSize: "12.5px",
+                                    textDecoration: "underline",
                                     maxWidth: "140px",
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
@@ -1119,7 +1131,7 @@ export default function Approvals({ defaultTab = "all" }) {
                                   </span>
                                 </a>
                               ) : (
-                                <span style={{ fontSize: "11px", color: "#94a3b8", fontStyle: "italic" }}>
+                                <span style={{ fontSize: "12px", color: "#94a3b8" }}>
                                   No Artwork
                                 </span>
                               )}
@@ -1130,18 +1142,18 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span className="qty-tag blue" style={{ fontWeight: 700 }}>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>
                                 {totalStockQty} pcs
                               </span>
                             </td>
                             <td>
-                              <span className="qty-tag green">{logosPrinted} pcs</span>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>{logosPrinted} pcs</span>
                             </td>
                             <td>
-                              <span className="qty-tag blue">{logosCutGiven} pcs</span>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>{logosCutGiven} pcs</span>
                             </td>
                             <td>
-                              <span className="qty-tag" style={{ background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", fontWeight: 700 }}>
+                              <span style={{ color: "#334155", fontSize: "13px" }}>
                                 {sampleLogos} pcs
                               </span>
                             </td>
@@ -1201,12 +1213,12 @@ export default function Approvals({ defaultTab = "all" }) {
                             style={{ cursor: "pointer" }}
                           >
                             <td>
-                              <span className="task-id-badge" title="Auto-generated, non-editable Task ID">
+                              <span style={{ fontFamily: "monospace", fontSize: "12.5px", color: "#64748b" }} title="Auto-generated, non-editable Task ID">
                                 {taskIdDisplay}
                               </span>
                             </td>
                             <td>
-                              <span className="order-id-badge stock-theme">
+                              <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
                               </span>
                             </td>
@@ -1283,18 +1295,18 @@ export default function Approvals({ defaultTab = "all" }) {
                             style={{ cursor: "pointer" }}
                           >
                             <td>
-                              <span className="task-id-badge" title="Auto-generated, non-editable Task ID">
+                              <span style={{ fontFamily: "monospace", fontSize: "12.5px", color: "#64748b" }}>
                                 {taskIdDisplay}
                               </span>
                             </td>
                             <td>
-                              <span className="order-id-badge prod-theme">
+                              <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
                               </span>
                             </td>
                             <td>
                               <div className="user-cell">
-                                <span className="rep-name bold">
+                                <span style={{ color: "#334155" }}>
                                   {order.employeeName || "Sales Executive"}
                                 </span>
                               </div>
@@ -1305,10 +1317,10 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span className="date-value">{dateStr}</span>
+                              <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
                             </td>
                             <td>
-                              <div className="logo-attachment-cell" style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "flex-start" }}>
+                              <div className="logo-attachment-cell" style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-start" }}>
                                 {order.attachment ? (
                                   <a
                                     href={order.attachment}
@@ -1320,15 +1332,10 @@ export default function Approvals({ defaultTab = "all" }) {
                                     style={{
                                       display: "inline-flex",
                                       alignItems: "center",
-                                      gap: "5px",
-                                      padding: "3px 8px",
-                                      borderRadius: "6px",
-                                      backgroundColor: "#eff6ff",
+                                      gap: "4px",
                                       color: "#2563eb",
-                                      fontSize: "12px",
-                                      fontWeight: 600,
-                                      textDecoration: "none",
-                                      border: "1px solid #bfdbfe",
+                                      fontSize: "12.5px",
+                                      textDecoration: "underline",
                                       maxWidth: "180px",
                                       overflow: "hidden",
                                       textOverflow: "ellipsis",
@@ -1346,20 +1353,14 @@ export default function Approvals({ defaultTab = "all" }) {
                                       display: "inline-flex",
                                       alignItems: "center",
                                       gap: "4px",
-                                      fontSize: "11px",
-                                      color: "#94a3b8",
-                                      fontStyle: "italic"
+                                      fontSize: "12px",
+                                      color: "#94a3b8"
                                     }}
                                   >
                                     <Paperclip size={11} /> No Attachment
                                   </span>
                                 )}
-                                <span
-                                  className={`logo-tag ${
-                                    order.logoName ? "has-logo" : "no-logo"
-                                  }`}
-                                >
-                                  <Tag size={12} />
+                                <span style={{ color: "#334155", fontSize: "12.5px" }}>
                                   {order.logoName || "Plain / No Logo"}
                                 </span>
                               </div>
@@ -1402,12 +1403,12 @@ export default function Approvals({ defaultTab = "all" }) {
                           onClick={() => handleSelectOrder(order)}
                         >
                           <td>
-                            <span className="task-id-badge" title="Auto-generated, non-editable Task ID">
+                            <span style={{ fontFamily: "monospace", fontSize: "12.5px", color: "#64748b" }} title="Auto-generated, non-editable Task ID">
                               {taskIdDisplay}
                             </span>
                           </td>
                           <td>
-                            <span className="order-id-badge">
+                            <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                               {order.orderId || "Pending ID"}
                             </span>
                           </td>
@@ -1598,417 +1599,516 @@ export default function Approvals({ defaultTab = "all" }) {
           {roleView === "stock" && (
             <div className="review-form-wrapper">
 
-              {/* SECTION 1: LEAD & ORDER IDENTIFICATION (Stock Room Fields) */}
-              <div className="form-card highlight-stock">
+              {/* SINGLE UNIFIED FORM CARD */}
+              <div className="form-card">
                 <div className="form-card-header">
                   <Package size={18} />
-                  <h3>Order & Lead Details</h3>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
+                    {currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room"
+                      ? "Staging Room"
+                      : "Ready to Pick"}
+                  </h3>
                 </div>
 
-                <div className="form-grid-4">
+                {/* 1. ORDER & LEAD DETAILS */}
+                <div className="form-grid-4" style={{ marginBottom: "20px" }}>
                   {/* 1. Order ID */}
                   <div className="form-field">
-                    <label>Order ID</label>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Order ID</label>
                     <input
                       type="text"
                       readOnly
                       value={selectedOrder.orderId || "Pending Order ID"}
-                      className="read-only-input bold-accent"
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
                     />
                   </div>
 
                   {/* 2. Employee Name */}
                   <div className="form-field">
-                    <label>Employee Name (Sales Rep)</label>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Employee Name (Sales Rep)</label>
                     <input
                       type="text"
                       readOnly
                       value={selectedOrder.employeeName || "Sales Executive"}
                       className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
                     />
                   </div>
 
                   {/* 3. Company Name */}
                   <div className="form-field">
-                    <label>Company Name</label>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Company Name</label>
                     <input
                       type="text"
                       readOnly
                       value={selectedOrder.companyName || selectedOrder.clientName || "-"}
                       className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
                     />
                   </div>
 
                   {/* 4. Date when the lead was created */}
                   <div className="form-field">
-                    <label>Date When Lead Was Created</label>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Date When Lead Was Created</label>
                     <input
                       type="text"
                       readOnly
                       value={formatLeadDate(selectedOrder.createdAt)}
                       className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
                     />
                   </div>
                 </div>
-              </div>
 
-              {/* SECTION 2: ALL ITEMS FROM "ADD ITEM" FIELD IN CREATE LEAD */}
-              <div className="form-card">
-                <div className="form-card-header">
-                  <Layers size={18} />
-                  <div>
-                    <h3>All Items Attached in Lead (Add Item Field)</h3>
-                    <span className="card-subtitle">
-                      Material, fabric, printing, sizing, and quantity specifications for stock allocation.
-                    </span>
-                  </div>
-                  <span className="count-badge">
-                    {selectedOrder.items?.length || 0} Item
-                    {(selectedOrder.items?.length || 0) !== 1 ? "s" : ""}
-                  </span>
-                </div>
-
-                {!selectedOrder.items || selectedOrder.items.length === 0 ? (
-                  <div className="no-items-box">
-                    <AlertCircle size={20} color="#f59e0b" />
-                    <p>No items were entered in the "Add Item" section of this lead.</p>
-                  </div>
-                ) : (
-                  <div className="table-responsive">
-                    <table className="items-review-table stock-items-table">
-                      <thead>
+                {/* 2. ITEMS ATTACHED TABLE WITH STOCK CLEARANCE FIELDS IN FRONT OF COLOR */}
+                <div className="table-responsive">
+                  <table className="items-review-table stock-review-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: "32px", textAlign: "center", padding: "10px 6px", fontSize: "12.5px" }}>#</th>
+                        <th style={{ minWidth: "90px", padding: "10px 8px", fontSize: "12.5px" }}>Item Description</th>
+                        <th style={{ minWidth: "75px", padding: "10px 8px", fontSize: "12.5px" }}>Printing Type</th>
+                        <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Sublimation</th>
+                        <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Fabric</th>
+                        <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Quantity</th>
+                        <th style={{ minWidth: "40px", padding: "10px 8px", fontSize: "12.5px" }}>Size</th>
+                        <th style={{ minWidth: "55px", padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
+                        {!(currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room") ? (
+                          <>
+                            <th style={{ minWidth: "130px", padding: "10px 8px", fontSize: "12.5px" }}>Is stock available?</th>
+                            <th style={{ minWidth: "90px", padding: "10px 8px", fontSize: "12.5px" }}>How many giving for sample? (pcs)</th>
+                            <th style={{ minWidth: "160px", padding: "10px 8px", fontSize: "12.5px" }}>Stock Depreciation</th>
+                          </>
+                        ) : (
+                          <>
+                            <th style={{ minWidth: "90px", padding: "10px 8px", fontSize: "12.5px" }}>Given for Sample (pcs)</th>
+                            <th style={{ minWidth: "105px", padding: "10px 8px", fontSize: "12.5px" }}>Received at Staging (pcs)</th>
+                            <th style={{ minWidth: "85px", padding: "10px 8px", fontSize: "12.5px" }}>Pending (pcs)</th>
+                          </>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(!selectedOrder.items || selectedOrder.items.length === 0) ? (
                         <tr>
-                          <th>#</th>
-                          <th>Item Description</th>
-                          <th>Printing Type</th>
-                          <th>Sublimation</th>
-                          <th>Fabric</th>
-                          <th>Quantity</th>
-                          <th>Size</th>
-                          <th>Color</th>
+                          <td style={{ textAlign: "center", padding: "9px 6px", fontSize: "13.5px" }}>1</td>
+                          <td className="item-name-cell" style={{ padding: "9px 8px", fontSize: "13.5px" }}>{selectedOrder.item || "Apparel Item"}</td>
+                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>Standard</td>
+                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>-</td>
+                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>Standard</td>
+                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{selectedOrder.totalQuantity || 0} pcs</td>
+                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>-</td>
+                          <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>-</td>
+                          {!(currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room") ? (
+                            <>
+                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                <select
+                                  value={stockForm.isStockAvailable ? "yes" : "no"}
+                                  onChange={(e) => {
+                                    const isAvail = e.target.value === "yes";
+                                    const totalQty = selectedOrder.totalQuantity || 100;
+                                    const sampleDeduction = Number(stockForm.sampleDeduction) >= 0 ? Number(stockForm.sampleDeduction) : 0;
+                                    const remaining = Math.max(0, totalQty - sampleDeduction);
+                                    setStockForm(prev => ({
+                                      ...prev,
+                                      isStockAvailable: isAvail,
+                                      stockDepreciation: isAvail
+                                        ? (sampleDeduction > 0 ? `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
+                                        : `Deficit in stock. Giving ${sampleDeduction} for sample.`
+                                    }));
+                                  }}
+                                  style={{
+                                    width: "100%",
+                                    padding: "7px 10px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "13.5px",
+                                    fontWeight: 500,
+                                    color: "#1e293b",
+                                    backgroundColor: "#ffffff",
+                                    outline: "none",
+                                    boxSizing: "border-box"
+                                  }}
+                                >
+                                  <option value="yes">Yes, in stock</option>
+                                  <option value="no">No, deficit</option>
+                                </select>
+                                {!stockForm.isStockAvailable && (
+                                  <div style={{ marginTop: "6px" }}>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      placeholder="Deficit pcs"
+                                      value={stockForm.notInStockCount}
+                                      onChange={(e) => setStockForm({ ...stockForm, notInStockCount: e.target.value })}
+                                      style={{
+                                        width: "100%",
+                                        padding: "6px 8px",
+                                        borderRadius: "6px",
+                                        border: "1px solid #cbd5e1",
+                                        fontSize: "13px",
+                                        color: "#1e293b",
+                                        backgroundColor: "#ffffff",
+                                        outline: "none",
+                                        boxSizing: "border-box"
+                                      }}
+                                    />
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={stockForm.sampleDeduction}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const totalQty = selectedOrder.totalQuantity || 100;
+                                    const sampleNum = Number(val) >= 0 ? Number(val) : 0;
+                                    const remaining = Math.max(0, totalQty - sampleNum);
+                                    setStockForm(prev => ({
+                                      ...prev,
+                                      sampleDeduction: val,
+                                      stockDepreciation: prev.isStockAvailable
+                                        ? (sampleNum > 0 ? `Giving ${sampleNum} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
+                                        : `Deficit in stock. Giving ${sampleNum} for sample.`
+                                    }));
+                                  }}
+                                  style={{
+                                    width: "100%",
+                                    padding: "7px 8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "13.5px",
+                                    fontWeight: 600,
+                                    color: "#1e293b",
+                                    backgroundColor: "#ffffff",
+                                    outline: "none",
+                                    textAlign: "center",
+                                    boxSizing: "border-box"
+                                  }}
+                                />
+                              </td>
+                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                <input
+                                  type="text"
+                                  value={stockForm.stockDepreciation}
+                                  onChange={(e) => setStockForm({ ...stockForm, stockDepreciation: e.target.value })}
+                                  placeholder="e.g. Giving 5 for sample. Remaining: 95 in stock."
+                                  style={{
+                                    width: "100%",
+                                    padding: "7px 10px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "13.5px",
+                                    fontWeight: 500,
+                                    color: "#1e293b",
+                                    backgroundColor: "#ffffff",
+                                    outline: "none",
+                                    boxSizing: "border-box"
+                                  }}
+                                />
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={stockForm.sampleDeduction}
+                                  onChange={(e) => setStockForm({ ...stockForm, sampleDeduction: e.target.value })}
+                                  style={{
+                                    width: "100%",
+                                    padding: "7px 8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "13.5px",
+                                    fontWeight: 600,
+                                    color: "#1e293b",
+                                    backgroundColor: "#ffffff",
+                                    outline: "none",
+                                    textAlign: "center",
+                                    boxSizing: "border-box"
+                                  }}
+                                />
+                              </td>
+                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={stockForm.receivedCount}
+                                  onChange={(e) => setStockForm({ ...stockForm, receivedCount: e.target.value })}
+                                  style={{
+                                    width: "100%",
+                                    padding: "7px 8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "13.5px",
+                                    fontWeight: 600,
+                                    color: "#1e293b",
+                                    backgroundColor: "#ffffff",
+                                    outline: "none",
+                                    textAlign: "center",
+                                    boxSizing: "border-box"
+                                  }}
+                                />
+                              </td>
+                              <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={stockForm.pendingCount}
+                                  onChange={(e) => setStockForm({ ...stockForm, pendingCount: e.target.value })}
+                                  style={{
+                                    width: "100%",
+                                    padding: "7px 8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: "13.5px",
+                                    fontWeight: 600,
+                                    color: "#1e293b",
+                                    backgroundColor: "#ffffff",
+                                    outline: "none",
+                                    textAlign: "center",
+                                    boxSizing: "border-box"
+                                  }}
+                                />
+                              </td>
+                            </>
+                          )}
                         </tr>
-                      </thead>
-                      <tbody>
-                        {selectedOrder.items.map((it, idx) => (
+                      ) : (
+                        selectedOrder.items.map((it, idx) => (
                           <tr key={it.id || it._id || idx}>
-                            <td>{idx + 1}</td>
-                            <td className="item-name-cell">
-                              <span className="item-name-highlight">
-                                {it.item || it.enterItem || it.itemType || "Apparel Item"}
-                              </span>
+                            <td style={{ textAlign: "center", padding: "9px 6px", fontSize: "13.5px" }}>{idx + 1}</td>
+                            <td className="item-name-cell" style={{ padding: "9px 8px", fontSize: "13.5px" }}>
+                              {it.item || it.enterItem || it.itemType || "Apparel Item"}
                             </td>
-                            <td>
-                              <span className="spec-badge">
-                                {it.printingType || "Standard"}
-                              </span>
-                            </td>
-                            <td>{it.sublimationOption || "-"}</td>
-                            <td>
-                              <span className="fabric-pill">{it.fabric || "Standard Fabric"}</span>
-                            </td>
-                            <td>
-                              <span className="qty-tag">{it.quantity || 0} pcs</span>
-                            </td>
-                            <td>
-                              <span className="size-pill">{it.size || "M"}</span>
-                            </td>
-                            <td>
-                              <span className="color-spec">{it.color || "-"}</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.printingType || "Standard"}</td>
+                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.sublimationOption || "-"}</td>
+                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.fabric || "Standard Fabric"}</td>
+                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.quantity ? `${it.quantity} pcs` : "0 pcs"}</td>
+                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.size || "M"}</td>
+                            <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.color || "-"}</td>
 
-              {/* SECTION 3: STOCK CLEARANCE SPECIFICATIONS FORM (ON-PAGE) */}
-              <div className="form-card highlight-stock" style={{ marginTop: "20px" }}>
-                <div className="form-card-header">
-                  {currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room" ? (
-                    <Boxes size={18} style={{ color: "#059669" }} />
-                  ) : (
-                    <Package size={18} style={{ color: "#059669" }} />
-                  )}
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
-                      {currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room"
-                        ? "Staging Room: Stock Allocation & Clearance"
-                        : "Ready to Pick: Stock Clearance Specifications"}
-                    </h3>
-                    <span className="card-subtitle">
-                      {currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room"
-                        ? "Verify received pieces at staging, track pending sample items, and add remarks."
-                        : "Verify inventory availability, specify sample deduction count, and record stock depreciation."}
-                    </span>
-                  </div>
+                            {/* STOCK CLEARANCE FIELDS IN FRONT OF COLOR */}
+                            {idx === 0 && (
+                              !(currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room") ? (
+                                <>
+                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                    <select
+                                      value={stockForm.isStockAvailable ? "yes" : "no"}
+                                      onChange={(e) => {
+                                        const isAvail = e.target.value === "yes";
+                                        const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
+                                        const sampleDeduction = Number(stockForm.sampleDeduction) >= 0 ? Number(stockForm.sampleDeduction) : 0;
+                                        const remaining = Math.max(0, totalQty - sampleDeduction);
+                                        setStockForm(prev => ({
+                                          ...prev,
+                                          isStockAvailable: isAvail,
+                                          stockDepreciation: isAvail
+                                            ? (sampleDeduction > 0 ? `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
+                                            : `Deficit in stock. Giving ${sampleDeduction} for sample.`
+                                        }));
+                                      }}
+                                      style={{
+                                        width: "100%",
+                                        padding: "7px 10px",
+                                        borderRadius: "6px",
+                                        border: "1px solid #cbd5e1",
+                                        fontSize: "13.5px",
+                                        fontWeight: 500,
+                                        color: "#1e293b",
+                                        backgroundColor: "#ffffff",
+                                        outline: "none",
+                                        boxSizing: "border-box"
+                                      }}
+                                    >
+                                      <option value="yes">Yes, in stock</option>
+                                      <option value="no">No, deficit</option>
+                                    </select>
+                                    {!stockForm.isStockAvailable && (
+                                      <div style={{ marginTop: "6px" }}>
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          placeholder="Deficit pcs"
+                                          value={stockForm.notInStockCount}
+                                          onChange={(e) => setStockForm({ ...stockForm, notInStockCount: e.target.value })}
+                                          style={{
+                                            width: "100%",
+                                            padding: "6px 8px",
+                                            borderRadius: "6px",
+                                            border: "1px solid #cbd5e1",
+                                            fontSize: "13px",
+                                            color: "#1e293b",
+                                            backgroundColor: "#ffffff",
+                                            outline: "none",
+                                            boxSizing: "border-box"
+                                          }}
+                                        />
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={stockForm.sampleDeduction}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
+                                        const sampleNum = Number(val) >= 0 ? Number(val) : 0;
+                                        const remaining = Math.max(0, totalQty - sampleNum);
+                                        setStockForm(prev => ({
+                                          ...prev,
+                                          sampleDeduction: val,
+                                          stockDepreciation: prev.isStockAvailable
+                                            ? (sampleNum > 0 ? `Giving ${sampleNum} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
+                                            : `Deficit in stock. Giving ${sampleNum} for sample.`
+                                        }));
+                                      }}
+                                      style={{
+                                        width: "100%",
+                                        padding: "7px 8px",
+                                        borderRadius: "6px",
+                                        border: "1px solid #cbd5e1",
+                                        fontSize: "13.5px",
+                                        fontWeight: 600,
+                                        color: "#1e293b",
+                                        backgroundColor: "#ffffff",
+                                        outline: "none",
+                                        textAlign: "center",
+                                        boxSizing: "border-box"
+                                      }}
+                                    />
+                                  </td>
+                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                    <input
+                                      type="text"
+                                      value={stockForm.stockDepreciation}
+                                      onChange={(e) => setStockForm({ ...stockForm, stockDepreciation: e.target.value })}
+                                      placeholder="e.g. Giving 5 for sample. Remaining: 95 in stock."
+                                      style={{
+                                        width: "100%",
+                                        padding: "7px 10px",
+                                        borderRadius: "6px",
+                                        border: "1px solid #cbd5e1",
+                                        fontSize: "13.5px",
+                                        fontWeight: 500,
+                                        color: "#1e293b",
+                                        backgroundColor: "#ffffff",
+                                        outline: "none",
+                                        boxSizing: "border-box"
+                                      }}
+                                    />
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={stockForm.sampleDeduction}
+                                      onChange={(e) => setStockForm({ ...stockForm, sampleDeduction: e.target.value })}
+                                      style={{
+                                        width: "100%",
+                                        padding: "7px 8px",
+                                        borderRadius: "6px",
+                                        border: "1px solid #cbd5e1",
+                                        fontSize: "13.5px",
+                                        fontWeight: 600,
+                                        color: "#1e293b",
+                                        backgroundColor: "#ffffff",
+                                        outline: "none",
+                                        textAlign: "center",
+                                        boxSizing: "border-box"
+                                      }}
+                                    />
+                                  </td>
+                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={stockForm.receivedCount}
+                                      onChange={(e) => setStockForm({ ...stockForm, receivedCount: e.target.value })}
+                                      style={{
+                                        width: "100%",
+                                        padding: "7px 8px",
+                                        borderRadius: "6px",
+                                        border: "1px solid #cbd5e1",
+                                        fontSize: "13.5px",
+                                        fontWeight: 600,
+                                        color: "#1e293b",
+                                        backgroundColor: "#ffffff",
+                                        outline: "none",
+                                        textAlign: "center",
+                                        boxSizing: "border-box"
+                                      }}
+                                    />
+                                  </td>
+                                  <td rowSpan={selectedOrder.items.length} style={{ verticalAlign: "middle", padding: "9px 8px" }}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={stockForm.pendingCount}
+                                      onChange={(e) => setStockForm({ ...stockForm, pendingCount: e.target.value })}
+                                      style={{
+                                        width: "100%",
+                                        padding: "7px 8px",
+                                        borderRadius: "6px",
+                                        border: "1px solid #cbd5e1",
+                                        fontSize: "13.5px",
+                                        fontWeight: 600,
+                                        color: "#1e293b",
+                                        backgroundColor: "#ffffff",
+                                        outline: "none",
+                                        textAlign: "center",
+                                        boxSizing: "border-box"
+                                      }}
+                                    />
+                                  </td>
+                                </>
+                              )
+                            )}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
 
-                {!(currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room") ? (
-                  /* READY TO PICK ON-PAGE FIELDS */
-                  <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "14px" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
-                      {/* Field 1: Is Stock Available? */}
-                      <div>
-                        <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
-                          Is stock available?
-                        </label>
-                        <select
-                          value={stockForm.isStockAvailable ? "yes" : "no"}
-                          onChange={(e) => {
-                            const isAvail = e.target.value === "yes";
-                            const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-                            const sampleDeduction = Number(stockForm.sampleDeduction) >= 0 ? Number(stockForm.sampleDeduction) : 0;
-                            const remaining = Math.max(0, totalQty - sampleDeduction);
-                            setStockForm(prev => ({
-                              ...prev,
-                              isStockAvailable: isAvail,
-                              stockDepreciation: isAvail
-                                ? (sampleDeduction > 0 ? `Giving ${sampleDeduction} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
-                                : `Deficit in stock. Giving ${sampleDeduction} for sample.`
-                            }));
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "8px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "13.5px",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                            backgroundColor: "#ffffff",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
-                        >
-                          <option value="yes">Yes, in stock (Stock Available)</option>
-                          <option value="no">No, deficit (Not Fully in Stock)</option>
-                        </select>
-                      </div>
-
-                      {/* Field 2: Deficit count if not available */}
-                      {!stockForm.isStockAvailable && (
-                        <div>
-                          <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "#dc2626", marginBottom: "6px" }}>
-                            How many not in stock? (Deficit pcs)
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            placeholder="e.g. 20"
-                            value={stockForm.notInStockCount}
-                            onChange={(e) => setStockForm({ ...stockForm, notInStockCount: e.target.value })}
-                            style={{
-                              width: "100%",
-                              padding: "9px 12px",
-                              borderRadius: "8px",
-                              border: "1px solid #f87171",
-                              fontSize: "14px",
-                              fontWeight: 600,
-                              color: "#b91c1c",
-                              backgroundColor: "#fef2f2",
-                              outline: "none",
-                              boxSizing: "border-box"
-                            }}
-                          />
-                        </div>
-                      )}
-
-                      {/* Field 3: How many giving for sample? */}
-                      <div>
-                        <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
-                          How many giving for sample? (pcs)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={stockForm.sampleDeduction}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const totalQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
-                            const sampleNum = Number(val) >= 0 ? Number(val) : 0;
-                            const remaining = Math.max(0, totalQty - sampleNum);
-                            setStockForm(prev => ({
-                              ...prev,
-                              sampleDeduction: val,
-                              stockDepreciation: prev.isStockAvailable
-                                ? (sampleNum > 0 ? `Giving ${sampleNum} for sample. Remaining: ${remaining} in stock.` : "Full stock available")
-                                : `Deficit in stock. Giving ${sampleNum} for sample.`
-                            }));
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "8px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "14px",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                            backgroundColor: "#ffffff",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
-                        />
-                      </div>
-
-                      {/* Field 4: Stock Depreciation */}
-                      <div>
-                        <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
-                          Stock Depreciation / Inventory Notes
-                        </label>
-                        <input
-                          type="text"
-                          value={stockForm.stockDepreciation}
-                          onChange={(e) => setStockForm({ ...stockForm, stockDepreciation: e.target.value })}
-                          placeholder="e.g. Giving 5 for sample. Remaining: 95 in stock."
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "8px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "13.5px",
-                            fontWeight: 600,
-                            color: "#059669",
-                            backgroundColor: "#f0fdf4",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Field 5: Correction Notes / Remarks */}
-                    <div>
-                      <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                        Correction Notes / Remarks (Mandatory if referring back to Sales):
-                      </label>
-                      <textarea
-                        rows={2}
-                        placeholder="Add stock notes, shortages or reasons if referring back..."
-                        value={stockForm.note}
-                        onChange={(e) => setStockForm({ ...stockForm, note: e.target.value })}
-                        style={{
-                          width: "100%",
-                          padding: "9px 12px",
-                          borderRadius: "8px",
-                          border: "1px solid #cbd5e1",
-                          fontSize: "13px",
-                          color: "#1e293b",
-                          backgroundColor: "#ffffff",
-                          outline: "none",
-                          resize: "vertical",
-                          boxSizing: "border-box"
-                        }}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  /* STAGING ROOM ON-PAGE FIELDS */
-                  <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "14px" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
-                      {/* Field 1: Given for Sample */}
-                      <div>
-                        <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
-                          Given for Sample (pcs)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={stockForm.sampleDeduction}
-                          onChange={(e) => setStockForm({ ...stockForm, sampleDeduction: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "8px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "14px",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                            backgroundColor: "#ffffff",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
-                        />
-                      </div>
-
-                      {/* Field 2: Received at Staging */}
-                      <div>
-                        <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
-                          How many received at staging? (pcs)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={stockForm.receivedCount}
-                          onChange={(e) => setStockForm({ ...stockForm, receivedCount: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "8px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "14px",
-                            fontWeight: 600,
-                            color: "#059669",
-                            backgroundColor: "#f0fdf4",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
-                        />
-                      </div>
-
-                      {/* Field 3: Pending Count */}
-                      <div>
-                        <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
-                          Pending if any (pcs)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={stockForm.pendingCount}
-                          onChange={(e) => setStockForm({ ...stockForm, pendingCount: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "8px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "14px",
-                            fontWeight: 600,
-                            color: "#b45309",
-                            backgroundColor: "#fffbeb",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Field 4: Correction Notes / Remarks */}
-                    <div>
-                      <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                        Staging Room Remarks / Correction Notes (Mandatory if referring back):
-                      </label>
-                      <textarea
-                        rows={2}
-                        placeholder="Add staging remarks or correction reasons if referring back..."
-                        value={stockForm.note}
-                        onChange={(e) => setStockForm({ ...stockForm, note: e.target.value })}
-                        style={{
-                          width: "100%",
-                          padding: "9px 12px",
-                          borderRadius: "8px",
-                          border: "1px solid #cbd5e1",
-                          fontSize: "13px",
-                          color: "#1e293b",
-                          backgroundColor: "#ffffff",
-                          outline: "none",
-                          resize: "vertical",
-                          boxSizing: "border-box"
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+                {/* 3. CORRECTION NOTES / REMARKS (UNDERNEATH TABLE) */}
+                <div style={{ marginTop: "18px" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+                    {currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room"
+                      ? "Staging Room Remarks / Correction Notes (Mandatory if referring back):"
+                      : "Correction Notes / Remarks (Mandatory if referring back to Sales):"}
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder={currentTaskTab === "staging-room" || selectedOrder.stockTaskStage === "staging_room"
+                      ? "Add staging remarks or correction reasons if referring back..."
+                      : "Add stock notes, shortages or reasons if referring back..."}
+                    value={stockForm.note}
+                    onChange={(e) => setStockForm({ ...stockForm, note: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "13.5px",
+                      color: "#1e293b",
+                      backgroundColor: "#ffffff",
+                      outline: "none",
+                      resize: "vertical",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Audit Trail / History */}
@@ -2067,117 +2167,90 @@ export default function Approvals({ defaultTab = "all" }) {
               - Employee Name
               - Company Name
               - Date of created lead
-              - Attachment (ABOVE Logo Name)
-              - Logo Name
+              - Attachment & Logo Name
+              - Logos Needed, Printed, Cut / Given, Sample
+              - Remarks / Feedback
              ========================================================================= */}
           {roleView === "production" && (
             <div className="review-form-wrapper">
 
-              {/* PRODUCTION ROOM SPECIFIED FIELDS */}
-              <div className="form-card highlight-production">
+              {/* SINGLE UNIFIED FORM CARD */}
+              <div className="form-card">
                 <div className="form-card-header">
                   <Cpu size={18} />
-                  <h3>Production Room Specifications</h3>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
+                    Logo Cutting
+                  </h3>
                 </div>
 
-                <div className="production-focused-grid" style={{ marginBottom: "20px" }}>
-                  {/* Field 1: Order ID */}
-                  <div className="prod-field-card highlight-accent">
-                    <div className="prod-field-header">
-                      <Package size={16} />
-                      <span>Order ID</span>
-                    </div>
-                    <div className="prod-field-value accent">
-                      {selectedOrder.orderId || "Pending Order ID"}
-                    </div>
-                    <span className="prod-field-note">Unique Order Identifier</span>
+                {/* 1. ORDER & LEAD DETAILS */}
+                <div className="form-grid-4" style={{ marginBottom: "20px" }}>
+                  {/* 1. Order ID */}
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Order ID</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={selectedOrder.orderId || "Pending Order ID"}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
                   </div>
 
-                  {/* Field 2: Employee Name */}
-                  <div className="prod-field-card">
-                    <div className="prod-field-header">
-                      <User size={16} />
-                      <span>Employee Name</span>
-                    </div>
-                    <div className="prod-field-value">
-                      {selectedOrder.employeeName || "Sales Executive"}
-                    </div>
-                    <span className="prod-field-note">Sales Representative</span>
+                  {/* 2. Employee Name */}
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Employee Name (Sales Rep)</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={selectedOrder.employeeName || "Sales Executive"}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
                   </div>
 
-                  {/* Field 3: Company Name */}
-                  <div className="prod-field-card">
-                    <div className="prod-field-header">
-                      <Building size={16} />
-                      <span>Company Name</span>
-                    </div>
-                    <div className="prod-field-value">
-                      {selectedOrder.companyName || selectedOrder.clientName || "-"}
-                    </div>
-                    <span className="prod-field-note">Client / Enterprise Account</span>
+                  {/* 3. Company Name */}
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Company Name</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={selectedOrder.companyName || selectedOrder.clientName || "-"}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
                   </div>
 
-                  {/* Field 4: Date when the lead was created */}
-                  <div className="prod-field-card">
-                    <div className="prod-field-header">
-                      <Calendar size={16} />
-                      <span>Date Created</span>
-                    </div>
-                    <div className="prod-field-value">
-                      {formatLeadDate(selectedOrder.createdAt)}
-                    </div>
-                    <span className="prod-field-note">Lead Submission Timestamp</span>
-                  </div>
-
-                  {/* Field 5: Logos Needed by Client */}
-                  <div className="prod-field-card highlight-accent" style={{ backgroundColor: "#eff6ff", borderColor: "#bfdbfe" }}>
-                    <div className="prod-field-header">
-                      <Tag size={16} style={{ color: "#2563eb" }} />
-                      <span style={{ color: "#1d4ed8", fontWeight: 700 }}>Logos Needed by Client</span>
-                    </div>
-                    <div className="prod-field-value" style={{ color: "#1d4ed8", fontWeight: 800 }}>
-                      {selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0} pcs
-                    </div>
-                    <span className="prod-field-note" style={{ color: "#2563eb" }}>
-                      Total Order Volume ({selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0} shirts ordered)
-                    </span>
+                  {/* 4. Date when the lead was created */}
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Date When Lead Was Created</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={formatLeadDate(selectedOrder.createdAt)}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
                   </div>
                 </div>
 
-                {/* ATTACHMENT ABOVE LOGO NAME */}
-                <div
-                  className="prod-field-card highlight-brand"
-                  style={{
-                    backgroundColor: "#f8fafc",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "12px",
-                    padding: "18px 20px"
-                  }}
-                >
-                  <div className="prod-field-header" style={{ marginBottom: "14px" }}>
-                    <Tag size={18} style={{ color: "#4f46e5" }} />
-                    <span style={{ fontSize: "14px", fontWeight: 700, color: "#1e293b" }}>
-                      Branding & Artwork Specifications
-                    </span>
-                  </div>
-
-                  {/* 1. ATTACHMENT (PLACED DIRECTLY ABOVE LOGO NAME) */}
-                  <div
-                    style={{
-                      marginBottom: "16px",
-                      paddingBottom: "16px",
-                      borderBottom: "1px dashed #cbd5e1"
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
-                      <Paperclip size={15} style={{ color: "#2563eb" }} />
-                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                        Attachment (Artwork / Design File):
-                      </span>
-                    </div>
-
-                    {selectedOrder.attachment ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                {/* 2. ARTWORK & LOGO SPECIFICATIONS */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+                  {/* Attachment */}
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                      Attachment (Artwork / Design File)
+                    </label>
+                    <div style={{
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      backgroundColor: "#f8fafc",
+                      minHeight: "42px",
+                      display: "flex",
+                      alignItems: "center"
+                    }}>
+                      {selectedOrder.attachment ? (
                         <a
                           href={selectedOrder.attachment}
                           target="_blank"
@@ -2186,195 +2259,154 @@ export default function Approvals({ defaultTab = "all" }) {
                           style={{
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: "8px",
-                            padding: "8px 16px",
-                            borderRadius: "8px",
-                            backgroundColor: "#eff6ff",
-                            color: "#1d4ed8",
+                            gap: "6px",
+                            color: "#2563eb",
+                            fontSize: "13.5px",
                             fontWeight: 600,
-                            fontSize: "13px",
-                            border: "1px solid #bfdbfe",
-                            textDecoration: "none"
+                            textDecoration: "underline"
                           }}
                         >
                           <Paperclip size={15} />
                           <span>{selectedOrder.attachmentName || "Download Logo Attachment"}</span>
                         </a>
-                        <span style={{ fontSize: "12px", color: "#64748b" }}>
-                          (Click to preview or download file for printing)
+                      ) : (
+                        <span style={{ fontSize: "13.5px", color: "#94a3b8" }}>
+                          No file attachment uploaded for this lead
                         </span>
-                      </div>
-                    ) : (
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#94a3b8", fontSize: "13px", fontStyle: "italic" }}>
-                        <Paperclip size={14} />
-                        <span>No file attachment uploaded for this lead.</span>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
 
-                  {/* 2. LOGO NAME (PLACED UNDERNEATH ATTACHMENT) */}
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
-                      <Tag size={15} style={{ color: "#4f46e5" }} />
-                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                        Logo Name:
-                      </span>
-                    </div>
-                    <div
+                  {/* Logo Name */}
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                      Logo Name
+                    </label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={selectedOrder.logoName || "Plain / No Logo"}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
+                  </div>
+                </div>
+
+                {/* 3. LOGO CUTTING PRODUCTION DATA (4 COLUMNS) */}
+                <div className="form-grid-4" style={{ marginBottom: "20px" }}>
+                  {/* Field 1: Logos Needed by Client */}
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                      Logos Needed by Client
+                    </label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={`${selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0} pcs`}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
+                  </div>
+
+                  {/* Field 2: How many logos printed? */}
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                      Logos Printed (pcs)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={prodForm.logosPrinted}
+                      onChange={(e) => setProdForm({ ...prodForm, logosPrinted: e.target.value })}
                       style={{
-                        fontSize: "16px",
-                        fontWeight: 700,
-                        color: selectedOrder.logoName ? "#312e81" : "#64748b",
-                        backgroundColor: selectedOrder.logoName ? "#e0e7ff" : "#f1f5f9",
-                        display: "inline-block",
-                        padding: "6px 14px",
+                        width: "100%",
+                        padding: "8px 12px",
                         borderRadius: "8px",
-                        border: selectedOrder.logoName ? "1px solid #c7d2fe" : "1px solid #e2e8f0"
+                        border: "1px solid #cbd5e1",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        color: "#1e293b",
+                        backgroundColor: "#ffffff",
+                        outline: "none",
+                        boxSizing: "border-box"
                       }}
-                    >
-                      {selectedOrder.logoName || "None / Plain (No Logo)"}
-                    </div>
+                    />
                   </div>
 
-                  {/* 3. PRODUCTION & LOGO CUTTING DATA ENTRY FORM */}
-                  <div
+                  {/* Field 3: How many cut or given? */}
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                      Logos Cut / Given (pcs)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={prodForm.logosCutGiven}
+                      onChange={(e) => setProdForm({ ...prodForm, logosCutGiven: e.target.value })}
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        color: "#1e293b",
+                        backgroundColor: "#ffffff",
+                        outline: "none",
+                        boxSizing: "border-box"
+                      }}
+                    />
+                  </div>
+
+                  {/* Field 4: How many giving for sample? */}
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                      Giving for Sample (pcs)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={prodForm.sampleLogosCount}
+                      onChange={(e) => setProdForm({ ...prodForm, sampleLogosCount: e.target.value })}
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        color: "#1e293b",
+                        backgroundColor: "#ffffff",
+                        outline: "none",
+                        boxSizing: "border-box"
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* 4. CORRECTION NOTES / REMARKS (UNDERNEATH) */}
+                <div style={{ marginTop: "18px" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+                    Production Remarks / Feedback (Mandatory if referring back):
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Add production notes or correction reasons if referring back to sales..."
+                    value={prodForm.note}
+                    onChange={(e) => setProdForm({ ...prodForm, note: e.target.value })}
                     style={{
-                      marginTop: "18px",
-                      paddingTop: "18px",
-                      borderTop: "1px dashed #cbd5e1"
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "13.5px",
+                      color: "#1e293b",
+                      backgroundColor: "#ffffff",
+                      outline: "none",
+                      resize: "vertical",
+                      boxSizing: "border-box"
                     }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "14px" }}>
-                      <CheckCircle size={16} style={{ color: "#10b981" }} />
-                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                        Logo Cutting Production Data:
-                      </span>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px", marginBottom: "16px" }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>
-                          Logos Needed by Client:
-                        </label>
-                        <input
-                          type="text"
-                          readOnly
-                          value={`${selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0} pcs`}
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "8px",
-                            border: "1px solid #93c5fd",
-                            fontSize: "14px",
-                            fontWeight: 700,
-                            color: "#1d4ed8",
-                            backgroundColor: "#eff6ff",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
-                        />
-                        <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
-                          Client ordered {selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0} items = {selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0} logos needed
-                        </span>
-                      </div>
-
-                      <div>
-                        <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                          How many logos printed? (pcs)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={prodForm.logosPrinted}
-                          onChange={(e) => setProdForm({ ...prodForm, logosPrinted: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "8px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "14px",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                            backgroundColor: "#ffffff",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                          How many cut or given? (pcs)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={prodForm.logosCutGiven}
-                          onChange={(e) => setProdForm({ ...prodForm, logosCutGiven: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "8px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "14px",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                            backgroundColor: "#ffffff",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                          How many giving for sample? (pcs)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={prodForm.sampleLogosCount}
-                          onChange={(e) => setProdForm({ ...prodForm, sampleLogosCount: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "8px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "14px",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                            backgroundColor: "#ffffff",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                        Production Remarks / Feedback (Mandatory if referring back):
-                      </label>
-                      <textarea
-                        rows={2}
-                        placeholder="Add production notes or correction reasons if referring back to sales..."
-                        value={prodForm.note}
-                        onChange={(e) => setProdForm({ ...prodForm, note: e.target.value })}
-                        style={{
-                          width: "100%",
-                          padding: "9px 12px",
-                          borderRadius: "8px",
-                          border: "1px solid #cbd5e1",
-                          fontSize: "13px",
-                          color: "#1e293b",
-                          backgroundColor: "#ffffff",
-                          outline: "none",
-                          resize: "vertical",
-                          boxSizing: "border-box"
-                        }}
-                      />
-                    </div>
-                  </div>
+                  />
                 </div>
               </div>
 
@@ -2434,207 +2466,210 @@ export default function Approvals({ defaultTab = "all" }) {
           {roleView === "all" && (
             <div className="review-form-wrapper">
 
-              {/* SECTION 1: LEAD DETAILS */}
+              {/* SINGLE UNIFIED FORM CARD */}
               <div className="form-card">
                 <div className="form-card-header">
-                  <User size={18} />
-                  <h3>Lead Details (Created by Sales)</h3>
+                  <Layers size={18} />
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
+                    Order Details & Approval
+                  </h3>
                 </div>
 
-                <div className="form-grid-3">
+                {/* 1. ORDER & LEAD DETAILS (4 COLUMNS) */}
+                <div className="form-grid-4" style={{ marginBottom: "20px" }}>
                   <div className="form-field">
-                    <label>Sales Representative</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.employeeName || "Sales Executive"}
-                      className="read-only-input"
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label>Lead Created Date</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={formatLeadDate(selectedOrder.createdAt)}
-                      className="read-only-input"
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label>Company Name</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.companyName || "-"}
-                      className="read-only-input"
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label>Client Name</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.clientName || "-"}
-                      className="read-only-input"
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label>Phone Number</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.phoneNumber || "-"}
-                      className="read-only-input"
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label>Company Address</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={selectedOrder.companyAddress || "-"}
-                      className="read-only-input"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 2: ORDER INFO */}
-              <div className="form-card">
-                <div className="form-card-header">
-                  <Package size={18} />
-                  <h3>Order Information & Financials</h3>
-                </div>
-
-                <div className="form-grid-3">
-                  <div className="form-field">
-                    <label>Order ID</label>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Order ID</label>
                     <input
                       type="text"
                       readOnly
                       value={selectedOrder.orderId || "-"}
-                      className="read-only-input bold-accent"
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
                     />
                   </div>
                   <div className="form-field">
-                    <label>Logo Name / Branding</label>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Sales Representative</label>
                     <input
                       type="text"
                       readOnly
-                      value={selectedOrder.logoName || "-"}
-                      className="read-only-input"
+                      value={selectedOrder.employeeName || "Sales Executive"}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
                     />
                   </div>
                   <div className="form-field">
-                    <label>Order Stage</label>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Company Name</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={selectedOrder.companyName || "-"}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Client Name</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={selectedOrder.clientName || "-"}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Phone Number</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={selectedOrder.phoneNumber || "-"}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Lead Created Date</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={formatLeadDate(selectedOrder.createdAt)}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Order Stage</label>
                     <input
                       type="text"
                       readOnly
                       value={selectedOrder.orderStage || "-"}
                       className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
                     />
                   </div>
                   <div className="form-field">
-                    <label>Total Quantity</label>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Total Quantity</label>
                     <input
                       type="text"
                       readOnly
                       value={`${selectedOrder.totalQuantity || 0} pcs`}
                       className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
                     />
                   </div>
                   <div className="form-field">
-                    <label>Net Amount</label>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Net Amount</label>
                     <input
                       type="text"
                       readOnly
                       value={`₹${Number(selectedOrder.netAmount || 0).toLocaleString()}`}
-                      className="read-only-input bold-green"
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
                     />
                   </div>
                   <div className="form-field">
-                    <label>Delivery Date</label>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Delivery Date</label>
                     <input
                       type="text"
                       readOnly
                       value={selectedOrder.deliveryDate || "-"}
-                      className="read-only-input"
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Logo Name / Branding</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={selectedOrder.logoName || "-"}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Company Address</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={selectedOrder.companyAddress || "-"}
+                      className="read-only-input bold"
+                      style={{ fontSize: "14px" }}
                     />
                   </div>
                 </div>
-              </div>
 
-              {/* SECTION 3: ITEMS */}
-              <div className="form-card">
-                <div className="form-card-header">
-                  <Layers size={18} />
-                  <h3>Ordered Items ({selectedOrder.items?.length || 0})</h3>
-                </div>
-
-                {!selectedOrder.items || selectedOrder.items.length === 0 ? (
-                  <p className="no-items-text">No detailed items attached.</p>
-                ) : (
-                  <div className="table-responsive">
-                    <table className="items-review-table">
-                      <thead>
-                        <tr>
-                          <th>#</th>
-                          <th>Item Description</th>
-                          <th>Printing Type</th>
-                          <th>Sublimation</th>
-                          <th>Fabric</th>
-                          <th>Quantity</th>
-                          <th>Size</th>
-                          <th>Color</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedOrder.items.map((it, idx) => (
-                          <tr key={it.id || idx}>
-                            <td>{idx + 1}</td>
-                            <td className="item-name-cell">
-                              {it.item || it.enterItem || it.itemType || "Apparel Item"}
-                            </td>
-                            <td>{it.printingType || "-"}</td>
-                            <td>{it.sublimationOption || "-"}</td>
-                            <td>{it.fabric || "-"}</td>
-                            <td className="bold">{it.quantity || 0}</td>
-                            <td>{it.size || "-"}</td>
-                            <td>{it.color || "-"}</td>
+                {/* 2. ORDERED ITEMS TABLE */}
+                <div style={{ marginBottom: "20px" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "8px" }}>
+                    Ordered Items ({selectedOrder.items?.length || 0})
+                  </label>
+                  {!selectedOrder.items || selectedOrder.items.length === 0 ? (
+                    <p className="no-items-text" style={{ fontSize: "13.5px" }}>No detailed items attached.</p>
+                  ) : (
+                    <div className="table-responsive">
+                      <table className="items-review-table stock-review-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: "32px", textAlign: "center", padding: "10px 6px", fontSize: "12.5px" }}>#</th>
+                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Item Description</th>
+                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Printing Type</th>
+                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Sublimation</th>
+                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Fabric</th>
+                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Quantity</th>
+                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Size</th>
+                            <th style={{ padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* SECTION 4: MANAGER COMMENT */}
-              <div className="form-card comment-section-card">
-                <div className="form-card-header">
-                  <MessageSquare size={18} />
-                  <div>
-                    <h3>Manager Feedback & Correction Notes</h3>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {selectedOrder.items.map((it, idx) => (
+                            <tr key={it.id || idx}>
+                              <td style={{ textAlign: "center", padding: "9px 6px", fontSize: "13.5px" }}>{idx + 1}</td>
+                              <td className="item-name-cell" style={{ padding: "9px 8px", fontSize: "13.5px" }}>
+                                {it.item || it.enterItem || it.itemType || "Apparel Item"}
+                              </td>
+                              <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.printingType || "-"}</td>
+                              <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.sublimationOption || "-"}</td>
+                              <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.fabric || "-"}</td>
+                              <td style={{ padding: "9px 8px", fontSize: "13.5px", fontWeight: 600 }}>{it.quantity || 0}</td>
+                              <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.size || "-"}</td>
+                              <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.color || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
-                <div className="comment-box-container">
+                {/* 3. MANAGER FEEDBACK & CORRECTION NOTES */}
+                <div style={{ marginTop: "18px" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+                    Manager Feedback & Correction Notes:
+                  </label>
                   <textarea
-                    className="manager-textarea"
-                    rows={4}
+                    rows={3}
                     placeholder="Enter instructions, adjustments, or reasons if referring back..."
                     value={managerComment}
                     onChange={(e) => setManagerComment(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "13.5px",
+                      color: "#1e293b",
+                      backgroundColor: "#ffffff",
+                      outline: "none",
+                      resize: "vertical",
+                      boxSizing: "border-box"
+                    }}
                   />
-
-                  <div className="comment-actions-footer">
-                    <div className="reviewer-info">
-                      <User size={15} />
-                      <span>
-                        Reviewing as: <strong>{currentUser?.name || "Manager"}</strong> (
-                        {currentUser?.role || "Reviewer"})
-                      </span>
-                    </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", color: "#64748b", fontSize: "12.5px" }}>
+                    <User size={14} />
+                    <span>
+                      Reviewing as: <strong>{currentUser?.name || "Manager"}</strong> ({currentUser?.role || "Reviewer"})
+                    </span>
                   </div>
                 </div>
               </div>

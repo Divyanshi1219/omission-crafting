@@ -59,7 +59,7 @@ router.get("/", async (req, res) => {
     const includesAttachment = req.query.query === "order";
     const leads = await Lead.find(
       filter,
-      includesAttachment ? undefined : { attachment: 0 }
+      includesAttachment ? undefined : { attachment: 0, logoDesign: 0, digitalDesign: 0 }
     ).sort({ createdAt: -1 });
     // Fast check: only run update if any orders are actually missing a taskId
     const missingTaskLeads = leads.filter(l => !l.taskId && (l.query === "order" || l.orderId || l.orderStage));
@@ -341,7 +341,12 @@ router.patch("/:id/approval", async (req, res) => {
       };
       if (status === "Referred Back") {
         lead.approvalStatus = "Referred Back";
+        lead.subStage = "order";
       } else if (status === "Approved") {
+        // Advance from order stage to next stage (dtf-pending)
+        if (!lead.subStage || lead.subStage === "order" || lead.subStage === "leads" || lead.subStage === "new") {
+          lead.subStage = "dtf-pending";
+        }
         lead.stockTaskStage = "ready_to_pick";
         lead.productionTaskStage = "logo_cutting";
         if (!lead.stockApproval || lead.stockApproval.status !== "Approved") {
@@ -378,6 +383,14 @@ router.patch("/:id/approval", async (req, res) => {
         author: author || "Manager",
         updatedAt: new Date(),
       };
+      if (status === "Referred Back") {
+        lead.approvalStatus = "Referred Back";
+        lead.subStage = "order";
+      } else if (status === "Approved") {
+        if (!lead.subStage || lead.subStage === "order" || lead.subStage === "leads" || lead.subStage === "new") {
+          lead.subStage = "dtf-pending";
+        }
+      }
     }
 
     // Determine overall approvalStatus

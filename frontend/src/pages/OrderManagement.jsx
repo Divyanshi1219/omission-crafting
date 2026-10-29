@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Plus, Trash2, ArrowLeft, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2, ArrowLeft, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import './OrderManagement.css';
@@ -276,17 +276,26 @@ function OrderManagement() {
 
   const formRef = useRef(null);
   const fileInputRef = useRef(null);
+  const logoDesignInputRef = useRef(null);
+  const digitalDesignInputRef = useRef(null);
 
   const isCustomerSupport = location.pathname === '/order/customer-support';
 
   const [query, setQuery] = useState('lead');
   const [queryStatus, setQueryStatus] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isEditing, setIsEditing] = useState(searchParams.get('edit') === 'true');
   const [items, setItems] = useState([]);
   const [selectedStage, setSelectedStage] = useState('New');
-  const [orderStage, setOrderStage] = useState('');
-  const [subStage, setSubStage] = useState('');
+  const [orderStage, setOrderStage] = useState('sample');
+  const [subStage, setSubStage] = useState('order');
   const [phoneTouched, setPhoneTouched] = useState(false);
+
+  useEffect(() => {
+    setIsEditing(searchParams.get('edit') === 'true');
+  }, [searchParams]);
+
+  const isReadOnly = isLeadManager ? true : Boolean(editId && !isEditing);
 
   const [formData, setFormData] = useState({
     companyName: '',
@@ -300,6 +309,10 @@ function OrderManagement() {
     scheduleTime: '',
     additionalNote: '',
     orderId: '',
+    logoDesign: '',
+    logoDesignName: '',
+    digitalDesign: '',
+    digitalDesignName: '',
     attachment: '',
     attachmentName: '',
     logoName: '',
@@ -364,11 +377,6 @@ function OrderManagement() {
     note: '',
   });
   const [submittingStageAction, setSubmittingStageAction] = useState(false);
-  const [stageFilterTab, setStageFilterTab] = useState('all'); // 'all' | 'pending' | 'approved'
-
-  useEffect(() => {
-    setStageFilterTab('all');
-  }, [location.pathname]);
 
   const fetchAllLeads = () => {
     api.get('/api/leads')
@@ -380,7 +388,7 @@ function OrderManagement() {
       .catch((err) => console.error('Error fetching leads:', err));
   };
 
-  const handleAttachmentChange = (e) => {
+  const handleFileChange = (field, nameField, e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
@@ -391,21 +399,126 @@ function OrderManagement() {
     reader.onload = () => {
       setFormData((prev) => ({
         ...prev,
-        attachment: reader.result,
-        attachmentName: file.name,
+        [field]: reader.result,
+        [nameField]: file.name,
+        ...(field === 'logoDesign' ? { attachment: reader.result, attachmentName: file.name } : {}),
       }));
     };
     reader.readAsDataURL(file);
   };
 
-  const handleRemoveAttachment = () => {
+  const handleRemoveFile = (field, nameField, ref) => {
     setFormData((prev) => ({
       ...prev,
-      attachment: '',
-      attachmentName: '',
+      [field]: '',
+      [nameField]: '',
+      ...(field === 'logoDesign' ? { attachment: '', attachmentName: '' } : {}),
     }));
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    if (ref?.current) {
+      ref.current.value = '';
+    }
+  };
+
+  const handleAttachmentChange = (e) => handleFileChange('logoDesign', 'logoDesignName', e);
+
+  const handleRemoveAttachment = () => handleRemoveFile('logoDesign', 'logoDesignName', logoDesignInputRef);
+
+  const resetFormToCurrentOrder = () => {
+    if (orderApprovalData) {
+      const d = orderApprovalData;
+      setFormData({
+        companyName: d.companyName || '',
+        clientName: d.clientName || '',
+        companyAddress: d.companyAddress || '',
+        state: d.state || '',
+        pincode: d.pincode || '',
+        phoneNumber: d.phoneNumber || '',
+        repeatedOrder: d.repeatedOrder || 'No',
+        scheduleDate: d.scheduleDate || '',
+        scheduleTime: d.scheduleTime || '',
+        additionalNote: d.additionalNote || '',
+        orderId: d.orderId || '',
+        logoDesign: d.logoDesign || d.attachment || '',
+        logoDesignName: d.logoDesignName || d.attachmentName || '',
+        digitalDesign: d.digitalDesign || '',
+        digitalDesignName: d.digitalDesignName || '',
+        attachment: d.attachment || d.logoDesign || '',
+        attachmentName: d.attachmentName || d.logoDesignName || '',
+        logoName: d.logoName || '',
+        totalQuantity: d.totalQuantity || '',
+        pricePerPiece: d.pricePerPiece || '',
+        totalAmount: d.totalAmount || '',
+        gst: d.gst || '',
+        netAmount: d.netAmount || '',
+        advanceAmount: d.advanceAmount || '',
+        pendingAmount: d.pendingAmount || '',
+        deliveryDate: d.deliveryDate ? (d.deliveryDate.includes('T') ? d.deliveryDate.split('T')[0] : d.deliveryDate) : getDefaultDeliveryDate(),
+        urgency: d.urgency || '',
+        modeOfDelivery: d.modeOfDelivery || '',
+      });
+      setOrderStage(d.orderStage || 'sample');
+      setSubStage(d.subStage || 'order');
+      setItems(d.items || []);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    resetFormToCurrentOrder();
+  };
+
+  const handleSaveExistingOrder = async () => {
+    if (isLeadManager) {
+      alert('Lead Manager cannot edit order forms.');
+      return;
+    }
+    const phone = (formData.phoneNumber || '').trim();
+    if (!/^\d{10}$/.test(phone)) {
+      setPhoneTouched(true);
+      alert('Phone number must be of 10 digits.');
+      return;
+    }
+
+    const totalQty = Number(formData.totalQuantity);
+    if (!formData.totalQuantity || isNaN(totalQty) || totalQty <= 0) {
+      alert('Please enter a valid Total Quantity (pcs).');
+      return;
+    }
+
+    if (items.length > 0) {
+      if (itemsTotalQty > totalQty) {
+        alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) cannot be greater than Total Quantity (${totalQty} pcs). Sum of items must equal Total Quantity (${totalQty} === ${totalQty}).`);
+        return;
+      }
+      if (itemsTotalQty !== totalQty) {
+        alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) must equal Total Quantity (${totalQty} pcs). (${totalQty} === ${itemsTotalQty})`);
+        return;
+      }
+    }
+
+    try {
+      const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
+      const payload = {
+        _id: editId,
+        employeeName: currentEmpName,
+        createdBy: currentUser?.id || 'sales',
+        query: 'order',
+        queryStatus,
+        orderStage: orderStage || 'sample',
+        subStage: subStage || 'order',
+        ...formData,
+        orderId: formData.orderId,
+        items,
+      };
+      const res = await api.post('/api/leads', payload);
+      alert('Order updated successfully!');
+      if (res.data?.data) {
+        setOrderApprovalData(res.data.data);
+      }
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Error updating order:', err);
+      alert('Failed to update order: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -537,7 +650,7 @@ function OrderManagement() {
       if (res.data?.success) {
         setOrderApprovalData(res.data.data);
         const msg = status === 'Approved'
-          ? `Order #${res.data.data?.orderId || 'Order'} submitted successfully! Sent to Stock Room and Production Room managers.`
+          ? `Order #${res.data.data?.orderId || 'Order'} approved successfully! Moved to next stage (${(res.data.data?.subStage || 'dtf-pending').replace(/-/g, ' ').toUpperCase()}).`
           : `Order #${res.data.data?.orderId || 'Order'} referred back to sales executive with mandatory correction note.`;
         setActionSuccessMsg(msg);
         setLeadManagerNote('');
@@ -646,8 +759,8 @@ function OrderManagement() {
               const q = (d.query || 'lead').toLowerCase();
               setQuery(q);
               setQueryStatus(d.queryStatus || '');
-              setOrderStage(d.orderStage || '');
-              setSubStage(d.subStage || '');
+              setOrderStage(d.orderStage || 'sample');
+              setSubStage(d.subStage || 'order');
               setItems(d.items || []);
               setFormData({
                 companyName: d.companyName || '',
@@ -661,8 +774,12 @@ function OrderManagement() {
                 scheduleTime: d.scheduleTime || '',
                 additionalNote: d.additionalNote || '',
                 orderId: d.orderId || '',
-                attachment: d.attachment || '',
-                attachmentName: d.attachmentName || '',
+                logoDesign: d.logoDesign || d.attachment || '',
+                logoDesignName: d.logoDesignName || d.attachmentName || '',
+                digitalDesign: d.digitalDesign || '',
+                digitalDesignName: d.digitalDesignName || '',
+                attachment: d.attachment || d.logoDesign || '',
+                attachmentName: d.attachmentName || d.logoDesignName || '',
                 logoName: d.logoName || '',
                 totalQuantity: d.totalQuantity || '',
                 pricePerPiece: d.pricePerPiece || '',
@@ -683,10 +800,11 @@ function OrderManagement() {
         setOrderApprovalData(null);
         setQuery('lead');
         setQueryStatus('');
-        setOrderStage('');
-        setSubStage('');
+        setOrderStage('sample');
+        setSubStage('order');
         setItems([]);
         setIsSubmitted(false);
+        setIsEditing(false);
         setPhoneTouched(false);
         setFormData({
           companyName: '',
@@ -700,6 +818,10 @@ function OrderManagement() {
           scheduleTime: '',
           additionalNote: '',
           orderId: '',
+          logoDesign: '',
+          logoDesignName: '',
+          digitalDesign: '',
+          digitalDesignName: '',
           attachment: '',
           attachmentName: '',
           logoName: '',
@@ -906,6 +1028,8 @@ function OrderManagement() {
     const from = searchParams.get('from');
     if (from) {
       navigate(from);
+    } else if (isLeadManager) {
+      navigate('/approvals');
     } else if (subStage === 'customer-support') {
       navigate('/order/customer-support');
     } else if (orderStage) {
@@ -918,6 +1042,10 @@ function OrderManagement() {
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    if (isLeadManager && editId) {
+      alert('Lead Manager cannot edit order forms.');
+      return;
+    }
     const phone = (formData.phoneNumber || '').trim();
     if (!/^\d{10}$/.test(phone)) {
       setPhoneTouched(true);
@@ -990,7 +1118,7 @@ function OrderManagement() {
 
   const handleOrderSubmit = async () => {
     if (editId) {
-      handleExecuteStageTransition('submit');
+      await handleSaveExistingOrder();
       return;
     }
     const phone = (formData.phoneNumber || '').trim();
@@ -1024,37 +1152,33 @@ function OrderManagement() {
           if (idRes.data?.nextOrderId) finalOrderId = idRes.data.nextOrderId;
         } catch (_) {}
       }
-      const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
+      const currentEmpName = formData.employeeName || (currentUser?.name || 'Sales Executive');
       const payload = {
         employeeName: currentEmpName,
         createdBy: currentUser?.id || 'sales',
         query: 'order',
         queryStatus,
-        orderStage,
-        subStage,
+        orderStage: orderStage || 'sample',
+        subStage: subStage || 'order',
         ...formData,
         orderId: finalOrderId || formData.orderId,
         items,
         approvalStatus: 'Pending',
         leadApproval: {
           status: 'Pending',
-          note: editId && leadAppr.note ? leadAppr.note : '',
+          note: '',
           author: '',
-          resubmittedAt: editId ? new Date() : null,
+          resubmittedAt: null,
         },
       };
-      if (editId) payload._id = editId;
-      const res = await api.post('/api/leads', payload);
+      await api.post('/api/leads', payload);
       alert('Order submitted successfully!\nSent to Lead Manager for approval.');
-      if (editId && res.data?.data) {
-        setOrderApprovalData(res.data.data);
-      }
       setIsSubmitted(false);
       setItems([]);
       setQuery('lead');
       setQueryStatus('');
-      setOrderStage('');
-      setSubStage('');
+      setOrderStage('sample');
+      setSubStage('order');
       setPhoneTouched(false);
       if (formRef.current) formRef.current.reset();
 
@@ -1209,7 +1333,21 @@ function OrderManagement() {
           }
         }
       } else if (currentOrderStage === 'partial') {
-        if (currentSub === 'printing') {
+        if (currentSub === 'dtf-pending') {
+          if (action === 'submit') {
+            toSubStage = 'stock';
+            stageData = { dtfVerified: true, note: stageForm.note };
+          } else {
+            toSubStage = 'order';
+          }
+        } else if (currentSub === 'stock') {
+          if (action === 'submit') {
+            toSubStage = 'printing';
+            stageData = { stockVerified: true, note: stageForm.note };
+          } else {
+            toSubStage = 'dtf-pending';
+          }
+        } else if (currentSub === 'printing') {
           if (action === 'submit') {
             if (stageForm.partialPrintingStatus === 'Complete') {
               toSubStage = 'quality-check';
@@ -1276,7 +1414,21 @@ function OrderManagement() {
           }
         }
       } else if (currentOrderStage === 'complete') {
-        if (currentSub === 'printing') {
+        if (currentSub === 'dtf-pending') {
+          if (action === 'submit') {
+            toSubStage = 'stock';
+            stageData = { dtfVerified: true, note: stageForm.note };
+          } else {
+            toSubStage = 'order';
+          }
+        } else if (currentSub === 'stock') {
+          if (action === 'submit') {
+            toSubStage = 'printing';
+            stageData = { stockVerified: true, note: stageForm.note };
+          } else {
+            toSubStage = 'dtf-pending';
+          }
+        } else if (currentSub === 'printing') {
           if (action === 'submit') {
             if (stageForm.completePrintingStatus === 'Complete') {
               toSubStage = 'quality-check';
@@ -1406,9 +1558,9 @@ function OrderManagement() {
     const fromUrl = searchParams.get('from') || '';
     let fromSub = '';
     if (fromUrl) {
-      const match = fromUrl.match(/\/order\/(sample|partial|complete)\/([a-z0-9-]+)/);
+      const match = fromUrl.match(/\/order\/(sample|partial|complete)\/(.+)/);
       if (match && match[2]) {
-        fromSub = match[2];
+        fromSub = match[2].split('?')[0];
       }
     }
     const currentSub = (orderApprovalData.subStage || 'order').toLowerCase().replace(/\s+/g, '-');
@@ -1416,7 +1568,6 @@ function OrderManagement() {
     if (fromUrl.includes('/customer-approval-awaiting')) activeSub = 'customer-approval-awaiting';
     else if (fromUrl.includes('/staging-ground')) activeSub = 'staging-ground';
     else if (fromUrl.includes('/ready-to-pick-up')) activeSub = 'ready-to-pick-up';
-    else if (fromUrl.includes('/printing')) activeSub = 'printing';
     else if (fromUrl.includes('/quality-check')) activeSub = 'quality-check';
     else if (fromUrl.includes('/packaging')) activeSub = 'packaging';
     else if (fromUrl.includes('/staging-room')) activeSub = 'staging-room';
@@ -1424,6 +1575,7 @@ function OrderManagement() {
     else if (fromUrl.includes('/delivery-pending')) activeSub = 'delivery-pending';
     else if (fromUrl.includes('/delivered')) activeSub = 'delivered';
     else if (fromUrl.includes('/customer-support')) activeSub = 'customer-support';
+    else if (fromUrl.includes('/printing')) activeSub = 'printing';
     else if (fromUrl.includes('/stock')) activeSub = 'stock';
     else if (fromUrl.includes('/dtf-pending')) activeSub = 'dtf-pending';
 
@@ -1439,6 +1591,8 @@ function OrderManagement() {
     const isSampleCustomerApproval = currentOrderStage === 'sample' && activeSub === 'customer-approval-awaiting';
 
     // Partial sub-stages
+    const isPartialDtfPending = currentOrderStage === 'partial' && activeSub === 'dtf-pending';
+    const isPartialStock = currentOrderStage === 'partial' && activeSub === 'stock';
     const isPartialPrinting = currentOrderStage === 'partial' && activeSub === 'printing';
     const isPartialQualityCheck = currentOrderStage === 'partial' && activeSub === 'quality-check';
     const isPartialPackaging = currentOrderStage === 'partial' && activeSub === 'packaging';
@@ -1446,6 +1600,8 @@ function OrderManagement() {
     const isPartialPaymentConfirmation = currentOrderStage === 'partial' && activeSub === 'payment-confirmation';
 
     // Complete sub-stages
+    const isCompleteDtfPending = currentOrderStage === 'complete' && activeSub === 'dtf-pending';
+    const isCompleteStock = currentOrderStage === 'complete' && activeSub === 'stock';
     const isCompletePrinting = currentOrderStage === 'complete' && activeSub === 'printing';
     const isCompleteQualityCheck = currentOrderStage === 'complete' && activeSub === 'quality-check';
     const isCompletePackaging = currentOrderStage === 'complete' && activeSub === 'packaging';
@@ -1459,9 +1615,9 @@ function OrderManagement() {
       (activeSub === 'order' || activeSub === 'leads');
 
     const isRecognizedWorkflowStage = Boolean(
-      isSamplePrinting || isSampleReadyToPickup || isSampleStagingGround || isSampleCustomerApproval ||
-      isPartialPrinting || isPartialQualityCheck || isPartialPackaging || isPartialStagingRoom || isPartialPaymentConfirmation ||
-      isCompletePrinting || isCompleteQualityCheck || isCompletePackaging || isCompleteDeliveryPending || isCompleteDelivered || isCompleteCustomerSupport ||
+      isSampleDtfPending || isSampleStock || isSamplePrinting || isSampleReadyToPickup || isSampleStagingGround || isSampleCustomerApproval ||
+      isPartialDtfPending || isPartialStock || isPartialPrinting || isPartialQualityCheck || isPartialPackaging || isPartialStagingRoom || isPartialPaymentConfirmation ||
+      isCompleteDtfPending || isCompleteStock || isCompletePrinting || isCompleteQualityCheck || isCompletePackaging || isCompleteDeliveryPending || isCompleteDelivered || isCompleteCustomerSupport ||
       isAwaitingTaskClearance
     );
 
@@ -1471,17 +1627,23 @@ function OrderManagement() {
 
     const isCurrentStageApproved = Boolean(
       // Sample
+      (activeSub === 'dtf-pending' && currentOrderStage === 'sample' && (['stock', 'printing', 'ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
+      (activeSub === 'stock' && currentOrderStage === 'sample' && (['printing', 'ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
       (activeSub === 'printing' && currentOrderStage === 'sample' && (orderApprovalData.printingStageData?.printingStatus === 'Complete' || ['ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
       (activeSub === 'ready-to-pick-up' && (orderApprovalData.sampleReadyToPickUpData?.note || orderApprovalData.sampleReadyToPickUpData?.readyToPickupCount || ['staging-ground', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
       (activeSub === 'staging-ground' && (orderApprovalData.sampleStagingGroundData?.orderRequirementMatch || currentSub === 'customer-approval-awaiting' || currentOrderStage !== 'sample')) ||
       (activeSub === 'customer-approval-awaiting' && (orderApprovalData.customerApprovalData?.customerApproved !== undefined || currentOrderStage !== 'sample')) ||
       // Partial
+      (activeSub === 'dtf-pending' && currentOrderStage === 'partial' && (['stock', 'printing', 'quality-check', 'packaging', 'staging-room', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
+      (activeSub === 'stock' && currentOrderStage === 'partial' && (['printing', 'quality-check', 'packaging', 'staging-room', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
       (activeSub === 'printing' && currentOrderStage === 'partial' && (orderApprovalData.partialPrintingData?.printingStatus === 'Complete' || ['quality-check', 'packaging', 'staging-room', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
       (activeSub === 'quality-check' && currentOrderStage === 'partial' && (Boolean(orderApprovalData.partialQualityCheckData?.passedCount) || ['packaging', 'staging-room', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
       (activeSub === 'packaging' && currentOrderStage === 'partial' && (Boolean(orderApprovalData.partialPackagingData?.packedCount) || ['staging-room', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
       (activeSub === 'staging-room' && currentOrderStage === 'partial' && (Boolean(orderApprovalData.partialStagingRoomData?.dispatchReady) || currentSub === 'payment-confirmation' || currentOrderStage === 'complete')) ||
       (activeSub === 'payment-confirmation' && currentOrderStage === 'partial' && (Boolean(orderApprovalData.partialPaymentConfirmationData?.paymentVerified) || currentOrderStage === 'complete')) ||
       // Complete
+      (activeSub === 'dtf-pending' && currentOrderStage === 'complete' && ['stock', 'printing', 'quality-check', 'packaging', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub)) ||
+      (activeSub === 'stock' && currentOrderStage === 'complete' && ['printing', 'quality-check', 'packaging', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub)) ||
       (activeSub === 'printing' && currentOrderStage === 'complete' && (orderApprovalData.completePrintingData?.printingStatus === 'Complete' || ['quality-check', 'packaging', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
       (activeSub === 'quality-check' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completeQualityCheckData?.passedCount) || ['packaging', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
       (activeSub === 'packaging' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completePackagingData?.totalUnitsPacked) || ['delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
@@ -1490,622 +1652,632 @@ function OrderManagement() {
       (activeSub === 'customer-support' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completeCustomerSupportData?.clientRating || orderApprovalData.isCompleted || orderApprovalData.approvalStatus === 'Completed')))
     );
 
+    let stageTitle = 'Stage Workflow';
+    if (activeSub === 'dtf-pending') stageTitle = 'DTF Pending';
+    else if (activeSub === 'stock') stageTitle = 'Stock';
+    else if (activeSub === 'printing') stageTitle = 'Printing';
+    else if (activeSub === 'ready-to-pick-up') stageTitle = 'Ready to Pick Up';
+    else if (activeSub === 'staging-ground') stageTitle = 'Staging Ground';
+    else if (activeSub === 'customer-approval-awaiting') stageTitle = 'Customer Approval Awaiting';
+    else if (activeSub === 'quality-check') stageTitle = 'Quality Check';
+    else if (activeSub === 'packaging') stageTitle = 'Packaging';
+    else if (activeSub === 'staging-room') stageTitle = 'Staging Room';
+    else if (activeSub === 'payment-confirmation') stageTitle = 'Payment Confirmation';
+    else if (activeSub === 'delivery-pending') stageTitle = 'Delivery Pending';
+    else if (activeSub === 'delivered') stageTitle = 'Delivered';
+    else if (activeSub === 'customer-support') stageTitle = 'Customer Support';
+
     const itemsList = Array.isArray(orderApprovalData.items) ? orderApprovalData.items : [];
 
+    const submitBtnLabel = submittingStageAction
+      ? 'Processing...'
+      : isCurrentStageApproved
+      ? 'Update Verification & Remarks'
+      : isSamplePrinting
+      ? stageForm.stageStatus === 'Complete'
+        ? 'Submit (Move to Ready to Pick Up)'
+        : `Save as ${stageForm.stageStatus} (Stay in Printing)`
+      : isSampleDtfPending
+      ? 'Submit (Move to Stock)'
+      : isSampleStock
+      ? 'Submit (Move to Printing)'
+      : isSampleReadyToPickup
+      ? 'Submit (Move to Staging Ground)'
+      : isSampleStagingGround
+      ? 'Submit (Move to Customer Approval)'
+      : isSampleCustomerApproval
+      ? 'Approve Sample & Advance to Partial Stage'
+      : isPartialDtfPending
+      ? 'Submit (Move to Stock)'
+      : isPartialStock
+      ? 'Submit (Move to Printing)'
+      : isPartialPrinting
+      ? stageForm.partialPrintingStatus === 'Complete'
+        ? 'Submit (Move to Quality Check)'
+        : `Save as ${stageForm.partialPrintingStatus} (Stay in Printing)`
+      : isPartialQualityCheck
+      ? 'Submit (Move to Packaging)'
+      : isPartialPackaging
+      ? 'Submit (Move to Partial - Staging Room)'
+      : isPartialStagingRoom
+      ? 'Submit (Move to Payment Confirmation)'
+      : isPartialPaymentConfirmation
+      ? 'Approve Partial & Advance to Complete Stage'
+      : isCompleteDtfPending
+      ? 'Submit (Move to Stock)'
+      : isCompleteStock
+      ? 'Submit (Move to Printing)'
+      : isCompletePrinting
+      ? stageForm.completePrintingStatus === 'Complete'
+        ? 'Submit (Move to Quality Check)'
+        : `Save as ${stageForm.completePrintingStatus} (Stay in Printing)`
+      : isCompleteQualityCheck
+      ? 'Submit (Move to Packaging)'
+      : isCompletePackaging
+      ? 'Submit (Move to Delivery Pending)'
+      : isCompleteDeliveryPending
+      ? 'Submit (Move to Delivered)'
+      : isCompleteDelivered
+      ? 'Submit (Move to Customer Support)'
+      : isCompleteCustomerSupport
+      ? 'Complete & Archive Order'
+      : 'Submit & Advance';
+
     return (
-      <div
-        className="stage-inline-panel"
-        style={{
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderLeft: `5px solid ${
-            (isSamplePrinting || isPartialPrinting || isCompletePrinting) ? '#0284c7' :
-            (isSampleReadyToPickup || isPartialPackaging || isCompleteDeliveryPending) ? '#2563eb' :
-            (isSampleStagingGround || isPartialStagingRoom || isCompletePackaging) ? '#7c3aed' :
-            (isSampleCustomerApproval || isPartialPaymentConfirmation || isCompleteCustomerSupport) ? '#059669' :
-            (isPartialQualityCheck || isCompleteQualityCheck) ? '#d97706' :
-            isCompleteDelivered ? '#10b981' : '#3b82f6'
-          }`,
-          borderRadius: '12px',
-          padding: '20px',
-          marginBottom: '22px',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.05)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-        }}
-      >
-        {/* Stage Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>Stage Status:</span>
-            {isSamplePrinting ? (
-              <span
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: '20px',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  background:
-                    stageForm.stageStatus === 'Complete'
-                      ? '#d1fae5'
-                      : stageForm.stageStatus === 'On Hold'
-                      ? '#ffedd5'
-                      : '#dbeafe',
-                  color:
-                    stageForm.stageStatus === 'Complete'
-                      ? '#065f46'
-                      : stageForm.stageStatus === 'On Hold'
-                      ? '#c2410c'
-                      : '#1d4ed8',
-                  border: `1px solid ${
-                    stageForm.stageStatus === 'Complete'
-                      ? '#a7f3d0'
-                      : stageForm.stageStatus === 'On Hold'
-                      ? '#fed7aa'
-                      : '#bfdbfe'
-                  }`,
-                }}
-              >
-                ● {stageForm.stageStatus}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* SINGLE UNIFIED FORM CARD */}
+        <div
+          className="form-card"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '24px',
+            marginBottom: '0px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+          }}
+        >
+          {/* Stage Header: Clean Icon + Title, NO description */}
+          <div
+            className="form-card-header"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '20px',
+              paddingBottom: '14px',
+              borderBottom: '1px solid #f1f5f9',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Package size={18} color="#1e293b" />
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1e293b' }}>
+                {stageTitle}
+              </h3>
+            </div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>
+              Stage Status: <span style={{ color: isCurrentStageApproved ? '#059669' : '#d97706', fontWeight: 700 }}>
+                {isCurrentStageApproved ? 'Approved & Advanced' : (stageForm.stageStatus || 'In Progress')}
               </span>
-            ) : (
-              <span
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: '20px',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  background: isCurrentStageApproved ? '#dcfce7' : '#fef3c7',
-                  color: isCurrentStageApproved ? '#15803d' : '#b45309',
-                  border: isCurrentStageApproved ? '1px solid #bbf7d0' : '1px solid #fde68a',
-                }}
-              >
-                {isCurrentStageApproved ? '✓ Approved & Advanced' : '● In Progress'}
-              </span>
-            )}
+            </div>
           </div>
-        </div>
 
-        {/* 0.A CASE: SAMPLE -> DTF PENDING */}
-        {isSampleDtfPending && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                DTF Remarks / Instructions
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter DTF instructions or notes..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+          {/* 1. ORDER & LEAD DETAILS (4-column grid) */}
+          <div className="form-grid-4" style={{ marginBottom: '20px' }}>
+            <div className="form-field">
+              <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Order ID</label>
+              <input
+                type="text"
+                readOnly
+                value={orderApprovalData.orderId || (orderApprovalData._id ? `ORD-${String(orderApprovalData._id).slice(-5).toUpperCase()}` : 'ORD-00000')}
+                className="read-only-input bold"
+                style={{ fontSize: '14px', background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
+              />
+            </div>
+            <div className="form-field">
+              <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Employee Name (Sales Rep)</label>
+              <input
+                type="text"
+                readOnly
+                value={orderApprovalData.employeeName || 'Sales Executive'}
+                className="read-only-input bold"
+                style={{ fontSize: '14px', background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
+              />
+            </div>
+            <div className="form-field">
+              <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Company Name</label>
+              <input
+                type="text"
+                readOnly
+                value={orderApprovalData.companyName || orderApprovalData.clientName || '-'}
+                className="read-only-input bold"
+                style={{ fontSize: '14px', background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
+              />
+            </div>
+            <div className="form-field">
+              <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Date When Lead Was Created</label>
+              <input
+                type="text"
+                readOnly
+                value={orderApprovalData.createdAt ? new Date(orderApprovalData.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                className="read-only-input bold"
+                style={{ fontSize: '14px', background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
               />
             </div>
           </div>
-        )}
 
-        {/* 0.B CASE: SAMPLE -> STOCK */}
-        {isSampleStock && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Stock Remarks / Instructions
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter stock allocation notes..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
+          {/* 2. ALL ITEMS ATTACHED IN LEAD TABLE */}
+          <div className="table-responsive" style={{ marginBottom: '20px', overflowX: 'auto' }}>
+            <table className="items-review-table stock-review-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', textAlign: 'left' }}>
+                  <th style={{ width: '36px', textAlign: 'center', padding: '10px 8px', fontSize: '12.5px', fontWeight: 600 }}>#</th>
+                  <th style={{ minWidth: '110px', padding: '10px 8px', fontSize: '12.5px', fontWeight: 600 }}>Item Description</th>
+                  <th style={{ minWidth: '85px', padding: '10px 8px', fontSize: '12.5px', fontWeight: 600 }}>Printing Type</th>
+                  <th style={{ minWidth: '75px', padding: '10px 8px', fontSize: '12.5px', fontWeight: 600 }}>Sublimation</th>
+                  <th style={{ minWidth: '75px', padding: '10px 8px', fontSize: '12.5px', fontWeight: 600 }}>Fabric</th>
+                  <th style={{ minWidth: '75px', padding: '10px 8px', fontSize: '12.5px', fontWeight: 600 }}>Quantity</th>
+                  <th style={{ minWidth: '50px', padding: '10px 8px', fontSize: '12.5px', fontWeight: 600 }}>Size</th>
+                  <th style={{ minWidth: '65px', padding: '10px 8px', fontSize: '12.5px', fontWeight: 600 }}>Color</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsList.length === 0 ? (
+                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ textAlign: 'center', padding: '10px 8px', fontSize: '13.5px' }}>1</td>
+                    <td style={{ padding: '10px 8px', fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>{orderApprovalData.item || 'Apparel Item'}</td>
+                    <td style={{ padding: '10px 8px', fontSize: '13.5px', color: '#334155' }}>Standard</td>
+                    <td style={{ padding: '10px 8px', fontSize: '13.5px', color: '#334155' }}>-</td>
+                    <td style={{ padding: '10px 8px', fontSize: '13.5px', color: '#334155' }}>Standard</td>
+                    <td style={{ padding: '10px 8px', fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>{orderApprovalData.totalQuantity || 0} pcs</td>
+                    <td style={{ padding: '10px 8px', fontSize: '13.5px', color: '#334155' }}>-</td>
+                    <td style={{ padding: '10px 8px', fontSize: '13.5px', color: '#334155' }}>-</td>
+                  </tr>
+                ) : (
+                  itemsList.map((item, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ textAlign: 'center', padding: '10px 8px', fontSize: '13.5px', color: '#64748b' }}>{idx + 1}</td>
+                      <td style={{ padding: '10px 8px', fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>{item.item || 'Apparel Item'}</td>
+                      <td style={{ padding: '10px 8px', fontSize: '13.5px', color: '#334155' }}>{item.printingType || '-'}</td>
+                      <td style={{ padding: '10px 8px', fontSize: '13.5px', color: '#334155' }}>{item.sublimation || '-'}</td>
+                      <td style={{ padding: '10px 8px', fontSize: '13.5px', color: '#334155' }}>{item.fabric || '-'}</td>
+                      <td style={{ padding: '10px 8px', fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>{item.quantity ? `${item.quantity} pcs` : '-'}</td>
+                      <td style={{ padding: '10px 8px', fontSize: '13.5px', color: '#334155' }}>{item.size || '-'}</td>
+                      <td style={{ padding: '10px 8px', fontSize: '13.5px', color: '#334155' }}>{item.color || '-'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
 
-        {/* 1. CASE: SAMPLE -> PRINTING */}
-        {isSamplePrinting && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Status selector pills */}
-            <div
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '10px',
-                padding: '14px 18px',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                <div>
-                  <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    Printing Execution Status:
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>
-                    Select status. &apos;Complete&apos; advances order to Ready to Pick Up on submit; &apos;Work in Progress&apos; &amp; &apos;On Hold&apos; stay in Printing list.
-                  </span>
+          {/* 3. STAGE EXECUTION & VERIFICATION CONTROLS (Clean neutral styling, NO color grading) */}
+
+          {/* DTF PENDING (Sample, Partial, Complete) */}
+          {(isSampleDtfPending || isPartialDtfPending || isCompleteDtfPending) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b' }}>
+                  DTF Film Preparation &amp; Verification
                 </div>
-                <div className="stage-tabs-pill-group" style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '5px', borderRadius: '8px' }}>
-                  {[
-                    { key: 'Work in Progress', color: '#1d4ed8', bg: '#dbeafe', border: '#2563eb' },
-                    { key: 'On Hold', color: '#c2410c', bg: '#ffedd5', border: '#ea580c' },
-                    { key: 'Complete', color: '#065f46', bg: '#d1fae5', border: '#10b981' },
-                  ].map((st) => {
-                    const isAct = stageForm.stageStatus === st.key;
-                    return (
-                      <button
-                        key={st.key}
-                        type="button"
-                        id={`btn-status-${st.key.toLowerCase().replace(/\s+/g, '-')}`}
-                        onClick={() => setStageForm({ ...stageForm, stageStatus: st.key })}
-                        style={{
-                          border: isAct ? `2px solid ${st.border}` : '1px solid transparent',
-                          background: isAct ? st.bg : '#ffffff',
-                          color: isAct ? st.color : '#64748b',
-                          padding: '7px 16px',
-                          borderRadius: '6px',
-                          fontSize: '12.5px',
-                          fontWeight: isAct ? 700 : 500,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                          boxShadow: isAct ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                        }}
-                      >
-                        {isAct ? '● ' : ''}{st.key}
-                      </button>
-                    );
-                  })}
+                <div style={{ fontSize: '13px', color: '#475569' }}>
+                  Ensure DTF film printing, artwork sizing, and colors are verified before apparel heat press.
                 </div>
-              </div>
-            </div>
-
-            {/* 3 Dedicated Previous Clearance Data Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
-              {/* 1. Logo Cutting Clearance Data */}
-              <div
-                style={{
-                  background: '#f0f9ff',
-                  border: '1px solid #bae6fd',
-                  borderRadius: '10px',
-                  padding: '14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e0f2fe', paddingBottom: '6px' }}>
-                  <span style={{ fontWeight: 700, fontSize: '13px', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    ✂️ Logo Cutting Data
-                  </span>
-                  <span
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      background: '#dcfce7',
-                      color: '#166534',
-                    }}
-                  >
-                    ✓ {orderApprovalData.productionApproval?.status || 'Approved'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '12px', color: '#0f172a', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Logos Needed (Client):</span>
-                    <strong>{orderApprovalData.totalQuantity || 100} pcs</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Logos Printed:</span>
-                    <strong>{orderApprovalData.productionTaskData?.logosPrinted || orderApprovalData.totalQuantity || 100} pcs</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Logos Cut / Given:</span>
-                    <strong>{orderApprovalData.productionTaskData?.logosCutGiven || orderApprovalData.productionTaskData?.logosCutOrGiven || orderApprovalData.totalQuantity || 100} pcs</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Giving for Sample:</span>
-                    <strong style={{ color: '#0369a1' }}>{orderApprovalData.productionTaskData?.sampleLogosCount || orderApprovalData.productionTaskData?.logosForSample || 5} pcs</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Logo Name:</span>
-                    <span style={{ fontWeight: 600, maxWidth: '130px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={orderApprovalData.logoName || 'Main Logo'}>
-                      {orderApprovalData.logoName || 'Main Logo'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: '#475569' }}>Artwork Attachment:</span>
-                    {orderApprovalData.attachment ? (
-                      <a
-                        href={orderApprovalData.attachment.startsWith('http') || orderApprovalData.attachment.startsWith('/') ? orderApprovalData.attachment : `/uploads/${orderApprovalData.attachment}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'underline', fontSize: '11px' }}
-                      >
-                        📎 View File
-                      </a>
-                    ) : (
-                      <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '11px' }}>None</span>
-                    )}
-                  </div>
-                  {orderApprovalData.productionApproval?.note && (
-                    <div style={{ marginTop: '4px', padding: '6px 8px', background: '#e0f2fe', borderRadius: '6px', fontSize: '11px', color: '#0369a1' }}>
-                      <em>&ldquo;{orderApprovalData.productionApproval.note}&rdquo;</em>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* 2. Ready to Pick Clearance Data */}
-              <div
-                style={{
-                  background: '#f0fdf4',
-                  border: '1px solid #bbf7d0',
-                  borderRadius: '10px',
-                  padding: '14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #dcfce7', paddingBottom: '6px' }}>
-                  <span style={{ fontWeight: 700, fontSize: '13px', color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    📦 Ready to Pick Data
-                  </span>
-                  <span
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      background: '#dcfce7',
-                      color: '#166534',
-                    }}
-                  >
-                    ✓ {orderApprovalData.stockApproval?.status || 'Approved'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '12px', color: '#0f172a', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Total Order Stock:</span>
-                    <strong>{orderApprovalData.totalQuantity || 100} pcs</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Stock Availability:</span>
-                    <strong style={{ color: orderApprovalData.stockTaskData?.isStockAvailable !== false ? '#166534' : '#b45309' }}>
-                      {orderApprovalData.stockTaskData?.isStockAvailable !== false ? 'In Stock (Available)' : 'Low Stock'}
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Deficit Pieces:</span>
-                    <strong>{orderApprovalData.stockTaskData?.notInStockCount ? `${orderApprovalData.stockTaskData.notInStockCount} pcs short` : '0 pcs (None)'}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Sample Deduction:</span>
-                    <strong style={{ color: '#166534' }}>{orderApprovalData.stockTaskData?.sampleDeduction !== undefined ? orderApprovalData.stockTaskData.sampleDeduction : 0} pcs</strong>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <span style={{ color: '#475569' }}>Stock Depreciation:</span>
-                    <span style={{ fontSize: '11.5px', color: '#14532d', background: '#dcfce7', padding: '4px 6px', borderRadius: '4px' }}>
-                      {orderApprovalData.stockTaskData?.stockDepreciation || (orderApprovalData.stockTaskData?.sampleDeduction ? `Giving ${orderApprovalData.stockTaskData.sampleDeduction} for sample. Remaining: ${Math.max(0, (orderApprovalData.totalQuantity || 100) - orderApprovalData.stockTaskData.sampleDeduction)} in stock.` : 'Stock allocation pending')}
-                    </span>
-                  </div>
-                  {orderApprovalData.stockApproval?.note && (
-                    <div style={{ marginTop: '4px', padding: '6px 8px', background: '#dcfce7', borderRadius: '6px', fontSize: '11px', color: '#14532d' }}>
-                      <em>&ldquo;{orderApprovalData.stockApproval.note}&rdquo;</em>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* 3. Staging Room Clearance Data */}
-              <div
-                style={{
-                  background: '#faf5ff',
-                  border: '1px solid #e9d5ff',
-                  borderRadius: '10px',
-                  padding: '14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f3e8ff', paddingBottom: '6px' }}>
-                  <span style={{ fontWeight: 700, fontSize: '13px', color: '#7e22ce', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    🏷️ Staging Room Data
-                  </span>
-                  <span
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      background: '#f3e8ff',
-                      color: '#6b21a8',
-                    }}
-                  >
-                    ✓ {orderApprovalData.stockTaskStage === 'completed' || orderApprovalData.stockApproval?.status === 'Approved' ? 'Completed' : 'Staged'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '12px', color: '#0f172a', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Received at Staging:</span>
-                    <strong style={{ color: '#7e22ce' }}>{orderApprovalData.stockTaskData?.receivedCount !== undefined ? orderApprovalData.stockTaskData.receivedCount : (orderApprovalData.stockTaskData?.sampleDeduction || 0)} pcs</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Given for Sample:</span>
-                    <strong>{orderApprovalData.stockTaskData?.sampleDeduction !== undefined ? orderApprovalData.stockTaskData.sampleDeduction : 0} pcs</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Pending at Staging:</span>
-                    <strong>{orderApprovalData.stockTaskData?.pendingCount || 0} pcs</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569' }}>Task Stage:</span>
-                    <strong style={{ textTransform: 'capitalize' }}>{String(orderApprovalData.stockTaskStage || 'completed').replace(/_/g, ' ')}</strong>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
-                    <span style={{ color: '#475569' }}>Staging Verification:</span>
-                    <span style={{ fontSize: '11.5px', color: '#581c87', background: '#f3e8ff', padding: '4px 6px', borderRadius: '4px' }}>
-                      {orderApprovalData.approvalComments?.find(c => c.comment?.toLowerCase().includes('staging'))?.comment || orderApprovalData.stockApproval?.note || 'Sample items staged and verified for printing.'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Inputs for Printing Count and Notes */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                  How many received at printing? (pcs)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={stageForm.receivedCount}
-                  onChange={(e) => setStageForm({ ...stageForm, receivedCount: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                  How many going for ready to pick up? (pcs)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={stageForm.readyToPickupCount}
-                  onChange={(e) => setStageForm({ ...stageForm, readyToPickupCount: e.target.value })}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Notes / Refer Back Comments (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter stage notes or refer back instructions..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 2. CASE: SAMPLE -> READY TO PICK UP */}
-        {isSampleReadyToPickup && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e40af', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={16} color="#1e40af" /> Verified Data from Printing & Clearance Stages
-              </div>
-              <div style={{ fontSize: '13px', color: '#1e3a8a', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
-                <div>Received at Printing: <strong>{orderApprovalData.printingStageData?.receivedCount || 5} pcs</strong></div>
-                <div>Going for Ready to Pick Up: <strong>{orderApprovalData.printingStageData?.readyToPickupCount || 5} pcs</strong></div>
-                <div>Printing Stage Status: <strong>{orderApprovalData.printingStageData?.printingStatus || 'Complete'}</strong></div>
-                <div>Stock Clearance: <strong style={{ color: '#166534' }}>{orderApprovalData.stockApproval?.status || 'Approved'}</strong> ({orderApprovalData.stockApproval?.author || 'Elena Rostova'})</div>
-              </div>
-              {orderApprovalData.printingStageData?.note && (
-                <div style={{ fontSize: '12px', color: '#1e3a8a', background: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #bfdbfe', marginTop: '6px' }}>
-                  <strong>Printing Run Notes:</strong> "{orderApprovalData.printingStageData.note}"
-                </div>
-              )}
-            </div>
-
-            {/* Garments / Items Breakdown for Ready to Pick Up */}
-            <div style={{ padding: '14px 18px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#1e293b' }}>
-                  Garments / Items for Ready to Pick Up ({itemsList.length})
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: '#2563eb' }}>
-                  Total: {orderApprovalData.totalQuantity || itemsList.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100} pcs
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {itemsList.map((item, idx) => (
-                  <div key={idx} style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>
-                      <strong>{item.item || 'Item'}</strong> ({[item.fabric, item.color ? `Color: ${item.color}` : null, item.size ? `Size: ${item.size}` : null].filter(Boolean).join(', ')})
-                    </span>
-                    <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                      {item.quantity || 1} pcs {item.printingType ? `— ${item.printingType}` : ''}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '13.5px', color: '#1e293b' }}>
-                <input
-                  type="checkbox"
-                  checked={true}
-                  readOnly
-                  style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }}
-                />
-                <span>Samples are packed, labeled, and ready for pickup</span>
-              </label>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Notes / Comments (Mandatory if referring back to printing)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter pickup notes or refer back reason..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 3. CASE: SAMPLE -> STAGING GROUND */}
-        {isSampleStagingGround && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Previous Stage Verifications (Ready to Pick Up & Printing) */}
-            <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ fontWeight: 700, fontSize: '13px', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#0284c7" /> Previous Stage Verifications (Ready to Pick Up & Printing)
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#475569' }}>
-                <div>Verified Pickup Count: <strong style={{ color: '#0f172a' }}>{orderApprovalData.sampleReadyToPickUpData?.readyToPickupCount || orderApprovalData.sampleReadyToPickUpData?.verifiedPickupCount || orderApprovalData.printingStageData?.readyToPickupCount || 5} pcs</strong></div>
-                <div>Printing Run Status: <strong style={{ color: '#0f172a' }}>{orderApprovalData.printingStageData?.printingStatus || 'Complete'}</strong></div>
-                <div>Stock Clearance: <strong style={{ color: '#166534' }}>{orderApprovalData.stockApproval?.status || 'Approved'}</strong> ({orderApprovalData.stockApproval?.author || 'Elena Rostova'})</div>
-                <div>Production Clearance: <strong style={{ color: '#166534' }}>{orderApprovalData.productionApproval?.status || 'Approved'}</strong> ({orderApprovalData.productionApproval?.author || 'Marcus Vance'})</div>
-              </div>
-              {orderApprovalData.sampleReadyToPickUpData?.note && (
-                <div style={{ fontSize: '12px', color: '#475569', background: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                  <strong>Ready to Pick Up Remarks:</strong> "{orderApprovalData.sampleReadyToPickUpData.note}"
-                </div>
-              )}
-            </div>
-
-            <div style={{ background: '#faf5ff', padding: '16px', borderRadius: '8px', border: '1px solid #e9d5ff' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#6b21a8', marginBottom: '8px' }}>
-                Staging Ground Verification Checklist
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#4a044e' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '13.5px', color: '#1e293b' }}>
                   <input
                     type="checkbox"
                     checked={true}
                     readOnly
-                    style={{ accentColor: '#9333ea', transform: 'scale(1.2)' }}
+                    style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }}
                   />
-                  <span>Samples received and staged in physical verification rack</span>
+                  <span>DTF films prepared, printed, and ready for apparel application</span>
                 </label>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#4a044e' }}>
+              </div>
+            </div>
+          )}
+
+          {/* STOCK (Sample, Partial, Complete) */}
+          {(isSampleStock || isPartialStock || isCompleteStock) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b' }}>
+                  Stock Allocation &amp; Inventory Verification
+                </div>
+                <div style={{ fontSize: '13px', color: '#475569' }}>
+                  Verify physical inventory availability for all attached items in lead.
+                </div>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '13.5px', color: '#1e293b' }}>
                   <input
                     type="checkbox"
-                    checked={stageForm.orderRequirementMatch}
-                    onChange={(e) => setStageForm({ ...stageForm, orderRequirementMatch: e.target.checked })}
-                    style={{ accentColor: '#9333ea', transform: 'scale(1.2)' }}
+                    checked={true}
+                    readOnly
+                    style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }}
                   />
-                  <span>All client specifications and garment counts verified</span>
+                  <span>Stock verified and allocated for printing stage</span>
                 </label>
               </div>
             </div>
+          )}
 
-            {/* Garments / Items Breakdown for Staging Ground */}
-            <div style={{ padding: '14px 18px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#1e293b' }}>
-                  Garments / Items for Verification ({itemsList.length})
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: '#7c3aed' }}>
-                  Total: {orderApprovalData.totalQuantity || itemsList.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100} pcs
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {itemsList.map((item, idx) => (
-                  <div key={idx} style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>
-                      <strong>{item.item || 'Item'}</strong> ({[item.fabric, item.color ? `Color: ${item.color}` : null, item.size ? `Size: ${item.size}` : null].filter(Boolean).join(', ')})
+          {/* SAMPLE -> PRINTING */}
+          {isSamplePrinting && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Status selector pills */}
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '14px 18px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      Printing Execution Status:
                     </span>
-                    <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                      {item.quantity || 1} pcs {item.printingType ? `— ${item.printingType}` : ''}
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>
+                      Select status. &apos;Complete&apos; advances order to Ready to Pick Up on submit; &apos;Work in Progress&apos; &amp; &apos;On Hold&apos; stay in Printing list.
                     </span>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Notes / Verification Comments
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter staging verification remarks..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 4. CASE: SAMPLE -> CUSTOMER APPROVAL AWAITING */}
-        {isSampleCustomerApproval && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Previous Stage Verifications (Staging Ground & Physical Checks) */}
-            <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ fontWeight: 700, fontSize: '13px', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#7c3aed" /> Previous Stage Verifications (Staging Ground & Physical Checks)
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#475569' }}>
-                <div>Staging Verification: <strong style={{ color: '#166534' }}>✓ Staged in Physical Rack</strong></div>
-                <div>Client Specs Verified: <strong style={{ color: '#166534' }}>{orderApprovalData.sampleStagingGroundData?.orderRequirementMatch !== false ? 'Yes, Confirmed' : 'Pending'}</strong></div>
-                <div>Verified Count: <strong style={{ color: '#0f172a' }}>{orderApprovalData.sampleReadyToPickUpData?.readyToPickupCount || orderApprovalData.sampleReadyToPickUpData?.verifiedPickupCount || 5} pcs</strong></div>
-                <div>Printing Status: <strong style={{ color: '#0f172a' }}>{orderApprovalData.printingStageData?.printingStatus || 'Complete'}</strong></div>
-              </div>
-              {orderApprovalData.sampleStagingGroundData?.note && (
-                <div style={{ fontSize: '12px', color: '#475569', background: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                  <strong>Staging Ground Remarks:</strong> "{orderApprovalData.sampleStagingGroundData.note}"
+                  <div className="stage-tabs-pill-group" style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '4px', borderRadius: '8px' }}>
+                    {[
+                      { key: 'Work in Progress', color: '#1d4ed8', bg: '#ffffff', border: '#cbd5e1' },
+                      { key: 'On Hold', color: '#c2410c', bg: '#ffffff', border: '#cbd5e1' },
+                      { key: 'Complete', color: '#065f46', bg: '#ffffff', border: '#cbd5e1' },
+                    ].map((st) => {
+                      const isAct = stageForm.stageStatus === st.key;
+                      return (
+                        <button
+                          key={st.key}
+                          type="button"
+                          id={`btn-status-${st.key.toLowerCase().replace(/\s+/g, '-')}`}
+                          onClick={() => setStageForm({ ...stageForm, stageStatus: st.key })}
+                          style={{
+                            border: isAct ? '2px solid #0f172a' : '1px solid transparent',
+                            background: isAct ? '#ffffff' : 'transparent',
+                            color: isAct ? '#0f172a' : '#64748b',
+                            padding: '7px 16px',
+                            borderRadius: '6px',
+                            fontSize: '12.5px',
+                            fontWeight: isAct ? 700 : 500,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            boxShadow: isAct ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                          }}
+                        >
+                          {isAct ? '● ' : ''}{st.key}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
-            </div>
-
-            {/* Garments / Items Breakdown for Customer Approval */}
-            <div style={{ padding: '14px 18px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#1e293b' }}>
-                  Customer Order Items ({itemsList.length})
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: '#059669' }}>
-                  Total: {orderApprovalData.totalQuantity || itemsList.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100} pcs
-                </span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {itemsList.map((item, idx) => (
-                  <div key={idx} style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>
-                      <strong>{item.item || 'Item'}</strong> ({[item.fabric, item.color ? `Color: ${item.color}` : null, item.size ? `Size: ${item.size}` : null].filter(Boolean).join(', ')})
+
+              {/* 3 Dedicated Previous Clearance Data Cards - Clean neutral styling */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                {/* 1. Logo Cutting Clearance Data */}
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>
+                    <span style={{ fontWeight: 700, fontSize: '13px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      ✂️ Logo Cutting Data
                     </span>
-                    <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                      {item.quantity || 1} pcs {item.printingType ? `— ${item.printingType}` : ''}
+                    <span
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: '#059669',
+                      }}
+                    >
+                      ✓ {orderApprovalData.productionApproval?.status || 'Approved'}
                     </span>
                   </div>
-                ))}
+                  <div style={{ fontSize: '12.5px', color: '#0f172a', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Logos Needed (Client):</span>
+                      <strong>{orderApprovalData.totalQuantity || 100} pcs</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Logos Printed:</span>
+                      <strong>{orderApprovalData.productionTaskData?.logosPrinted || orderApprovalData.totalQuantity || 100} pcs</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Logos Cut / Given:</span>
+                      <strong>{orderApprovalData.productionTaskData?.logosCutGiven || orderApprovalData.productionTaskData?.logosCutOrGiven || orderApprovalData.totalQuantity || 100} pcs</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Giving for Sample:</span>
+                      <strong style={{ color: '#1e293b' }}>{orderApprovalData.productionTaskData?.sampleLogosCount || orderApprovalData.productionTaskData?.logosForSample || 5} pcs</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Logo Name:</span>
+                      <span style={{ fontWeight: 600, maxWidth: '130px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={orderApprovalData.logoName || 'Main Logo'}>
+                        {orderApprovalData.logoName || 'Main Logo'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#475569' }}>Artwork Attachment:</span>
+                      {orderApprovalData.attachment ? (
+                        <a
+                          href={orderApprovalData.attachment.startsWith('http') || orderApprovalData.attachment.startsWith('/') ? orderApprovalData.attachment : `/uploads/${orderApprovalData.attachment}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'underline', fontSize: '11px' }}
+                        >
+                          📎 View File
+                        </a>
+                      ) : (
+                        <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '11px' }}>None</span>
+                      )}
+                    </div>
+                    {orderApprovalData.productionApproval?.note && (
+                      <div style={{ marginTop: '4px', padding: '6px 8px', background: '#f1f5f9', borderRadius: '6px', fontSize: '11.5px', color: '#334155' }}>
+                        <em>&ldquo;{orderApprovalData.productionApproval.note}&rdquo;</em>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Ready to Pick Clearance Data */}
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>
+                    <span style={{ fontWeight: 700, fontSize: '13px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      📦 Ready to Pick Data
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: '#059669',
+                      }}
+                    >
+                      ✓ {orderApprovalData.stockApproval?.status || 'Approved'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '12.5px', color: '#0f172a', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Total Order Stock:</span>
+                      <strong>{orderApprovalData.totalQuantity || 100} pcs</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Stock Availability:</span>
+                      <strong style={{ color: orderApprovalData.stockTaskData?.isStockAvailable !== false ? '#059669' : '#b45309' }}>
+                        {orderApprovalData.stockTaskData?.isStockAvailable !== false ? 'In Stock (Available)' : 'Low Stock'}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Deficit Pieces:</span>
+                      <strong>{orderApprovalData.stockTaskData?.notInStockCount ? `${orderApprovalData.stockTaskData.notInStockCount} pcs short` : '0 pcs (None)'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Sample Deduction:</span>
+                      <strong>{orderApprovalData.stockTaskData?.sampleDeduction !== undefined ? orderApprovalData.stockTaskData.sampleDeduction : 0} pcs</strong>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <span style={{ color: '#475569' }}>Stock Depreciation:</span>
+                      <span style={{ fontSize: '11.5px', color: '#334155', background: '#f1f5f9', padding: '4px 6px', borderRadius: '4px' }}>
+                        {orderApprovalData.stockTaskData?.stockDepreciation || (orderApprovalData.stockTaskData?.sampleDeduction ? `Giving ${orderApprovalData.stockTaskData.sampleDeduction} for sample. Remaining: ${Math.max(0, (orderApprovalData.totalQuantity || 100) - orderApprovalData.stockTaskData.sampleDeduction)} in stock.` : 'Stock allocation pending')}
+                      </span>
+                    </div>
+                    {orderApprovalData.stockApproval?.note && (
+                      <div style={{ marginTop: '4px', padding: '6px 8px', background: '#f1f5f9', borderRadius: '6px', fontSize: '11.5px', color: '#334155' }}>
+                        <em>&ldquo;{orderApprovalData.stockApproval.note}&rdquo;</em>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. Staging Room Clearance Data */}
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>
+                    <span style={{ fontWeight: 700, fontSize: '13px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🏷️ Staging Room Data
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: '#059669',
+                      }}
+                    >
+                      ✓ {orderApprovalData.stockTaskStage === 'completed' || orderApprovalData.stockApproval?.status === 'Approved' ? 'Completed' : 'Staged'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '12.5px', color: '#0f172a', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Received at Staging:</span>
+                      <strong>{orderApprovalData.stockTaskData?.receivedCount !== undefined ? orderApprovalData.stockTaskData.receivedCount : (orderApprovalData.stockTaskData?.sampleDeduction || 0)} pcs</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Given for Sample:</span>
+                      <strong>{orderApprovalData.stockTaskData?.sampleDeduction !== undefined ? orderApprovalData.stockTaskData.sampleDeduction : 0} pcs</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Pending at Staging:</span>
+                      <strong>{orderApprovalData.stockTaskData?.pendingCount || 0} pcs</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569' }}>Task Stage:</span>
+                      <strong style={{ textTransform: 'capitalize' }}>{String(orderApprovalData.stockTaskStage || 'completed').replace(/_/g, ' ')}</strong>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
+                      <span style={{ color: '#475569' }}>Staging Verification:</span>
+                      <span style={{ fontSize: '11.5px', color: '#334155', background: '#f1f5f9', padding: '4px 6px', borderRadius: '4px' }}>
+                        {orderApprovalData.approvalComments?.find(c => c.comment?.toLowerCase().includes('staging'))?.comment || orderApprovalData.stockApproval?.note || 'Sample items staged and verified for printing.'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Inputs for Printing Count */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                    How many received at printing? (pcs)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={stageForm.receivedCount}
+                    onChange={(e) => setStageForm({ ...stageForm, receivedCount: e.target.value })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                    How many going for ready to pick up? (pcs)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={stageForm.readyToPickupCount}
+                    onChange={(e) => setStageForm({ ...stageForm, readyToPickupCount: e.target.value })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                  />
+                </div>
               </div>
             </div>
+          )}
 
-            <div style={{ background: '#ecfdf5', padding: '16px', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#065f46', marginBottom: '10px' }}>
-                Customer Sign-Off & Approval
+          {/* SAMPLE -> READY TO PICK UP */}
+          {isSampleReadyToPickup && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Verified Data from Printing &amp; Clearance Stages
+                </div>
+                <div style={{ fontSize: '13px', color: '#334155', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                  <div>Received at Printing: <strong>{orderApprovalData.printingStageData?.receivedCount || 5} pcs</strong></div>
+                  <div>Going for Ready to Pick Up: <strong>{orderApprovalData.printingStageData?.readyToPickupCount || 5} pcs</strong></div>
+                  <div>Printing Stage Status: <strong>{orderApprovalData.printingStageData?.printingStatus || 'Complete'}</strong></div>
+                  <div>Stock Clearance: <strong style={{ color: '#059669' }}>{orderApprovalData.stockApproval?.status || 'Approved'}</strong> ({orderApprovalData.stockApproval?.author || 'Elena Rostova'})</div>
+                </div>
+                {orderApprovalData.printingStageData?.note && (
+                  <div style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '8px' }}>
+                    <strong>Printing Run Notes:</strong> &ldquo;{orderApprovalData.printingStageData.note}&rdquo;
+                  </div>
+                )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#065f46' }}>Has customer approved sample?</span>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+
+              <div style={{ padding: '14px 16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '13.5px', color: '#1e293b' }}>
+                  <input
+                    type="checkbox"
+                    checked={true}
+                    readOnly
+                    style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }}
+                  />
+                  <span>Samples are packed, labeled, and ready for pickup</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* SAMPLE -> STAGING GROUND */}
+          {isSampleStagingGround && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Verified Data from Ready to Pick Up
+                </div>
+                <div style={{ fontSize: '13px', color: '#334155', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                  <div>Verified Ready Count: <strong>{orderApprovalData.sampleReadyToPickUpData?.readyToPickupCount || orderApprovalData.sampleReadyToPickUpData?.verifiedPickupCount || 5} pcs</strong></div>
+                  <div>Pickup Packaging: <strong style={{ color: '#059669' }}>✓ Packed &amp; Labeled</strong></div>
+                  <div>Status: <strong>{orderApprovalData.sampleReadyToPickUpData?.pickupStatus || 'Ready'}</strong></div>
+                </div>
+                {orderApprovalData.sampleReadyToPickUpData?.note && (
+                  <div style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '8px' }}>
+                    <strong>Pickup Handover Notes:</strong> &ldquo;{orderApprovalData.sampleReadyToPickUpData.note}&rdquo;
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Physical Staging Ground Verification
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input
+                      type="checkbox"
+                      checked={stageForm.sampleRequirementMatch !== false}
+                      onChange={(e) => setStageForm({ ...stageForm, sampleRequirementMatch: e.target.checked })}
+                      style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }}
+                    />
+                    <span>All garments/items match client order specifications</span>
+                  </label>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      readOnly
+                      style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }}
+                    />
+                    <span>Sample staged in showroom holding rack for client inspection</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SAMPLE -> CUSTOMER APPROVAL AWAITING */}
+          {isSampleCustomerApproval && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Previous Stage Verifications (Staging Ground &amp; Physical Checks)
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>Staging Verification: <strong style={{ color: '#059669' }}>✓ Staged in Physical Rack</strong></div>
+                  <div>Client Specs Verified: <strong style={{ color: '#059669' }}>{orderApprovalData.sampleStagingGroundData?.orderRequirementMatch !== false ? 'Yes, Confirmed' : 'Pending'}</strong></div>
+                  <div>Verified Count: <strong>{orderApprovalData.sampleReadyToPickUpData?.readyToPickupCount || orderApprovalData.sampleReadyToPickUpData?.verifiedPickupCount || 5} pcs</strong></div>
+                  <div>Printing Status: <strong>{orderApprovalData.printingStageData?.printingStatus || 'Complete'}</strong></div>
+                </div>
+                {orderApprovalData.sampleStagingGroundData?.note && (
+                  <div style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
+                    <strong>Staging Ground Remarks:</strong> &ldquo;{orderApprovalData.sampleStagingGroundData.note}&rdquo;
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Customer Sign-Off &amp; Approval
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>Has customer approved sample?</span>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13.5px', fontWeight: 500, color: '#1e293b' }}>
                     <input
                       type="radio"
                       name="customerApprovedInline"
@@ -2114,7 +2286,7 @@ function OrderManagement() {
                     />
                     <span>Yes, Approved</span>
                   </label>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13.5px', fontWeight: 500, color: '#1e293b' }}>
                     <input
                       type="radio"
                       name="customerApprovedInline"
@@ -2126,893 +2298,729 @@ function OrderManagement() {
                 </div>
               </div>
             </div>
+          )}
 
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Customer Feedback / Comments
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter customer feedback or sign-off notes..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 5.A CASE: PARTIAL -> PRINTING */}
-        {isPartialPrinting && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Garments Breakdown */}
-            <div style={{ padding: '14px 18px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#1e293b' }}>
-                  Garments for Partial Printing ({itemsList.length})
-                </span>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: '#0284c7' }}>
-                  Target Partial Run: {stageForm.partialPrintedCount || orderApprovalData.totalQuantity || 18} pcs
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {itemsList.map((item, idx) => (
-                  <div key={idx} style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
-                    <span><strong>{item.item || 'Item'}</strong> ({[item.fabric, item.color ? `Color: ${item.color}` : null, item.size ? `Size: ${item.size}` : null].filter(Boolean).join(', ')})</span>
-                    <span style={{ fontWeight: 600, color: '#0f172a' }}>{item.quantity || 1} pcs</span>
+          {/* PARTIAL -> PRINTING */}
+          {isPartialPrinting && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Partial Printing Execution Metrics
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Pieces Printed in Partial Run
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.partialPrintedCount}
+                      onChange={(e) => setStageForm({ ...stageForm, partialPrintedCount: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
                   </div>
-                ))}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Partial Run Status
+                    </label>
+                    <select
+                      value={stageForm.partialPrintingStatus}
+                      onChange={(e) => setStageForm({ ...stageForm, partialPrintingStatus: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    >
+                      <option value="Complete">Complete (Ready for Quality Check)</option>
+                      <option value="Work in Progress">Work in Progress</option>
+                      <option value="On Hold">On Hold</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
+          )}
 
-            {/* Printing Inputs */}
-            <div style={{ background: '#f0f9ff', padding: '16px', borderRadius: '10px', border: '1px solid #bae6fd' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#0369a1', marginBottom: '10px' }}>
-                Partial Printing Execution Metrics
+          {/* PARTIAL -> QUALITY CHECK */}
+          {isPartialQualityCheck && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Verified Data from Partial Printing
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>Pieces Printed: <strong>{orderApprovalData.partialPrintingData?.printedCount || 80} pcs</strong></div>
+                  <div>Printing Status: <strong style={{ color: '#059669' }}>{orderApprovalData.partialPrintingData?.printingStatus || 'Complete'}</strong></div>
+                  <div>Customer Sample Sign-Off: <strong style={{ color: '#059669' }}>✓ Approved</strong></div>
+                </div>
+                {orderApprovalData.partialPrintingData?.note && (
+                  <div style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
+                    <strong>Printing Remarks:</strong> &ldquo;{orderApprovalData.partialPrintingData.note}&rdquo;
+                  </div>
+                )}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
-                    Pieces Printed in Partial Run
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Quality Check Inspection Standards
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
+                    <span>Stitching, hemming, and seam strength verified</span>
                   </label>
-                  <input
-                    type="number"
-                    value={stageForm.partialPrintedCount}
-                    onChange={(e) => setStageForm({ ...stageForm, partialPrintedCount: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
-                    Partial Run Status
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
+                    <span>Print curing and logo alignment verified against approved sample</span>
                   </label>
-                  <select
-                    value={stageForm.partialPrintingStatus}
-                    onChange={(e) => setStageForm({ ...stageForm, partialPrintingStatus: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  >
-                    <option value="Complete">Complete (Ready for Quality Check)</option>
-                    <option value="Work in Progress">Work in Progress</option>
-                    <option value="On Hold">On Hold</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Partial Printing Notes (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter partial printing remarks or instructions..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 5.B CASE: PARTIAL -> QUALITY CHECK */}
-        {isPartialQualityCheck && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#fefce8', padding: '14px 16px', borderRadius: '8px', border: '1px solid #fef08a' }}>
-              <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#854d0e', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#ca8a04" /> Verified Data from Partial Printing
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#713f12' }}>
-                <div>Pieces Printed: <strong style={{ color: '#0f172a' }}>{orderApprovalData.partialPrintingData?.printedCount || 80} pcs</strong></div>
-                <div>Printing Status: <strong style={{ color: '#166534' }}>{orderApprovalData.partialPrintingData?.printingStatus || 'Complete'}</strong></div>
-                <div>Customer Sample Sign-Off: <strong style={{ color: '#166534' }}>✓ Approved</strong></div>
-              </div>
-              {orderApprovalData.partialPrintingData?.note && (
-                <div style={{ fontSize: '12px', color: '#713f12', background: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #fef08a', marginTop: '6px' }}>
-                  <strong>Printing Remarks:</strong> "{orderApprovalData.partialPrintingData.note}"
-                </div>
-              )}
-            </div>
-
-            {/* QC Checklist */}
-            <div style={{ background: '#fffbeb', padding: '16px', borderRadius: '8px', border: '1px solid #fde68a' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#b45309', marginBottom: '10px' }}>
-                Quality Check Inspection Standards
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#78350f' }}>
-                  <input type="checkbox" checked={true} readOnly style={{ accentColor: '#d97706', transform: 'scale(1.2)' }} />
-                  <span>Stitching, hemming, and seam strength verified</span>
-                </label>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#78350f' }}>
-                  <input type="checkbox" checked={true} readOnly style={{ accentColor: '#d97706', transform: 'scale(1.2)' }} />
-                  <span>Print curing and logo alignment verified against approved sample</span>
-                </label>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#78350f' }}>
-                  <input type="checkbox" checked={true} readOnly style={{ accentColor: '#d97706', transform: 'scale(1.2)' }} />
-                  <span>Color consistency and fabric integrity verified</span>
-                </label>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginTop: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#78350f', marginBottom: '4px' }}>
-                    Passed Units (pcs)
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
+                    <span>Color consistency and fabric integrity verified</span>
                   </label>
-                  <input
-                    type="number"
-                    value={stageForm.partialQcPassedCount}
-                    onChange={(e) => setStageForm({ ...stageForm, partialQcPassedCount: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#78350f', marginBottom: '4px' }}>
-                    Rejected / Repair Units (pcs)
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginTop: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Passed Units (pcs)
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.partialQcPassedCount}
+                      onChange={(e) => setStageForm({ ...stageForm, partialQcPassedCount: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Rejected / Repair Units (pcs)
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.partialQcRejectedCount}
+                      onChange={(e) => setStageForm({ ...stageForm, partialQcRejectedCount: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PARTIAL -> PACKAGING */}
+          {isPartialPackaging && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Verified Data from Quality Check
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>QC Passed Units: <strong style={{ color: '#059669' }}>{orderApprovalData.partialQualityCheckData?.passedCount || 80} pcs</strong></div>
+                  <div>QC Rejection Count: <strong>{orderApprovalData.partialQualityCheckData?.rejectedCount || 0} pcs</strong></div>
+                  <div>Inspection Status: <strong style={{ color: '#059669' }}>✓ Quality Passed</strong></div>
+                </div>
+                {orderApprovalData.partialQualityCheckData?.note && (
+                  <div style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
+                    <strong>QC Remarks:</strong> &ldquo;{orderApprovalData.partialQualityCheckData.note}&rdquo;
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Packaging &amp; Labeling Execution
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
+                    <span>Garments individually folded into sealed polybags with moisture silica</span>
                   </label>
-                  <input
-                    type="number"
-                    value={stageForm.partialQcRejectedCount}
-                    onChange={(e) => setStageForm({ ...stageForm, partialQcRejectedCount: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Quality Check Inspector Notes (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter quality verification remarks..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 5.C CASE: PARTIAL -> PACKAGING */}
-        {isPartialPackaging && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#2563eb" /> Verified Data from Quality Check
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#475569' }}>
-                <div>QC Passed Units: <strong style={{ color: '#166534' }}>{orderApprovalData.partialQualityCheckData?.passedCount || 80} pcs</strong></div>
-                <div>QC Rejection Count: <strong style={{ color: '#0f172a' }}>{orderApprovalData.partialQualityCheckData?.rejectedCount || 0} pcs</strong></div>
-                <div>Inspection Status: <strong style={{ color: '#166534' }}>✓ Quality Passed</strong></div>
-              </div>
-              {orderApprovalData.partialQualityCheckData?.note && (
-                <div style={{ fontSize: '12px', color: '#475569', background: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
-                  <strong>QC Remarks:</strong> "{orderApprovalData.partialQualityCheckData.note}"
-                </div>
-              )}
-            </div>
-
-            <div style={{ background: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#1d4ed8', marginBottom: '10px' }}>
-                Packaging & Labeling Execution
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e40af' }}>
-                  <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
-                  <span>Garments individually folded into sealed polybags with moisture silica</span>
-                </label>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e40af' }}>
-                  <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
-                  <span>Carton labels and size-breakdown barcodes affixed</span>
-                </label>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginTop: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
-                    Total Units Packed (pcs)
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
+                    <span>Carton labels and size-breakdown barcodes affixed</span>
                   </label>
-                  <input
-                    type="number"
-                    value={stageForm.partialPackedCount}
-                    onChange={(e) => setStageForm({ ...stageForm, partialPackedCount: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
-                    Cartons / Boxes Count
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginTop: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Total Units Packed (pcs)
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.partialPackedCount}
+                      onChange={(e) => setStageForm({ ...stageForm, partialPackedCount: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Cartons / Boxes Count
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.partialCartonCount}
+                      onChange={(e) => setStageForm({ ...stageForm, partialCartonCount: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PARTIAL -> STAGING ROOM */}
+          {isPartialStagingRoom && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Verified Data from Packaging
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>Packed Units: <strong>{orderApprovalData.partialPackagingData?.packedCount || 80} pcs</strong></div>
+                  <div>Cartons Packed: <strong>{orderApprovalData.partialPackagingData?.cartonCount || 2} boxes</strong></div>
+                  <div>QC Certification: <strong style={{ color: '#059669' }}>✓ Verified Passed</strong></div>
+                </div>
+                {orderApprovalData.partialPackagingData?.note && (
+                  <div style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
+                    <strong>Packaging Remarks:</strong> &ldquo;{orderApprovalData.partialPackagingData.note}&rdquo;
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Partial Staging Room Verification
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
+                    <span>Cartons staged in designated Partial Dispatch Bay</span>
                   </label>
-                  <input
-                    type="number"
-                    value={stageForm.partialCartonCount}
-                    onChange={(e) => setStageForm({ ...stageForm, partialCartonCount: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
+                    <span>Physical carton count matches packaging delivery manifest</span>
+                  </label>
                 </div>
-              </div>
-            </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Packaging Supervisor Notes (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter packaging instructions or notes..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 5.D CASE: PARTIAL -> STAGING ROOM */}
-        {isPartialStagingRoom && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#7c3aed" /> Verified Data from Packaging
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#475569' }}>
-                <div>Packed Units: <strong style={{ color: '#0f172a' }}>{orderApprovalData.partialPackagingData?.packedCount || 80} pcs</strong></div>
-                <div>Cartons Packed: <strong style={{ color: '#0f172a' }}>{orderApprovalData.partialPackagingData?.cartonCount || 2} boxes</strong></div>
-                <div>QC Certification: <strong style={{ color: '#166534' }}>✓ Verified Passed</strong></div>
-              </div>
-              {orderApprovalData.partialPackagingData?.note && (
-                <div style={{ fontSize: '12px', color: '#475569', background: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
-                  <strong>Packaging Remarks:</strong> "{orderApprovalData.partialPackagingData.note}"
-                </div>
-              )}
-            </div>
-
-            <div style={{ background: '#faf5ff', padding: '16px', borderRadius: '8px', border: '1px solid #e9d5ff' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#6b21a8', marginBottom: '10px' }}>
-                Partial Staging Room Verification
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#4a044e' }}>
-                  <input type="checkbox" checked={true} readOnly style={{ accentColor: '#7c3aed', transform: 'scale(1.2)' }} />
-                  <span>Cartons staged in designated Partial Dispatch Bay</span>
-                </label>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#4a044e' }}>
-                  <input type="checkbox" checked={true} readOnly style={{ accentColor: '#7c3aed', transform: 'scale(1.2)' }} />
-                  <span>Physical carton count matches packaging delivery manifest</span>
-                </label>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginTop: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#6b21a8', marginBottom: '4px' }}>
+                <div style={{ marginTop: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
                     Staging Rack / Bay Identifier
                   </label>
                   <input
                     type="text"
                     value={stageForm.partialStagingRack}
                     onChange={(e) => setStageForm({ ...stageForm, partialStagingRack: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                    style={{ width: '100%', maxWidth: '320px', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
             </div>
+          )}
 
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Staging Handler Remarks (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter staging bay remarks..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
+          {/* PARTIAL -> PAYMENT CONFIRMATION */}
+          {isPartialPaymentConfirmation && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Cumulative Partial Production Verification
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>Staging Bay Location: <strong>{orderApprovalData.partialStagingRoomData?.stagedRackNumber || 'Rack P-04'}</strong></div>
+                  <div>Cartons Staged: <strong>{orderApprovalData.partialPackagingData?.cartonCount || 2} boxes</strong></div>
+                  <div>Total Net Order Value: <strong style={{ color: '#059669' }}>₹{Number(orderApprovalData.netAmount || 100000).toLocaleString()}</strong></div>
+                  <div>Advance Received: <strong style={{ color: '#059669' }}>₹{Number(orderApprovalData.advanceAmount || 50000).toLocaleString()}</strong></div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Partial Billing &amp; Payment Clearance
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Invoice / Receipt Number
+                    </label>
+                    <input
+                      type="text"
+                      value={stageForm.partialInvoiceNo}
+                      onChange={(e) => setStageForm({ ...stageForm, partialInvoiceNo: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Payment Mode
+                    </label>
+                    <select
+                      value={stageForm.partialPaymentMode}
+                      onChange={(e) => setStageForm({ ...stageForm, partialPaymentMode: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    >
+                      <option value="Bank Transfer">Bank Transfer (NEFT/RTGS)</option>
+                      <option value="UPI">UPI / Digital Payment</option>
+                      <option value="Cheque">Cheque</option>
+                      <option value="Cash">Cash</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Partial Amount Verified (₹)
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.partialAmountReceived}
+                      onChange={(e) => setStageForm({ ...stageForm, partialAmountReceived: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '12px', padding: '10px 14px', background: '#ffffff', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#059669' }}>
+                    ✓ On submitting payment confirmation, this order will advance to <strong>COMPLETE Stage</strong> and automatically create new tasks for both Stock Room Manager and Production Lead.
+                  </span>
+                </div>
+              </div>
             </div>
+          )}
+
+          {/* COMPLETE -> PRINTING */}
+          {isCompletePrinting && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Complete Bulk Printing Metrics
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Bulk Run Printed Quantity (pcs)
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.completePrintedCount}
+                      onChange={(e) => setStageForm({ ...stageForm, completePrintedCount: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Bulk Printing Status
+                    </label>
+                    <select
+                      value={stageForm.completePrintingStatus}
+                      onChange={(e) => setStageForm({ ...stageForm, completePrintingStatus: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    >
+                      <option value="Complete">Complete (Ready for QC)</option>
+                      <option value="Work in Progress">Work in Progress</option>
+                      <option value="On Hold">On Hold</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* COMPLETE -> QUALITY CHECK */}
+          {isCompleteQualityCheck && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Verified Data from Complete Printing
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>Bulk Pieces Printed: <strong>{orderApprovalData.completePrintingData?.printedCount || orderApprovalData.totalQuantity || 100} pcs</strong></div>
+                  <div>Printing Status: <strong style={{ color: '#059669' }}>{orderApprovalData.completePrintingData?.printingStatus || 'Complete'}</strong></div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Final Bulk QC Standards
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
+                    <span>100% final batch quality audit completed</span>
+                  </label>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input type="checkbox" checked={true} readOnly style={{ accentColor: '#2563eb', transform: 'scale(1.2)' }} />
+                    <span>Zero-defect sign-off issued for bulk shipment</span>
+                  </label>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginTop: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Passed Units (pcs)
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.completeQcPassedCount}
+                      onChange={(e) => setStageForm({ ...stageForm, completeQcPassedCount: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Rejection Units (pcs)
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.completeQcRejectedCount}
+                      onChange={(e) => setStageForm({ ...stageForm, completeQcRejectedCount: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* COMPLETE -> PACKAGING */}
+          {isCompletePackaging && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Verified Data from Final QC
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>Final QC Passed: <strong style={{ color: '#059669' }}>{orderApprovalData.completeQualityCheckData?.passedCount || orderApprovalData.totalQuantity || 100} pcs</strong></div>
+                  <div>Final Rejection: <strong>{orderApprovalData.completeQualityCheckData?.rejectedCount || 0} pcs</strong></div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Final Bulk Packaging Metrics
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginTop: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Total Units Packed (pcs)
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.completeUnitsPacked}
+                      onChange={(e) => setStageForm({ ...stageForm, completeUnitsPacked: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Master Cartons Count (boxes)
+                    </label>
+                    <input
+                      type="number"
+                      value={stageForm.completeMasterCartonsCount}
+                      onChange={(e) => setStageForm({ ...stageForm, completeMasterCartonsCount: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* COMPLETE -> DELIVERY PENDING */}
+          {isCompleteDeliveryPending && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Customer Delivery Destination Details
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>Client: <strong>{orderApprovalData.clientName || 'Client'}</strong> ({orderApprovalData.companyName || '-'})</div>
+                  <div>Phone: <strong>{orderApprovalData.phoneNumber || '-'}</strong></div>
+                  <div>Address: <strong>{orderApprovalData.companyAddress || '-'}, {orderApprovalData.state || ''} {orderApprovalData.pincode || ''}</strong></div>
+                  <div>Total Packed: <strong style={{ color: '#059669' }}>{orderApprovalData.completePackagingData?.totalUnitsPacked || orderApprovalData.totalQuantity || 100} pcs ({orderApprovalData.completePackagingData?.masterCartonsCount || 4} cartons)</strong></div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Logistics &amp; Dispatch Information
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Logistics / Courier Partner
+                    </label>
+                    <input
+                      type="text"
+                      value={stageForm.completeCourierName}
+                      onChange={(e) => setStageForm({ ...stageForm, completeCourierName: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Tracking AWB Number
+                    </label>
+                    <input
+                      type="text"
+                      value={stageForm.completeTrackingNumber}
+                      onChange={(e) => setStageForm({ ...stageForm, completeTrackingNumber: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Dispatch Date
+                    </label>
+                    <input
+                      type="date"
+                      value={stageForm.completeDispatchDate}
+                      onChange={(e) => setStageForm({ ...stageForm, completeDispatchDate: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Driver / Courier Contact
+                    </label>
+                    <input
+                      type="text"
+                      value={stageForm.completeDriverPhone}
+                      onChange={(e) => setStageForm({ ...stageForm, completeDriverPhone: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* COMPLETE -> DELIVERED */}
+          {isCompleteDelivered && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Transit &amp; Dispatch Verification
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>Transporter: <strong>{orderApprovalData.completeDeliveryPendingData?.courierName || 'Blue Dart Express'}</strong></div>
+                  <div>AWB Tracking: <strong>{orderApprovalData.completeDeliveryPendingData?.trackingNumber || 'AWB-BD-882319'}</strong></div>
+                  <div>Dispatch Date: <strong>{orderApprovalData.completeDeliveryPendingData?.dispatchDate || 'Recent'}</strong></div>
+                  <div>Client Phone: <strong>{orderApprovalData.phoneNumber || '-'}</strong></div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Proof of Delivery (POD) &amp; Recipient Acknowledgment
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Delivery Date / Timestamp
+                    </label>
+                    <input
+                      type="date"
+                      value={stageForm.completeDeliveryDate}
+                      onChange={(e) => setStageForm({ ...stageForm, completeDeliveryDate: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Received By (Person Name)
+                    </label>
+                    <input
+                      type="text"
+                      value={stageForm.completeReceivedBy}
+                      onChange={(e) => setStageForm({ ...stageForm, completeReceivedBy: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      POD / Delivery Receipt #
+                    </label>
+                    <input
+                      type="text"
+                      value={stageForm.completePodNumber}
+                      onChange={(e) => setStageForm({ ...stageForm, completePodNumber: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* COMPLETE -> CUSTOMER SUPPORT */}
+          {isCompleteCustomerSupport && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> End-to-End Production &amp; Delivery Verification
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>Sample Stage: <strong style={{ color: '#059669' }}>✓ Approved by Client</strong></div>
+                  <div>Partial Stage: <strong style={{ color: '#059669' }}>✓ Paid &amp; Fulfilled</strong></div>
+                  <div>Bulk Delivery: <strong style={{ color: '#059669' }}>✓ Delivered (POD: {orderApprovalData.completeDeliveredData?.podNumber || 'POD-99214'})</strong></div>
+                  <div>Received By: <strong>{orderApprovalData.completeDeliveredData?.receivedBy || orderApprovalData.clientName || 'Store Manager'}</strong></div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Customer Satisfaction &amp; Order Final Sign-Off
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Customer Rating
+                    </label>
+                    <select
+                      value={stageForm.completeClientRating}
+                      onChange={(e) => setStageForm({ ...stageForm, completeClientRating: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    >
+                      <option value="5">⭐⭐⭐⭐⭐ 5 Stars (Delighted)</option>
+                      <option value="4">⭐⭐⭐⭐ 4 Stars (Satisfied)</option>
+                      <option value="3">⭐⭐⭐ 3 Stars (Neutral)</option>
+                      <option value="2">⭐⭐ 2 Stars (Needs Improvement)</option>
+                      <option value="1">⭐ 1 Star (Unsatisfied)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Resolution &amp; Fulfillment Status
+                    </label>
+                    <select
+                      value={stageForm.completeSupportResolution}
+                      onChange={(e) => setStageForm({ ...stageForm, completeSupportResolution: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', boxSizing: 'border-box' }}
+                    >
+                      <option value="Delivered & Client Fully Satisfied">Delivered &amp; Client Fully Satisfied</option>
+                      <option value="Follow-up Required">Follow-up Required</option>
+                      <option value="Issue Resolved">Issue Resolved</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* AWAITING TASK CLEARANCE */}
+          {isAwaitingTaskClearance && (
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>
+                Department Clearance Tasks Pending
+              </div>
+              <div style={{ fontSize: '13px', color: '#475569' }}>
+                Stock Room and Production Lead clearances are required before proceeding to the execution workflow.
+              </div>
+            </div>
+          )}
+
+          {/* 4. CORRECTION NOTES / REMARKS (Mandatory if referring back) */}
+          <div style={{ marginTop: '20px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+              Correction Notes / Remarks (Mandatory if referring back):
+            </label>
+            <textarea
+              rows={2}
+              placeholder="Enter stage notes or refer back instructions..."
+              value={stageForm.note}
+              onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                fontSize: '13.5px',
+                color: '#1e293b',
+                backgroundColor: '#ffffff',
+                outline: 'none',
+                resize: 'vertical',
+                boxSizing: 'border-box',
+              }}
+            />
           </div>
-        )}
 
-        {/* 5.E CASE: PARTIAL -> PAYMENT CONFIRMATION (Last step of Partial) */}
-        {isPartialPaymentConfirmation && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#059669" /> Cumulative Partial Production Verification
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#475569' }}>
-                <div>Staging Bay Location: <strong style={{ color: '#0f172a' }}>{orderApprovalData.partialStagingRoomData?.stagedRackNumber || 'Rack P-04'}</strong></div>
-                <div>Cartons Staged: <strong style={{ color: '#0f172a' }}>{orderApprovalData.partialPackagingData?.cartonCount || 2} boxes</strong></div>
-                <div>Total Net Order Value: <strong style={{ color: '#166534' }}>₹{Number(orderApprovalData.netAmount || 100000).toLocaleString()}</strong></div>
-                <div>Advance Received: <strong style={{ color: '#166534' }}>₹{Number(orderApprovalData.advanceAmount || 50000).toLocaleString()}</strong></div>
-              </div>
-            </div>
+          {/* 5. ACTION BUTTONS AT BOTTOM */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+            <button
+              type="button"
+              onClick={() => handleExecuteStageTransition('refer_back')}
+              disabled={submittingStageAction}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#ffffff',
+                color: '#dc2626',
+                border: '1px solid #ef4444',
+                padding: '9px 20px',
+                borderRadius: '8px',
+                fontSize: '13.5px',
+                fontWeight: 600,
+                cursor: submittingStageAction ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <RotateCcw size={15} />
+              <span>Refer Back</span>
+            </button>
 
-            <div style={{ background: '#ecfdf5', padding: '16px', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#065f46', marginBottom: '10px' }}>
-                Partial Billing & Payment Clearance
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#065f46', marginBottom: '4px' }}>
-                    Invoice / Receipt Number
-                  </label>
-                  <input
-                    type="text"
-                    value={stageForm.partialInvoiceNo}
-                    onChange={(e) => setStageForm({ ...stageForm, partialInvoiceNo: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#065f46', marginBottom: '4px' }}>
-                    Payment Mode
-                  </label>
-                  <select
-                    value={stageForm.partialPaymentMode}
-                    onChange={(e) => setStageForm({ ...stageForm, partialPaymentMode: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  >
-                    <option value="Bank Transfer">Bank Transfer (NEFT/RTGS)</option>
-                    <option value="UPI">UPI / Digital Payment</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Cash">Cash</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#065f46', marginBottom: '4px' }}>
-                    Partial Amount Verified (₹)
-                  </label>
-                  <input
-                    type="number"
-                    value={stageForm.partialAmountReceived}
-                    onChange={(e) => setStageForm({ ...stageForm, partialAmountReceived: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginTop: '12px', padding: '10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #a7f3d0' }}>
-                <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#065f46' }}>
-                  ✓ On submitting payment confirmation, this order will advance to <strong>COMPLETE Stage</strong> and automatically create new tasks for both Stock Room Manager and Production Lead.
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Accounts / Payment Clearance Notes (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter payment confirmation notes or transaction ID..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
+            <button
+              type="button"
+              id="btn-stage-submit-bottom"
+              onClick={() => handleExecuteStageTransition('submit')}
+              disabled={submittingStageAction}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#10b981',
+                color: '#ffffff',
+                border: 'none',
+                padding: '9px 24px',
+                borderRadius: '8px',
+                fontSize: '13.5px',
+                fontWeight: 700,
+                cursor: submittingStageAction ? 'not-allowed' : 'pointer',
+                boxShadow: '0 2px 6px rgba(16,185,129,0.2)',
+              }}
+            >
+              <CheckCircle size={15} />
+              <span>{submitBtnLabel}</span>
+            </button>
           </div>
-        )}
-
-        {/* 6.A CASE: COMPLETE -> PRINTING */}
-        {isCompletePrinting && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#f0f9ff', padding: '16px', borderRadius: '10px', border: '1px solid #bae6fd' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#0369a1', marginBottom: '10px' }}>
-                Complete Bulk Printing Metrics
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
-                    Bulk Run Printed Quantity (pcs)
-                  </label>
-                  <input
-                    type="number"
-                    value={stageForm.completePrintedCount}
-                    onChange={(e) => setStageForm({ ...stageForm, completePrintedCount: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
-                    Bulk Printing Status
-                  </label>
-                  <select
-                    value={stageForm.completePrintingStatus}
-                    onChange={(e) => setStageForm({ ...stageForm, completePrintingStatus: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  >
-                    <option value="Complete">Complete (Ready for QC)</option>
-                    <option value="Work in Progress">Work in Progress</option>
-                    <option value="On Hold">On Hold</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Bulk Printing Notes (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter complete bulk printing notes..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 6.B CASE: COMPLETE -> QUALITY CHECK */}
-        {isCompleteQualityCheck && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#fefce8', padding: '14px 16px', borderRadius: '8px', border: '1px solid #fef08a' }}>
-              <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#854d0e', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#ca8a04" /> Verified Data from Complete Printing
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#713f12' }}>
-                <div>Bulk Pieces Printed: <strong style={{ color: '#0f172a' }}>{orderApprovalData.completePrintingData?.printedCount || orderApprovalData.totalQuantity || 100} pcs</strong></div>
-                <div>Printing Status: <strong style={{ color: '#166534' }}>{orderApprovalData.completePrintingData?.printingStatus || 'Complete'}</strong></div>
-              </div>
-            </div>
-
-            <div style={{ background: '#fffbeb', padding: '16px', borderRadius: '8px', border: '1px solid #fde68a' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#b45309', marginBottom: '10px' }}>
-                Final Bulk QC Standards
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#78350f' }}>
-                  <input type="checkbox" checked={true} readOnly style={{ accentColor: '#d97706', transform: 'scale(1.2)' }} />
-                  <span>100% final batch quality audit completed</span>
-                </label>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#78350f' }}>
-                  <input type="checkbox" checked={true} readOnly style={{ accentColor: '#d97706', transform: 'scale(1.2)' }} />
-                  <span>Zero-defect sign-off issued for bulk shipment</span>
-                </label>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginTop: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#78350f', marginBottom: '4px' }}>
-                    Passed Units (pcs)
-                  </label>
-                  <input
-                    type="number"
-                    value={stageForm.completeQcPassedCount}
-                    onChange={(e) => setStageForm({ ...stageForm, completeQcPassedCount: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#78350f', marginBottom: '4px' }}>
-                    Rejection Units (pcs)
-                  </label>
-                  <input
-                    type="number"
-                    value={stageForm.completeQcRejectedCount}
-                    onChange={(e) => setStageForm({ ...stageForm, completeQcRejectedCount: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                QC Inspector Notes (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter final QC notes..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 6.C CASE: COMPLETE -> PACKAGING */}
-        {isCompletePackaging && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#2563eb" /> Verified Data from Final QC
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#475569' }}>
-                <div>Final QC Passed: <strong style={{ color: '#166534' }}>{orderApprovalData.completeQualityCheckData?.passedCount || orderApprovalData.totalQuantity || 100} pcs</strong></div>
-                <div>Final Rejection: <strong style={{ color: '#0f172a' }}>{orderApprovalData.completeQualityCheckData?.rejectedCount || 0} pcs</strong></div>
-              </div>
-            </div>
-
-            <div style={{ background: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#1d4ed8', marginBottom: '10px' }}>
-                Final Bulk Packaging Metrics
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginTop: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
-                    Total Units Packed (pcs)
-                  </label>
-                  <input
-                    type="number"
-                    value={stageForm.completeUnitsPacked}
-                    onChange={(e) => setStageForm({ ...stageForm, completeUnitsPacked: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
-                    Master Cartons Count (boxes)
-                  </label>
-                  <input
-                    type="number"
-                    value={stageForm.completeMasterCartonsCount}
-                    onChange={(e) => setStageForm({ ...stageForm, completeMasterCartonsCount: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Packaging Notes (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter bulk packaging remarks..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 6.D CASE: COMPLETE -> DELIVERY PENDING */}
-        {isCompleteDeliveryPending && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#2563eb" /> Customer Delivery Destination Details
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#475569' }}>
-                <div>Client: <strong style={{ color: '#0f172a' }}>{orderApprovalData.clientName || 'Client'}</strong> ({orderApprovalData.companyName || '-'})</div>
-                <div>Phone: <strong style={{ color: '#0f172a' }}>{orderApprovalData.phoneNumber || '-'}</strong></div>
-                <div>Address: <strong>{orderApprovalData.companyAddress || '-'}, {orderApprovalData.state || ''} {orderApprovalData.pincode || ''}</strong></div>
-                <div>Total Packed: <strong style={{ color: '#166534' }}>{orderApprovalData.completePackagingData?.totalUnitsPacked || orderApprovalData.totalQuantity || 100} pcs ({orderApprovalData.completePackagingData?.masterCartonsCount || 4} cartons)</strong></div>
-              </div>
-            </div>
-
-            <div style={{ background: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#1d4ed8', marginBottom: '10px' }}>
-                Logistics & Dispatch Information
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
-                    Logistics / Courier Partner
-                  </label>
-                  <input
-                    type="text"
-                    value={stageForm.completeCourierName}
-                    onChange={(e) => setStageForm({ ...stageForm, completeCourierName: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
-                    Tracking AWB Number
-                  </label>
-                  <input
-                    type="text"
-                    value={stageForm.completeTrackingNumber}
-                    onChange={(e) => setStageForm({ ...stageForm, completeTrackingNumber: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
-                    Dispatch Date
-                  </label>
-                  <input
-                    type="date"
-                    value={stageForm.completeDispatchDate}
-                    onChange={(e) => setStageForm({ ...stageForm, completeDispatchDate: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
-                    Driver / Courier Contact
-                  </label>
-                  <input
-                    type="text"
-                    value={stageForm.completeDriverPhone}
-                    onChange={(e) => setStageForm({ ...stageForm, completeDriverPhone: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Dispatch Notes (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter dispatch and vehicle notes..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 6.E CASE: COMPLETE -> DELIVERED */}
-        {isCompleteDelivered && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#16a34a" /> Transit & Dispatch Verification
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#475569' }}>
-                <div>Transporter: <strong style={{ color: '#0f172a' }}>{orderApprovalData.completeDeliveryPendingData?.courierName || 'Blue Dart Express'}</strong></div>
-                <div>AWB Tracking: <strong style={{ color: '#0f172a' }}>{orderApprovalData.completeDeliveryPendingData?.trackingNumber || 'AWB-BD-882319'}</strong></div>
-                <div>Dispatch Date: <strong>{orderApprovalData.completeDeliveryPendingData?.dispatchDate || 'Recent'}</strong></div>
-                <div>Client Phone: <strong>{orderApprovalData.phoneNumber || '-'}</strong></div>
-              </div>
-            </div>
-
-            <div style={{ background: '#f0fdf4', padding: '16px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#15803d', marginBottom: '10px' }}>
-                Proof of Delivery (POD) & Recipient Acknowledgment
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#15803d', marginBottom: '4px' }}>
-                    Delivery Date / Timestamp
-                  </label>
-                  <input
-                    type="date"
-                    value={stageForm.completeDeliveryDate}
-                    onChange={(e) => setStageForm({ ...stageForm, completeDeliveryDate: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#15803d', marginBottom: '4px' }}>
-                    Received By (Person Name)
-                  </label>
-                  <input
-                    type="text"
-                    value={stageForm.completeReceivedBy}
-                    onChange={(e) => setStageForm({ ...stageForm, completeReceivedBy: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#15803d', marginBottom: '4px' }}>
-                    POD / Delivery Receipt #
-                  </label>
-                  <input
-                    type="text"
-                    value={stageForm.completePodNumber}
-                    onChange={(e) => setStageForm({ ...stageForm, completePodNumber: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Delivery Confirmation Notes (Mandatory if referring back)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter delivery sign-off notes..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 6.F CASE: COMPLETE -> CUSTOMER SUPPORT (Final step of Complete) */}
-        {isCompleteCustomerSupport && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={15} color="#059669" /> End-to-End Production & Delivery Verification
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '12.5px', color: '#475569' }}>
-                <div>Sample Stage: <strong style={{ color: '#166534' }}>✓ Approved by Client</strong></div>
-                <div>Partial Stage: <strong style={{ color: '#166534' }}>✓ Paid & Fulfilled</strong></div>
-                <div>Bulk Delivery: <strong style={{ color: '#166534' }}>✓ Delivered (POD: {orderApprovalData.completeDeliveredData?.podNumber || 'POD-99214'})</strong></div>
-                <div>Received By: <strong>{orderApprovalData.completeDeliveredData?.receivedBy || orderApprovalData.clientName || 'Store Manager'}</strong></div>
-              </div>
-            </div>
-
-            <div style={{ background: '#ecfdf5', padding: '16px', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#065f46', marginBottom: '10px' }}>
-                Customer Satisfaction & Order Final Sign-Off
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#065f46', marginBottom: '4px' }}>
-                    Customer Rating
-                  </label>
-                  <select
-                    value={stageForm.completeClientRating}
-                    onChange={(e) => setStageForm({ ...stageForm, completeClientRating: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  >
-                    <option value="5">⭐⭐⭐⭐⭐ 5 Stars (Delighted)</option>
-                    <option value="4">⭐⭐⭐⭐ 4 Stars (Satisfied)</option>
-                    <option value="3">⭐⭐⭐ 3 Stars (Neutral)</option>
-                    <option value="2">⭐⭐ 2 Stars (Needs Improvement)</option>
-                    <option value="1">⭐ 1 Star (Unsatisfied)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#065f46', marginBottom: '4px' }}>
-                    Resolution & Fulfillment Status
-                  </label>
-                  <select
-                    value={stageForm.completeSupportResolution}
-                    onChange={(e) => setStageForm({ ...stageForm, completeSupportResolution: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                  >
-                    <option value="Delivered & Client Fully Satisfied">Delivered & Client Fully Satisfied</option>
-                    <option value="Follow-up Required">Follow-up Required</option>
-                    <option value="Issue Resolved">Issue Resolved</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
-                Client Feedback / Testimonial Notes
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Enter client testimonial or feedback notes..."
-                value={stageForm.note}
-                onChange={(e) => setStageForm({ ...stageForm, note: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Actions Toolbar on the page */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-          <button
-            type="button"
-            onClick={() => handleExecuteStageTransition('refer_back')}
-            disabled={submittingStageAction}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: '#fef2f2',
-              color: '#dc2626',
-              border: '1px solid #fecaca',
-              padding: '9px 18px',
-              borderRadius: '8px',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: submittingStageAction ? 'not-allowed' : 'pointer',
-            }}
-          >
-            <RotateCcw size={15} />
-            <span>Refer Back</span>
-          </button>
-
-          <button
-            type="button"
-            id="btn-stage-submit"
-            onClick={() => handleExecuteStageTransition('submit')}
-            disabled={submittingStageAction}
-            style={{
-              display: 'none',
-              alignItems: 'center',
-              gap: '6px',
-              background: isSamplePrinting
-                ? stageForm.stageStatus === 'Work in Progress'
-                  ? '#2563eb'
-                  : stageForm.stageStatus === 'On Hold'
-                  ? '#d97706'
-                  : '#10b981'
-                : '#10b981',
-              color: '#ffffff',
-              border: 'none',
-              padding: '9px 22px',
-              borderRadius: '8px',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: submittingStageAction ? 'not-allowed' : 'pointer',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-            }}
-          >
-            <CheckCircle size={15} />
-            <span>
-              {submittingStageAction
-                ? 'Processing...'
-                : isCurrentStageApproved
-                ? 'Update Verification & Remarks'
-                : isSamplePrinting
-                ? stageForm.stageStatus === 'Complete'
-                  ? 'Submit (Move to Ready to Pick Up)'
-                  : `Save as ${stageForm.stageStatus} (Stay in Printing)`
-                : isSampleDtfPending
-                ? 'Submit (Move to Stock)'
-                : isSampleStock
-                ? 'Submit (Move to Printing)'
-                : isSampleReadyToPickup
-                ? 'Submit (Move to Staging Ground)'
-                : isSampleStagingGround
-                ? 'Submit (Move to Customer Approval)'
-                : isSampleCustomerApproval
-                ? 'Approve Sample & Advance to Partial Stage'
-                : isPartialPrinting
-                ? stageForm.partialPrintingStatus === 'Complete'
-                  ? 'Submit (Move to Quality Check)'
-                  : `Save as ${stageForm.partialPrintingStatus} (Stay in Printing)`
-                : isPartialQualityCheck
-                ? 'Submit (Move to Packaging)'
-                : isPartialPackaging
-                ? 'Submit (Move to Partial - Staging Room)'
-                : isPartialStagingRoom
-                ? 'Submit (Move to Payment Confirmation)'
-                : isPartialPaymentConfirmation
-                ? 'Approve Partial & Advance to Complete Stage'
-                : isCompletePrinting
-                ? stageForm.completePrintingStatus === 'Complete'
-                  ? 'Submit (Move to Quality Check)'
-                  : `Save as ${stageForm.completePrintingStatus} (Stay in Printing)`
-                : isCompleteQualityCheck
-                ? 'Submit (Move to Packaging)'
-                : isCompletePackaging
-                ? 'Submit (Move to Delivery Pending)'
-                : isCompleteDeliveryPending
-                ? 'Submit (Move to Delivered)'
-                : isCompleteDelivered
-                ? 'Submit (Move to Customer Support)'
-                : isCompleteCustomerSupport
-                ? 'Complete & Archive Order'
-                : 'Submit & Advance'}
-            </span>
-          </button>
         </div>
+
+        {/* Audit Trail / History */}
+        {orderApprovalData.approvalComments && orderApprovalData.approvalComments.length > 0 && (
+          <div className="comment-history-list" style={{ marginTop: '20px' }}>
+            <h4 className="history-title">Activity &amp; Review History</h4>
+            <div className="timeline-items">
+              {orderApprovalData.approvalComments.map((item, idx) => (
+                <div key={idx} className="timeline-item">
+                  <div className="timeline-avatar">
+                    <CheckCircle size={15} color="#10b981" />
+                  </div>
+                  <div className="timeline-content">
+                    <div className="timeline-header">
+                      <strong>{item.author || 'Manager'}</strong>
+                      <span className="timeline-role">({item.role || 'Reviewer'})</span>
+                      <span className={`status-badge-inline ${(item.status || '').toLowerCase().replace(/\s+/g, '-')}`}>
+                        {item.status || 'LOG'}
+                      </span>
+                      <span className="timeline-time">
+                        {item.timestamp ? new Date(item.timestamp).toLocaleString() : ''}
+                      </span>
+                    </div>
+                    {item.comment && (
+                      <div className="timeline-text">{item.comment}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -3066,17 +3074,7 @@ function OrderManagement() {
     return info.matches;
   });
 
-  const matchingLeads = allStageLeads.filter((item) => {
-    if (stageFilterTab === 'all') return true;
-    const info = getLeadStageInfo(item, currentStage, currentSubStage);
-    if (stageFilterTab === 'pending') return info.status === 'in_progress';
-    if (stageFilterTab === 'approved') return info.status === 'approved';
-    return true;
-  });
-
-  const pendingCount = allStageLeads.filter((it) => getLeadStageInfo(it, currentStage, currentSubStage).status === 'in_progress').length;
-  const approvedCount = allStageLeads.filter((it) => getLeadStageInfo(it, currentStage, currentSubStage).status === 'approved').length;
-  const allCount = allStageLeads.length;
+  const matchingLeads = allStageLeads;
 
   useEffect(() => {
     if (editId && location.pathname !== '/order/create-lead') {
@@ -3098,12 +3096,21 @@ function OrderManagement() {
     if (fromUrl.includes('/customer-approval-awaiting')) activeSub = 'customer-approval-awaiting';
     else if (fromUrl.includes('/staging-ground')) activeSub = 'staging-ground';
     else if (fromUrl.includes('/ready-to-pick-up')) activeSub = 'ready-to-pick-up';
+    else if (fromUrl.includes('/quality-check')) activeSub = 'quality-check';
+    else if (fromUrl.includes('/packaging')) activeSub = 'packaging';
+    else if (fromUrl.includes('/staging-room')) activeSub = 'staging-room';
+    else if (fromUrl.includes('/payment-confirmation')) activeSub = 'payment-confirmation';
+    else if (fromUrl.includes('/delivery-pending')) activeSub = 'delivery-pending';
+    else if (fromUrl.includes('/delivered')) activeSub = 'delivered';
+    else if (fromUrl.includes('/customer-support')) activeSub = 'customer-support';
     else if (fromUrl.includes('/printing')) activeSub = 'printing';
     else if (fromUrl.includes('/stock')) activeSub = 'stock';
     else if (fromUrl.includes('/dtf-pending')) activeSub = 'dtf-pending';
 
     const isExecutionStageView = Boolean(
       editId && (
+        activeSub === 'dtf-pending' ||
+        activeSub === 'stock' ||
         activeSub === 'printing' ||
         activeSub === 'ready-to-pick-up' ||
         activeSub === 'staging-ground' ||
@@ -3130,65 +3137,180 @@ function OrderManagement() {
               className="back-to-order-btn"
             >
               <ArrowLeft size={18} />
-              <span>Back to Order</span>
+              <span>{searchParams.get('from')?.includes('/approvals') || isLeadManager ? 'Back to Approvals' : 'Back to Order'}</span>
             </button>
 
             {/* Top Right Action Buttons opposite to Back to Order */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => handleExecuteStageTransition('refer_back')}
-                disabled={submittingStageAction}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: '#fef2f2',
-                  color: '#dc2626',
-                  border: '1px solid #fecaca',
-                  padding: '9px 18px',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: submittingStageAction ? 'not-allowed' : 'pointer',
-                }}
-              >
-                <RotateCcw size={15} />
-                <span>Refer Back</span>
-              </button>
+            {isExecutionStageView ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => handleExecuteStageTransition('refer_back')}
+                  disabled={submittingStageAction}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#fef2f2',
+                    color: '#dc2626',
+                    border: '1px solid #fecaca',
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: submittingStageAction ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <RotateCcw size={15} />
+                  <span>Refer Back</span>
+                </button>
 
-              <button
-                type="button"
-                id="btn-stage-submit-top"
-                onClick={() => handleExecuteStageTransition('submit')}
-                disabled={submittingStageAction}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: isSamplePrinting
-                    ? stageForm.stageStatus === 'Work in Progress'
-                      ? '#2563eb'
-                      : stageForm.stageStatus === 'On Hold'
-                      ? '#d97706'
-                      : '#10b981'
-                    : '#10b981',
-                  color: '#ffffff',
-                  border: 'none',
-                  padding: '9px 22px',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  fontWeight: 700,
-                  cursor: submittingStageAction ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-                }}
-              >
-                <CheckCircle size={15} />
-                <span>
-                  {submittingStageAction ? 'Processing...' : 'Submit'}
-                </span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  id="btn-stage-submit-top"
+                  onClick={() => handleExecuteStageTransition('submit')}
+                  disabled={submittingStageAction}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: isSamplePrinting
+                      ? stageForm.stageStatus === 'Work in Progress'
+                        ? '#2563eb'
+                        : stageForm.stageStatus === 'On Hold'
+                        ? '#d97706'
+                        : '#10b981'
+                      : '#10b981',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '9px 22px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: submittingStageAction ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                  }}
+                >
+                  <CheckCircle size={15} />
+                  <span>
+                    {submittingStageAction ? 'Processing...' : 'Submit'}
+                  </span>
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {(isLeadManager || (isLeadManagerOrAdmin && searchParams.get('from')?.includes('/approvals'))) ? (
+                  isLeadSubmitted ? (
+                    <button
+                      type="button"
+                      disabled={true}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '9px 22px',
+                        borderRadius: '8px',
+                        background: '#10b981',
+                        border: 'none',
+                        color: '#fff',
+                        fontSize: '13.5px',
+                        fontWeight: 600,
+                        cursor: 'not-allowed',
+                        opacity: 0.95,
+                        boxShadow: '0 2px 6px rgba(16,185,129,0.2)'
+                      }}
+                      title="Order already submitted & approved"
+                    >
+                      <CheckCircle size={16} />
+                      <span>Submitted</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleLeadManagerAction('Approved')}
+                      disabled={submittingLeadAction}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '9px 24px',
+                        borderRadius: '8px',
+                        background: '#059669',
+                        border: 'none',
+                        color: '#fff',
+                        fontSize: '13.5px',
+                        fontWeight: 600,
+                        cursor: submittingLeadAction ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 2px 6px rgba(5,150,105,0.25)',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <CheckCircle size={16} />
+                      <span>{submittingLeadAction ? 'Submitting...' : 'Submit'}</span>
+                    </button>
+                  )
+                ) : (
+                  isReadOnly ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(true)}
+                      className="btn-primary"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '9px 20px',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Edit2 size={15} />
+                      <span>Edit Order</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="btn-secondary"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '9px 18px',
+                          borderRadius: '8px',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <X size={15} />
+                        <span>Cancel</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveExistingOrder}
+                        className="btn-primary"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '9px 22px',
+                          borderRadius: '8px',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Check size={15} />
+                        <span>Save Changes</span>
+                      </button>
+                    </>
+                  )
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="page-header">
@@ -3228,132 +3350,15 @@ function OrderManagement() {
           )}
 
           {/* Stage Clearance & Execution Workflow Card (Directly on the page) */}
-          {editId && orderApprovalData && renderStageWorkflowCard()}
-
-          {/* Lead Manager Decision & Actions on Top */}
-          {editId && isLeadManagerOrAdmin && !isExecutionStageView && (
-            <div className="lead-manager-top-actions" style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderLeft: isLeadSubmitted ? '4px solid #10b981' : leadAppr.status === 'Referred Back' ? '4px solid #ef4444' : '4px solid #f59e0b',
-              borderRadius: '10px',
-              padding: '16px 20px',
-              marginBottom: '20px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-            }}>
-              {leadAppr.note && (
-                <div style={{
-                  background: leadAppr.status === 'Referred Back' ? '#fff5f5' : '#f8fafc',
-                  border: `1px solid ${leadAppr.status === 'Referred Back' ? '#fed7d7' : '#e2e8f0'}`,
-                  borderRadius: '6px',
-                  padding: '8px 12px',
-                  marginBottom: '12px',
-                  fontSize: '13px',
-                  color: '#334155'
-                }}>
-                  <strong style={{ color: leadAppr.status === 'Referred Back' ? '#c53030' : '#475569' }}>
-                    Previous Manager Note:
-                  </strong>{' '}
-                  "{leadAppr.note}"
-                  {leadAppr.author && (
-                    <span style={{ fontSize: '11.5px', color: '#64748b', marginLeft: '8px' }}>
-                      — {leadAppr.author} {leadAppr.updatedAt ? `on ${new Date(leadAppr.updatedAt).toLocaleDateString()}` : ''}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              <div style={{ marginBottom: '14px' }}>
-                <textarea
-                  value={leadManagerNote}
-                  onChange={(e) => setLeadManagerNote(e.target.value)}
-                  placeholder="Additional note (mandatory with every refer back)..."
-                  rows={2}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '13.5px',
-                    fontFamily: 'inherit',
-                    resize: 'vertical',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                <button
-                  type="button"
-                  onClick={() => handleLeadManagerAction('Referred Back')}
-                  disabled={submittingLeadAction}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 18px',
-                    borderRadius: '6px',
-                    background: '#fff',
-                    border: '1px solid #ef4444',
-                    color: '#dc2626',
-                    fontSize: '13.5px',
-                    fontWeight: 600,
-                    cursor: submittingLeadAction ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  <RotateCcw size={15} />
-                  <span>Refer Back</span>
-                </button>
-
-                {isLeadSubmitted ? (
-                  <button
-                    type="button"
-                    disabled={true}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '8px 22px',
-                      borderRadius: '6px',
-                      background: '#10b981',
-                      border: 'none',
-                      color: '#fff',
-                      fontSize: '13.5px',
-                      fontWeight: 600,
-                      cursor: 'not-allowed',
-                      opacity: 0.95
-                    }}
-                    title="Order already submitted"
-                  >
-                    <CheckCircle size={15} />
-                    <span>Submitted</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleLeadManagerAction('Approved')}
-                    disabled={submittingLeadAction}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '8px 22px',
-                      borderRadius: '6px',
-                      background: '#059669',
-                      border: 'none',
-                      color: '#fff',
-                      fontSize: '13.5px',
-                      fontWeight: 600,
-                      cursor: submittingLeadAction ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    <CheckCircle size={15} />
-                    <span>{submittingLeadAction ? 'Submitting...' : 'Submit'}</span>
-                  </button>
-                )}
-              </div>
+          {editId && !orderApprovalData && isExecutionStageView && (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: '#64748b', fontSize: '14px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+              <Clock size={22} style={{ animation: 'spin 1.5s linear infinite', marginBottom: '8px' }} />
+              <div>Loading order stage details...</div>
             </div>
           )}
+          {editId && orderApprovalData && renderStageWorkflowCard()}
+
+
 
           {editId && isOrderReferredBack && !isExecutionStageView && (
             <div className="referred-back-banner">
@@ -3390,6 +3395,7 @@ function OrderManagement() {
                   <label>Employee Name</label>
                   <input
                     type="text"
+                    disabled={isReadOnly}
                     value={formData.employeeName !== undefined ? formData.employeeName : (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || ''))}
                     onChange={(e) => setFormData({ ...formData, employeeName: e.target.value })}
                     style={{ background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
@@ -3398,7 +3404,7 @@ function OrderManagement() {
                 
                 <div className="form-group">
                   <label>Query</label>
-                  <select value={query} onChange={(e) => setQuery(e.target.value)}>
+                  <select value={query} onChange={(e) => setQuery(e.target.value)} disabled={isReadOnly}>
                     <option value="">Select query type...</option>
                     <option value="lead">Lead</option>
                     <option value="order">Order</option>
@@ -3420,6 +3426,7 @@ function OrderManagement() {
                   <label>Company Name</label>
                   <input
                     type="text"
+                    disabled={isReadOnly}
                     value={formData.companyName}
                     onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
                   />
@@ -3429,6 +3436,7 @@ function OrderManagement() {
                   <label>Client Name</label>
                   <input
                     type="text"
+                    disabled={isReadOnly}
                     value={formData.clientName}
                     onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
                   />
@@ -3438,6 +3446,7 @@ function OrderManagement() {
                   <label>Company Address</label>
                   <input
                     type="text"
+                    disabled={isReadOnly}
                     value={formData.companyAddress}
                     onChange={(e) => setFormData({ ...formData, companyAddress: e.target.value })}
                   />
@@ -3447,16 +3456,17 @@ function OrderManagement() {
                   <label>State</label>
                   <input
                     type="text"
+                    disabled={isReadOnly}
                     value={formData.state}
                     onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                   />
                 </div>
 
                 <div className="form-group">
-                  <label>Pincode *</label>
+                  <label>Pincode</label>
                   <input
                     type="text"
-                    required
+                    disabled={isReadOnly}
                     value={formData.pincode}
                     onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
                   />
@@ -3468,6 +3478,7 @@ function OrderManagement() {
                     <input
                       type="tel"
                       required
+                      disabled={isReadOnly}
                       value={formData.phoneNumber}
                       onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
                       onBlur={() => setPhoneTouched(true)}
@@ -3484,25 +3495,27 @@ function OrderManagement() {
                 <div className="form-group" style={{ gridColumn: 2 }}>
                   <label>Repeated Order</label>
                   <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'default' : 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
                       <input
                         type="radio"
                         name="repeatedOrder"
                         value="Yes"
+                        disabled={isReadOnly}
                         checked={formData.repeatedOrder === 'Yes'}
                         onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
-                        style={{ width: 'auto', margin: 0, cursor: 'pointer', accentColor: '#2563eb' }}
+                        style={{ width: 'auto', margin: 0, cursor: isReadOnly ? 'default' : 'pointer', accentColor: '#2563eb' }}
                       />
                       Yes
                     </label>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'default' : 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
                       <input
                         type="radio"
                         name="repeatedOrder"
                         value="No"
+                        disabled={isReadOnly}
                         checked={formData.repeatedOrder === 'No' || !formData.repeatedOrder}
                         onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
-                        style={{ width: 'auto', margin: 0, cursor: 'pointer', accentColor: '#2563eb' }}
+                        style={{ width: 'auto', margin: 0, cursor: isReadOnly ? 'default' : 'pointer', accentColor: '#2563eb' }}
                       />
                       No
                     </label>
@@ -3515,12 +3528,14 @@ function OrderManagement() {
                     <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
                       <input
                         type="date"
+                        disabled={isReadOnly}
                         value={formData.scheduleDate}
                         onChange={(e) => setFormData({ ...formData, scheduleDate: e.target.value })}
                         style={{ flex: 1, padding: '10px' }}
                       />
                       <input
                         type="time"
+                        disabled={isReadOnly}
                         value={formData.scheduleTime}
                         onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
                         style={{ flex: 1, padding: '10px' }}
@@ -3534,6 +3549,7 @@ function OrderManagement() {
                 <label style={{ display: 'block', marginBottom: '8px' }}>Additional Note</label>
                 <textarea 
                   rows="4" 
+                  disabled={isReadOnly}
                   value={formData.additionalNote}
                   onChange={(e) => setFormData({ ...formData, additionalNote: e.target.value })}
                   style={{ 
@@ -3573,6 +3589,7 @@ function OrderManagement() {
                     <label>Order ID</label>
                     <input
                       type="text"
+                      disabled={isReadOnly}
                       value={formData.orderId}
                       onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
                       placeholder="ORD00001"
@@ -3581,46 +3598,90 @@ function OrderManagement() {
                   </div>
 
                   <div className="form-group">
+                    <label>Order Stage *</label>
+                    <select 
+                      required 
+                      disabled={isReadOnly}
+                      value={orderStage || 'sample'} 
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setOrderStage(val);
+                        if (val === 'sample') {
+                          setSubStage('order');
+                        } else if (val && SUB_STAGES_BY_ORDER_STAGE[val]?.length) {
+                          setSubStage(SUB_STAGES_BY_ORDER_STAGE[val][0].toLowerCase());
+                        } else {
+                          setSubStage('');
+                        }
+                      }}
+                    >
+                      <option value="sample">Sample</option>
+                      <option value="partial">Partial</option>
+                      <option value="complete">Complete</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Sub Stage *</label>
+                    <select 
+                      required 
+                      disabled={isReadOnly || !orderStage}
+                      value={subStage || 'order'} 
+                      onChange={(e) => setSubStage(e.target.value)}
+                      style={!orderStage ? { cursor: 'not-allowed', opacity: 0.7 } : {}}
+                    >
+                      <option value="">{orderStage ? 'Select sub stage...' : 'Select order stage first'}</option>
+                      {orderStage && SUB_STAGES_BY_ORDER_STAGE[orderStage]?.map((stage) => (
+                        <option key={stage} value={stage.toLowerCase()}>{stage}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* 1. Logo Design Attachment */}
+                  <div className="form-group">
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Paperclip size={15} style={{ color: '#2563eb' }} />
-                      <span>Attachment</span>
+                      <span>Logo Design</span>
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
                       <input
-                        ref={fileInputRef}
+                        ref={logoDesignInputRef}
                         type="file"
                         accept="image/*,application/pdf"
-                        onChange={handleAttachmentChange}
+                        onChange={(e) => handleFileChange('logoDesign', 'logoDesignName', e)}
                         style={{ display: 'none' }}
+                        disabled={isReadOnly}
                       />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="btn-secondary"
-                        style={{
-                          padding: '7px 12px',
-                          fontSize: '13px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          borderRadius: '8px',
-                          background: 'white',
-                          border: '1px solid #cbd5e1',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        <Upload size={14} />
-                        {formData.attachment ? 'Change File' : 'Upload File'}
-                      </button>
-                      {formData.attachment ? (
+                      {!isReadOnly && (
+                        <button
+                          type="button"
+                          onClick={() => logoDesignInputRef.current?.click()}
+                          className="btn-secondary"
+                          style={{
+                            padding: '7px 12px',
+                            fontSize: '13px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            borderRadius: '8px',
+                            background: 'white',
+                            border: '1px solid #cbd5e1',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <Upload size={14} />
+                          {formData.logoDesign ? 'Change File' : 'Upload File'}
+                        </button>
+                      )}
+                      {formData.logoDesign ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1, overflow: 'hidden' }}>
                           <a
-                            href={formData.attachment}
+                            href={formData.logoDesign}
                             target="_blank"
                             rel="noopener noreferrer"
-                            download={formData.attachmentName || 'logo-artwork'}
-                            title={formData.attachmentName}
+                            download={formData.logoDesignName || 'logo-design'}
+                            title={formData.logoDesignName}
                             style={{
                               fontSize: '12px',
                               color: '#2563eb',
@@ -3632,25 +3693,113 @@ function OrderManagement() {
                               maxWidth: '120px'
                             }}
                           >
-                            {formData.attachmentName || 'Attached'}
+                            {formData.logoDesignName || 'Attached'}
                           </a>
-                          <button
-                            type="button"
-                            onClick={handleRemoveAttachment}
+                          {!isReadOnly && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFile('logoDesign', 'logoDesignName', logoDesignInputRef)}
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                padding: '0 4px',
+                                fontSize: '15px',
+                                fontWeight: 'bold',
+                                lineHeight: 1
+                              }}
+                              title="Remove attachment"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                          No file chosen
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 2. Digital Design Attachment */}
+                  <div className="form-group">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Paperclip size={15} style={{ color: '#2563eb' }} />
+                      <span>Digital Design</span>
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                      <input
+                        ref={digitalDesignInputRef}
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => handleFileChange('digitalDesign', 'digitalDesignName', e)}
+                        style={{ display: 'none' }}
+                        disabled={isReadOnly}
+                      />
+                      {!isReadOnly && (
+                        <button
+                          type="button"
+                          onClick={() => digitalDesignInputRef.current?.click()}
+                          className="btn-secondary"
+                          style={{
+                            padding: '7px 12px',
+                            fontSize: '13px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            borderRadius: '8px',
+                            background: 'white',
+                            border: '1px solid #cbd5e1',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <Upload size={14} />
+                          {formData.digitalDesign ? 'Change File' : 'Upload File'}
+                        </button>
+                      )}
+                      {formData.digitalDesign ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                          <a
+                            href={formData.digitalDesign}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download={formData.digitalDesignName || 'digital-design'}
+                            title={formData.digitalDesignName}
                             style={{
-                              border: 'none',
-                              background: 'transparent',
-                              color: '#ef4444',
-                              cursor: 'pointer',
-                              padding: '0 4px',
-                              fontSize: '15px',
-                              fontWeight: 'bold',
-                              lineHeight: 1
+                              fontSize: '12px',
+                              color: '#2563eb',
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              textDecoration: 'underline',
+                              maxWidth: '120px'
                             }}
-                            title="Remove attachment"
                           >
-                            ×
-                          </button>
+                            {formData.digitalDesignName || 'Attached'}
+                          </a>
+                          {!isReadOnly && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFile('digitalDesign', 'digitalDesignName', digitalDesignInputRef)}
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                padding: '0 4px',
+                                fontSize: '15px',
+                                fontWeight: 'bold',
+                                lineHeight: 1
+                              }}
+                              title="Remove attachment"
+                            >
+                              ×
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <span style={{ fontSize: '12px', color: '#94a3b8' }}>
@@ -3661,46 +3810,14 @@ function OrderManagement() {
                   </div>
 
                   <div className="form-group">
-                    <label>Order Stage *</label>
-                    <select 
-                      required 
-                      value={orderStage} 
-                      onChange={(e) => {
-                        setOrderStage(e.target.value);
-                        setSubStage('');
-                      }}
-                    >
-                      <option value="">Select stage...</option>
-                      <option value="sample">Sample</option>
-                      <option value="partial">Partial</option>
-                      <option value="complete">Complete</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
                     <label>Logo Name</label>
                     <input
                       type="text"
+                      disabled={isReadOnly}
                       value={formData.logoName}
                       onChange={(e) => setFormData({ ...formData, logoName: e.target.value })}
                       placeholder="Enter logo name"
                     />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Sub Stage *</label>
-                    <select 
-                      required 
-                      value={subStage} 
-                      onChange={(e) => setSubStage(e.target.value)}
-                      disabled={!orderStage}
-                      style={!orderStage ? { cursor: 'not-allowed', opacity: 0.7 } : {}}
-                    >
-                      <option value="">{orderStage ? 'Select sub stage...' : 'Select order stage first'}</option>
-                      {orderStage && SUB_STAGES_BY_ORDER_STAGE[orderStage]?.map((stage) => (
-                        <option key={stage} value={stage.toLowerCase()}>{stage}</option>
-                      ))}
-                    </select>
                   </div>
 
                   <div className="form-group">
@@ -3709,6 +3826,7 @@ function OrderManagement() {
                       <input
                         type="number"
                         required
+                        disabled={isReadOnly}
                         value={formData.totalQuantity}
                         onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value })}
                         style={{
@@ -3749,6 +3867,7 @@ function OrderManagement() {
                       type="number"
                       step="0.01"
                       required
+                      disabled={isReadOnly}
                       value={formData.pricePerPiece}
                       onChange={(e) => setFormData({ ...formData, pricePerPiece: e.target.value })}
                     />
@@ -3759,6 +3878,7 @@ function OrderManagement() {
                     <input
                       type="number"
                       required
+                      disabled={isReadOnly}
                       value={formData.totalAmount}
                       onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
                     />
@@ -3769,6 +3889,7 @@ function OrderManagement() {
                     <input
                       type="number"
                       step="0.01"
+                      disabled={isReadOnly}
                       value={formData.gst}
                       onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
                     />
@@ -3779,6 +3900,7 @@ function OrderManagement() {
                     <input
                       type="number"
                       required
+                      disabled={isReadOnly}
                       value={formData.netAmount}
                       onChange={(e) => setFormData({ ...formData, netAmount: e.target.value })}
                     />
@@ -3789,6 +3911,7 @@ function OrderManagement() {
                     <input
                       type="number"
                       required
+                      disabled={isReadOnly}
                       value={formData.advanceAmount}
                       onChange={(e) => setFormData({ ...formData, advanceAmount: e.target.value })}
                     />
@@ -3799,6 +3922,7 @@ function OrderManagement() {
                     <input
                       type="number"
                       required
+                      disabled={isReadOnly}
                       value={formData.pendingAmount}
                       onChange={(e) => setFormData({ ...formData, pendingAmount: e.target.value })}
                     />
@@ -3808,6 +3932,7 @@ function OrderManagement() {
                     <label>Urgency *</label>
                     <select
                       required
+                      disabled={isReadOnly}
                       value={formData.urgency}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -3831,10 +3956,10 @@ function OrderManagement() {
                       required
                       value={formData.deliveryDate}
                       onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })}
-                      disabled={formData.urgency?.toLowerCase() !== 'yes'}
+                      disabled={isReadOnly || formData.urgency?.toLowerCase() !== 'yes'}
                       style={
-                        formData.urgency?.toLowerCase() !== 'yes'
-                          ? { background: 'rgba(0,0,0,0.03)', cursor: 'not-allowed', color: '#64748b' }
+                        isReadOnly || formData.urgency?.toLowerCase() !== 'yes'
+                          ? { background: 'rgba(0,0,0,0.03)', cursor: isReadOnly ? 'default' : 'not-allowed', color: '#64748b' }
                           : {}
                       }
                       title={formData.urgency?.toLowerCase() !== 'yes' ? "Only editable when Urgency is 'Yes'" : ""}
@@ -3842,9 +3967,9 @@ function OrderManagement() {
                   </div>
 
                   <div className="form-group">
-                    <label>Mode of Delivery *</label>
+                    <label>Mode of Delivery</label>
                     <select
-                      required
+                      disabled={isReadOnly}
                       value={formData.modeOfDelivery}
                       onChange={(e) => setFormData({ ...formData, modeOfDelivery: e.target.value })}
                     >
@@ -3860,9 +3985,11 @@ function OrderManagement() {
                 <div style={{ marginTop: '32px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <button type="button" onClick={handleAddItem} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Plus size={16} /> Add Item
-                      </button>
+                      {!isReadOnly && (
+                        <button type="button" onClick={handleAddItem} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Plus size={16} /> Add Item
+                        </button>
+                      )}
                       {orderTotalQty > 0 && (
                         <span style={{
                           fontSize: '12px',
@@ -3881,9 +4008,9 @@ function OrderManagement() {
                   
                   {items.length > 0 && (
                     <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      {items.map((item) => (
+                      {items.map((item, itemIdx) => (
                         <div
-                          key={item.id}
+                          key={item.id || item._id || `item-row-${itemIdx}`}
                           style={{
                             display: 'flex',
                             alignItems: 'flex-end',
@@ -3902,6 +4029,7 @@ function OrderManagement() {
                             <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Item *</label>
                             <select
                               required
+                              disabled={isReadOnly}
                               value={item.itemType || (isTshirt(item) ? 't-shirt' : (item.item ? 'others' : ''))}
                               onChange={(e) => {
                                 const selected = e.target.value;
@@ -3940,6 +4068,7 @@ function OrderManagement() {
                               <input
                                 type="text"
                                 required
+                                disabled={isReadOnly}
                                 placeholder="Enter item..."
                                 value={item.enterItem || (item.item !== 'T-Shirt' && item.item !== 'others' ? item.item : '')}
                                 onChange={(e) => handleItemChange(item.id, {
@@ -3955,6 +4084,7 @@ function OrderManagement() {
                             <div style={{ flex: '1.2 1 125px', minWidth: '115px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                               <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Printing Type</label>
                               <select
+                                disabled={isReadOnly}
                                 value={item.printingType || ''}
                                 onChange={(e) => handleItemChange(item.id, 'printingType', e.target.value)}
                                 style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
@@ -3971,6 +4101,7 @@ function OrderManagement() {
                             <div style={{ flex: '0.8 1 80px', minWidth: '75px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                               <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Option</label>
                               <select
+                                disabled={isReadOnly}
                                 value={item.sublimationOption || ''}
                                 onChange={(e) => handleItemChange(item.id, 'sublimationOption', e.target.value)}
                                 style={{ padding: '8px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
@@ -3987,6 +4118,7 @@ function OrderManagement() {
                             <input
                               type="text"
                               required
+                              disabled={isReadOnly}
                               value={item.fabric || ''}
                               onChange={(e) => handleItemChange(item.id, 'fabric', e.target.value)}
                               style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
@@ -3997,6 +4129,7 @@ function OrderManagement() {
                             <input
                               type="number"
                               required
+                              disabled={isReadOnly}
                               value={item.quantity || ''}
                               onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
                               style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
@@ -4006,6 +4139,7 @@ function OrderManagement() {
                             <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Size *</label>
                             <select
                               required
+                              disabled={isReadOnly}
                               value={item.size || ''}
                               onChange={(e) => handleItemChange(item.id, 'size', e.target.value)}
                               style={{ padding: '8px 6px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
@@ -4027,32 +4161,35 @@ function OrderManagement() {
                             <input
                               type="text"
                               required
+                              disabled={isReadOnly}
                               value={item.color || ''}
                               onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
                               style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                             />
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(item.id)}
-                            title="Remove item"
-                            style={{
-                              flex: '0 0 auto',
-                              height: '36px',
-                              background: 'none',
-                              border: 'none',
-                              color: '#ef4444',
-                              cursor: 'pointer',
-                              padding: '6px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              marginBottom: '1px',
-                              borderRadius: '6px',
-                            }}
-                          >
-                            <Trash2 size={18} />
-                          </button>
+                          {!isReadOnly && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(item.id)}
+                              title="Remove item"
+                              style={{
+                                flex: '0 0 auto',
+                                height: '36px',
+                                background: 'none',
+                                border: 'none',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                padding: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginBottom: '1px',
+                                borderRadius: '6px',
+                              }}
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -4060,15 +4197,122 @@ function OrderManagement() {
                 </div>
                 
                 {!isLeadManager && (
-                  <div style={{ display: editId ? 'none' : 'flex', justifyContent: 'flex-end', marginTop: '32px' }}>
-                    <button
-                      type="button"
-                      onClick={handleOrderSubmit}
-                      className="btn-primary"
-                      style={{ padding: '10px 32px' }}
-                    >
-                      Submit
-                    </button>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px' }}>
+                    {editId && isReadOnly && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditing(true)}
+                        className="btn-primary"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 28px' }}
+                      >
+                        <Edit2 size={16} /> Edit Order
+                      </button>
+                    )}
+
+                    {editId && !isReadOnly && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleCancelEdit}
+                          className="btn-secondary"
+                          style={{ padding: '10px 24px' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveExistingOrder}
+                          className="btn-primary"
+                          style={{ padding: '10px 32px' }}
+                        >
+                          Save Changes
+                        </button>
+                      </>
+                    )}
+
+                    {!editId && (
+                      <button
+                        type="button"
+                        onClick={handleOrderSubmit}
+                        className="btn-primary"
+                        style={{ padding: '10px 32px' }}
+                      >
+                        Submit
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Refer Back with additional note at the bottom of the form for Lead Manager / Approval Review */}
+                {editId && (isLeadManager || (isLeadManagerOrAdmin && searchParams.get('from')?.includes('/approvals'))) && !isExecutionStageView && (
+                  <div className="lead-manager-refer-back-box" style={{
+                    marginTop: '24px'
+                  }}>
+                    {leadAppr.note && (
+                      <div style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        padding: '8px 12px',
+                        marginBottom: '12px',
+                        fontSize: '13px',
+                        color: '#334155'
+                      }}>
+                        <strong style={{ color: '#475569' }}>
+                          Previous Manager Note:
+                        </strong>{' '}
+                        <span>&ldquo;{leadAppr.note}&rdquo;</span>
+                        {leadAppr.author && (
+                          <span style={{ fontSize: '11.5px', color: '#64748b', marginLeft: '8px' }}>
+                            — {leadAppr.author} {leadAppr.updatedAt ? `on ${new Date(leadAppr.updatedAt).toLocaleDateString()}` : ''}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div style={{ marginBottom: '12px' }}>
+                      <textarea
+                        value={leadManagerNote}
+                        onChange={(e) => setLeadManagerNote(e.target.value)}
+                        placeholder="Additional note (mandatory with every refer back)..."
+                        rows={2}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '13.5px',
+                          fontFamily: 'inherit',
+                          resize: 'vertical',
+                          boxSizing: 'border-box',
+                          background: '#ffffff'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleLeadManagerAction('Referred Back')}
+                        disabled={submittingLeadAction}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '8px 20px',
+                          borderRadius: '6px',
+                          background: '#fff',
+                          border: '1px solid #ef4444',
+                          color: '#dc2626',
+                          fontSize: '13.5px',
+                          fontWeight: 600,
+                          cursor: submittingLeadAction ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <RotateCcw size={15} />
+                        <span>{submittingLeadAction ? 'Processing...' : 'Refer Back'}</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -4236,70 +4480,6 @@ function OrderManagement() {
           </div>
         </div>
 
-        {/* Stage Filter Tabs (All / Action Required / Approved & Advanced) */}
-        {Boolean(currentSubStage && currentSubStage !== 'leads' && currentSubStage !== 'new') && (
-          <div style={{ display: 'flex', gap: '8px', padding: '12px 20px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginRight: '4px' }}>Filter:</span>
-            <button
-              type="button"
-              id="filter-tab-all"
-              onClick={() => setStageFilterTab('all')}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '16px',
-                fontSize: '12px',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                background: stageFilterTab === 'all' ? '#0f172a' : '#ffffff',
-                color: stageFilterTab === 'all' ? '#ffffff' : '#64748b',
-                boxShadow: stageFilterTab === 'all' ? '0 1px 3px rgba(0,0,0,0.1)' : 'inset 0 0 0 1px #e2e8f0',
-                transition: 'all 0.15s',
-              }}
-            >
-              All ({allCount})
-            </button>
-            <button
-              type="button"
-              id="filter-tab-pending"
-              onClick={() => setStageFilterTab('pending')}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '16px',
-                fontSize: '12px',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                background: stageFilterTab === 'pending' ? '#f59e0b' : '#ffffff',
-                color: stageFilterTab === 'pending' ? '#ffffff' : '#64748b',
-                boxShadow: stageFilterTab === 'pending' ? '0 1px 3px rgba(0,0,0,0.1)' : 'inset 0 0 0 1px #e2e8f0',
-                transition: 'all 0.15s',
-              }}
-            >
-              Action Required ({pendingCount})
-            </button>
-            <button
-              type="button"
-              id="filter-tab-approved"
-              onClick={() => setStageFilterTab('approved')}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '16px',
-                fontSize: '12px',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                background: stageFilterTab === 'approved' ? '#10b981' : '#ffffff',
-                color: stageFilterTab === 'approved' ? '#ffffff' : '#64748b',
-                boxShadow: stageFilterTab === 'approved' ? '0 1px 3px rgba(0,0,0,0.1)' : 'inset 0 0 0 1px #e2e8f0',
-                transition: 'all 0.15s',
-              }}
-            >
-              Approved & Advanced ({approvedCount})
-            </button>
-          </div>
-        )}
-
         {matchingLeads.length === 0 ? (
           <div className="chart-body centered empty-chart" style={{ flex: 1 }}>
             <p style={{ color: '#64748b', fontSize: '15px' }}>
@@ -4322,15 +4502,16 @@ function OrderManagement() {
                   <th style={{ padding: '10px 12px' }}>Quantity</th>
                   <th style={{ padding: '10px 12px' }}>Clearance Status</th>
                   <th style={{ padding: '10px 12px' }}>Date</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {matchingLeads.map((item) => {
+                {matchingLeads.map((item, itemIdx) => {
                   const stageInfo = getLeadStageInfo(item, currentStage, currentSubStage);
                   const isActionRequired = stageInfo.status === 'in_progress';
                   return (
                     <tr
-                      key={item._id}
+                      key={item._id || item.orderId || `order-row-${itemIdx}`}
                       id={`order-row-${item.orderId || item._id}`}
                       onClick={() => {
                         navigate(`/order/create-lead?id=${item._id}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(item.orderStage || 'sample')}`);
@@ -4357,109 +4538,23 @@ function OrderManagement() {
                         {item.phoneNumber || '—'}
                       </td>
                       <td style={{ padding: '12px' }}>
-                        <span
-                          style={{
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            background: '#e0f2fe',
-                            color: '#0369a1',
-                            textTransform: 'uppercase',
-                          }}
-                        >
+                        <span style={{ color: '#334155', textTransform: 'capitalize', fontSize: '13px' }}>
                           {item.orderStage || 'Sample'}
                         </span>
                       </td>
                       <td style={{ padding: '12px' }}>
-                        <span
-                          style={{
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            background: '#f3e8ff',
-                            color: '#6b21a8',
-                            textTransform: 'capitalize',
-                          }}
-                        >
-                          {item.subStage === 'new' ? 'Leads' : (item.subStage || 'Leads').replace(/-/g, ' ')}
+                        <span style={{ color: '#334155', textTransform: 'capitalize', fontSize: '13px' }}>
+                          {(item.subStage === 'new' ? 'Leads' : (item.subStage || 'Leads')).replace(/-/g, ' ')}
                         </span>
                       </td>
                       <td style={{ padding: '12px' }}>
-                        {stageInfo.status === 'approved' ? (
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '3px 10px',
-                              borderRadius: '12px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              background: '#dcfce7',
-                              color: '#15803d',
-                            }}
-                          >
-                            <CheckCircle size={12} color="#16a34a" /> Approved & Advanced
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '3px 10px',
-                              borderRadius: '12px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              background: '#fef3c7',
-                              color: '#b45309',
-                            }}
-                          >
-                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#d97706' }} />
-                            In Progress
-                          </span>
-                        )}
+                        <span style={{ color: stageInfo.status === 'approved' ? '#059669' : '#b45309', fontWeight: 600, fontSize: '13px' }}>
+                          {stageInfo.status === 'approved' ? 'Approved & Advanced' : 'In Progress'}
+                        </span>
                       </td>
                       {currentSubStage === 'printing' && (
                         <td style={{ padding: '12px' }}>
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '5px',
-                              padding: '3px 10px',
-                              borderRadius: '12px',
-                              fontSize: '11.5px',
-                              fontWeight: 700,
-                              backgroundColor:
-                                (item.printingStageData?.printingStatus || 'Work in Progress') === 'Complete'
-                                  ? '#d1fae5'
-                                  : (item.printingStageData?.printingStatus || 'Work in Progress') === 'On Hold'
-                                  ? '#ffedd5'
-                                  : '#e0f2fe',
-                              color:
-                                (item.printingStageData?.printingStatus || 'Work in Progress') === 'Complete'
-                                  ? '#065f46'
-                                  : (item.printingStageData?.printingStatus || 'Work in Progress') === 'On Hold'
-                                  ? '#c2410c'
-                                  : '#0369a1',
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: '6px',
-                                height: '6px',
-                                borderRadius: '50%',
-                                backgroundColor:
-                                  (item.printingStageData?.printingStatus || 'Work in Progress') === 'Complete'
-                                  ? '#059669'
-                                  : (item.printingStageData?.printingStatus || 'Work in Progress') === 'On Hold'
-                                  ? '#ea580c'
-                                  : '#0284c7',
-                              }}
-                            />
+                          <span style={{ color: '#334155', fontSize: '13px' }}>
                             {item.printingStageData?.printingStatus || 'Work in Progress'}
                           </span>
                         </td>
@@ -4468,42 +4563,7 @@ function OrderManagement() {
                         {item.totalQuantity ? `${item.totalQuantity} pcs` : '—'}
                       </td>
                       <td style={{ padding: '12px' }}>
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            padding: '3px 10px',
-                            borderRadius: '12px',
-                            fontSize: '11.5px',
-                            fontWeight: 700,
-                            backgroundColor:
-                              (item.leadApproval?.status || item.approvalStatus) === 'Referred Back'
-                                ? '#fee2e2'
-                                : (item.leadApproval?.status || item.approvalStatus) === 'Approved'
-                                ? '#d1fae5'
-                                : '#fef3c7',
-                            color:
-                              (item.leadApproval?.status || item.approvalStatus) === 'Referred Back'
-                                ? '#b91c1c'
-                                : (item.leadApproval?.status || item.approvalStatus) === 'Approved'
-                                ? '#065f46'
-                                : '#b45309',
-                          }}
-                        >
-                          <span
-                            style={{
-                              width: '6px',
-                              height: '6px',
-                              borderRadius: '50%',
-                              backgroundColor:
-                                (item.leadApproval?.status || item.approvalStatus) === 'Referred Back'
-                                ? '#dc2626'
-                                : (item.leadApproval?.status || item.approvalStatus) === 'Approved'
-                                ? '#059669'
-                                : '#d97706',
-                            }}
-                          />
+                        <span style={{ color: (item.leadApproval?.status || item.approvalStatus) === 'Approved' ? '#059669' : (item.leadApproval?.status || item.approvalStatus) === 'Referred Back' ? '#dc2626' : '#d97706', fontWeight: 600, fontSize: '13px' }}>
                           {(item.leadApproval?.status || item.approvalStatus) === 'Approved'
                             ? 'Approved'
                             : (item.leadApproval?.status || item.approvalStatus) === 'Referred Back'
@@ -4513,6 +4573,34 @@ function OrderManagement() {
                       </td>
                       <td style={{ padding: '12px', color: '#94a3b8', fontSize: '12px' }}>
                         {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const editParam = isLeadManager ? 'false' : 'true';
+                            navigate(`/order/create-lead?id=${item._id}&edit=${editParam}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(item.orderStage || 'sample')}`);
+                          }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            background: '#eff6ff',
+                            color: '#2563eb',
+                            border: '1px solid #bfdbfe',
+                            cursor: 'pointer',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#dbeafe')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#eff6ff')}
+                          title={isLeadManager ? "View this order" : "Edit this order"}
+                        >
+                          {isLeadManager ? <Eye size={13} /> : <Edit2 size={13} />}
+                          <span>{isLeadManager ? 'View' : 'Edit'}</span>
+                        </button>
                       </td>
                     </tr>
                   );

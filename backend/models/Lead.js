@@ -100,6 +100,22 @@ const leadSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    logoDesign: {
+      type: String,
+      default: "",
+    },
+    logoDesignName: {
+      type: String,
+      default: "",
+    },
+    digitalDesign: {
+      type: String,
+      default: "",
+    },
+    digitalDesignName: {
+      type: String,
+      default: "",
+    },
     logoName: {
       type: String,
       default: "",
