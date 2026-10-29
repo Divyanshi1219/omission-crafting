@@ -2732,14 +2732,14 @@ export default function Approvals({ defaultTab = "all" }) {
                         })
                       }
                     >
-                      <option value="yes">Yes, in stock (Stock Available)</option>
-                      <option value="no">No, deficit (Not Fully in Stock)</option>
+                      <option value="yes">Yes, in stock</option>
+                      <option value="no">No, not enough stock</option>
                     </select>
                   </div>
 
                   {!taskActionModal.isStockAvailable && (
                     <div className="task-modal-field">
-                      <label>How many are not in stock? (Deficit pieces)</label>
+                      <label>How many pieces are missing? (Shortage pcs)</label>
                       <input
                         type="number"
                         min="1"
@@ -2756,7 +2756,7 @@ export default function Approvals({ defaultTab = "all" }) {
                   )}
 
                   <div className="task-modal-field">
-                    <label>How many giving for sample? (pcs)</label>
+                    <label>Sample pieces to give (pcs)</label>
                     <input
                       type="number"
                       min="0"
@@ -2771,10 +2771,10 @@ export default function Approvals({ defaultTab = "all" }) {
                   </div>
 
                   <div className="task-modal-field">
-                    <label>Stock Depreciation / Notes</label>
+                    <label>Stock Notes / Items Taken Out</label>
                     <input
                       type="text"
-                      placeholder="e.g. 5 pcs deducted from inventory for sample"
+                      placeholder="e.g. 5 pcs taken from stock for sample"
                       value={taskActionModal.stockDepreciation}
                       onChange={(e) =>
                         setTaskActionModal({
