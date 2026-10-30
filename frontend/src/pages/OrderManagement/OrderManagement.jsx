@@ -23,7 +23,7 @@ const SAMPLE_STAGES = [
   'Stock',
   'Printing',
   'Ready to Pick Up',
-  'Staging Ground',
+  'Staging Room',
   'Customer Approval Awaiting'
 ];
 
@@ -63,7 +63,7 @@ const SUB_STAGES_BY_ORDER_STAGE = {
     'Stock',
     'Printing',
     'Ready to Pick Up',
-    'Staging Ground',
+    'Staging Room',
     'Customer Approval Awaiting'
   ],
   partial: [
@@ -152,7 +152,7 @@ const getLeadStageInfo = (item, targetStage, targetSubStage) => {
       isApprovedAtThisStage = item.printingStageData?.printingStatus === 'Complete';
     } else if (normTargetSub === 'ready-to-pick-up') {
       isApprovedAtThisStage = Boolean(item.sampleReadyToPickUpData?.verifiedPickupCount || item.sampleReadyToPickUpData?.readyToPickupCount);
-    } else if (normTargetSub === 'staging-ground') {
+    } else if (normTargetSub === 'staging-ground' || normTargetSub === 'staging-room') {
       isApprovedAtThisStage = Boolean(item.sampleStagingGroundData?.orderRequirementMatch);
     } else if (normTargetSub === 'customer-approval-awaiting') {
       isApprovedAtThisStage = Boolean(item.customerApprovalData?.customerApproved);
@@ -217,7 +217,8 @@ const STAGE_ROUTE_MAP = {
   '/order/sample/stock': 'Stock',
   '/order/sample/printing': 'Printing',
   '/order/sample/ready-to-pick-up': 'Ready to Pick Up',
-  '/order/sample/staging-ground': 'Staging Ground',
+  '/order/sample/staging-room': 'Staging Room',
+  '/order/sample/staging-ground': 'Staging Room',
   '/order/sample/customer-approval-awaiting': 'Customer Approval Awaiting',
 
   // Partial child routes
@@ -334,6 +335,8 @@ function OrderManagement() {
   const [stageForm, setStageForm] = useState({
     // Sample
     stageStatus: 'Work in Progress',
+    tshirtsOnHoldCount: '',
+    logosOnHoldCount: '',
     stockSampleReceived: '',
     stockSampleNotReceivedCount: '',
     prodSampleReceived: '',
@@ -759,7 +762,7 @@ function OrderManagement() {
                 } else {
                   initialStageStatus = customerData.stageStatus || 'Work in Progress';
                 }
-              } else if (fromUrl.includes('/staging-ground')) {
+              } else if (fromUrl.includes('/staging-ground') || fromUrl.includes('/staging-room')) {
                 if (initialReadyToPickReceived === 'no') {
                   initialStageStatus = 'On Hold';
                 } else if (initialReadyToPickReceived === 'yes') {
@@ -788,6 +791,8 @@ function OrderManagement() {
               setStageForm({
                 // Sample
                 stageStatus: initialStageStatus,
+                tshirtsOnHoldCount: printingData.tshirtsOnHoldCount !== undefined ? printingData.tshirtsOnHoldCount : '',
+                logosOnHoldCount: printingData.logosOnHoldCount !== undefined ? printingData.logosOnHoldCount : '',
                 stockSampleReceived: initialStockReceived,
                 stockSampleNotReceivedCount: printingData.stockSampleNotReceivedCount || '',
                 prodSampleReceived: initialProdReceived,
@@ -1375,6 +1380,9 @@ function OrderManagement() {
           } else if (currentSub === 'printing') {
             stageData = {
               printingStatus: stageForm.stageStatus,
+              stageStatus: stageForm.stageStatus,
+              tshirtsOnHoldCount: stageForm.stageStatus === 'On Hold' ? Number(stageForm.tshirtsOnHoldCount) || 0 : 0,
+              logosOnHoldCount: stageForm.stageStatus === 'On Hold' ? Number(stageForm.logosOnHoldCount) || 0 : 0,
               stockSampleReceived: stageForm.stockSampleReceived,
               stockSampleNotReceivedCount: Number(stageForm.stockSampleNotReceivedCount) || 0,
               prodSampleReceived: stageForm.prodSampleReceived,
@@ -1390,14 +1398,14 @@ function OrderManagement() {
             stageData = {
               printingSampleReceived: stageForm.printingSampleReceived,
               printingSampleNotReceivedCount: stageForm.printingSampleReceived === 'no' ? Number(stageForm.printingSampleNotReceivedCount) || 0 : 0,
-              sampleRequirementMatch: stageForm.sampleRequirementMatch !== false,
+              sampleRequirementMatch: stageForm.sampleRequirementMatch !== false && stageForm.sampleRequirementMatch !== 'no',
               readyToPickupCount: finalStagingPcs,
               verifiedPickupCount: finalStagingPcs,
               stagingCount: finalStagingPcs,
               pickupStatus: stageForm.stageStatus || 'Complete',
               note: stageForm.note,
             };
-          } else if (currentSub === 'staging-ground') {
+          } else if (currentSub === 'staging-ground' || currentSub === 'staging-room') {
             stageData = {
               readyToPickSampleReceived: stageForm.readyToPickSampleReceived,
               readyToPickSampleNotReceivedCount: stageForm.readyToPickSampleReceived === 'no' ? Number(stageForm.readyToPickSampleNotReceivedCount) || 0 : 0,
@@ -1545,6 +1553,9 @@ function OrderManagement() {
             toSubStage = 'ready-to-pick-up';
             stageData = {
               printingStatus: stageForm.stageStatus,
+              stageStatus: stageForm.stageStatus,
+              tshirtsOnHoldCount: stageForm.stageStatus === 'On Hold' ? Number(stageForm.tshirtsOnHoldCount) || 0 : 0,
+              logosOnHoldCount: stageForm.stageStatus === 'On Hold' ? Number(stageForm.logosOnHoldCount) || 0 : 0,
               stockSampleReceived: stageForm.stockSampleReceived,
               stockSampleNotReceivedCount: stageForm.stockSampleReceived === 'no' ? Number(stageForm.stockSampleNotReceivedCount) || 0 : 0,
               prodSampleReceived: stageForm.prodSampleReceived,
@@ -1570,12 +1581,12 @@ function OrderManagement() {
               setSubmittingStageAction(false);
               return;
             }
-            toSubStage = 'staging-ground';
+            toSubStage = 'staging-room';
             const finalStagingPcs = Number(stageForm.stagingCount !== undefined ? stageForm.stagingCount : stageForm.readyToPickupCount) || 1;
             stageData = {
               printingSampleReceived: stageForm.printingSampleReceived,
               printingSampleNotReceivedCount: stageForm.printingSampleReceived === 'no' ? Number(stageForm.printingSampleNotReceivedCount) || 0 : 0,
-              sampleRequirementMatch: stageForm.sampleRequirementMatch !== false,
+              sampleRequirementMatch: stageForm.sampleRequirementMatch !== false && stageForm.sampleRequirementMatch !== 'no',
               readyToPickupCount: finalStagingPcs,
               verifiedPickupCount: finalStagingPcs,
               stagingCount: finalStagingPcs,
@@ -1585,7 +1596,7 @@ function OrderManagement() {
           } else {
             toSubStage = 'printing';
           }
-        } else if (currentSub === 'staging-ground') {
+        } else if (currentSub === 'staging-ground' || currentSub === 'staging-room') {
           if (action === 'submit') {
             if (stageForm.readyToPickSampleReceived === 'no') {
               alert('Cannot submit order: items were not received from ready to pick stage. Order is On Hold.');
@@ -2025,7 +2036,7 @@ function OrderManagement() {
     const currentSub = (orderApprovalData.subStage || 'order').toLowerCase().replace(/\s+/g, '-');
     let activeSub = fromSub || currentSub;
     if (fromUrl.includes('/customer-approval-awaiting')) activeSub = 'customer-approval-awaiting';
-    else if (fromUrl.includes('/staging-ground')) activeSub = 'staging-ground';
+    else if (fromUrl.includes('/staging-ground') || fromUrl.includes('/staging-room')) activeSub = 'staging-room';
     else if (fromUrl.includes('/ready-to-pick-up')) activeSub = 'ready-to-pick-up';
     else if (fromUrl.includes('/quality-check')) activeSub = 'quality-check';
     else if (fromUrl.includes('/packaging')) activeSub = 'packaging';
@@ -2387,6 +2398,113 @@ function OrderManagement() {
                   <Printer size={17} />
                   Printing
                 </h4>
+                <button
+                  type="button"
+                  id="btn-save-printing-form"
+                  onClick={() => handleExecuteStageTransition('save')}
+                  disabled={submittingStageAction}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    border: '1px solid #cbd5e1',
+                    padding: '7px 16px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: submittingStageAction ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  }}
+                >
+                  <Save size={14} />
+                  <span>{submittingStageAction ? 'Saving...' : 'Save'}</span>
+                </button>
+              </div>
+
+              {/* Printing Status Dropdown & On Hold Fields */}
+              <div style={{ marginBottom: '18px', background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: stageForm.stageStatus === 'On Hold' ? 'repeat(auto-fit, minmax(200px, 1fr))' : '1fr', gap: '14px' }}>
+                  <div className="form-field">
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Status:
+                    </label>
+                    <select
+                      id="select-printing-stage-status"
+                      value={stageForm.stageStatus || 'Work in Progress'}
+                      onChange={(e) => setStageForm({ ...stageForm, stageStatus: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        background: '#ffffff',
+                        fontSize: '13.5px',
+                        fontWeight: 600,
+                        color: stageForm.stageStatus === 'On Hold' ? '#dc2626' : stageForm.stageStatus === 'Complete' ? '#16a34a' : '#0f172a',
+                        cursor: 'pointer',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      <option value="Work in Progress">Work in Progress</option>
+                      <option value="On Hold">On Hold</option>
+                      <option value="Complete">Complete</option>
+                      <option value="Pending">Pending</option>
+                    </select>
+                  </div>
+
+                  {stageForm.stageStatus === 'On Hold' && (
+                    <>
+                      <div className="form-field">
+                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#dc2626', marginBottom: '6px' }}>
+                          T-Shirts on Hold (pcs):
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Enter T-shirts count..."
+                          value={stageForm.tshirtsOnHoldCount}
+                          onChange={(e) => setStageForm({ ...stageForm, tshirtsOnHoldCount: e.target.value })}
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid #fca5a5',
+                            background: '#ffffff',
+                            fontSize: '13.5px',
+                            color: '#0f172a',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+
+                      <div className="form-field">
+                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#dc2626', marginBottom: '6px' }}>
+                          Logos on Hold (pcs):
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Enter logos count..."
+                          value={stageForm.logosOnHoldCount}
+                          onChange={(e) => setStageForm({ ...stageForm, logosOnHoldCount: e.target.value })}
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid #fca5a5',
+                            background: '#ffffff',
+                            fontSize: '13.5px',
+                            color: '#0f172a',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Questions 1 & 2: Stock Room & Production Team Samples */}
@@ -2666,35 +2784,35 @@ function OrderManagement() {
                 </div>
               </div>
 
-              {/* Q3: Checkbox "All garments/items match client order specifications" */}
-              <div className="form-field" style={{ marginTop: '8px' }}>
-                <label
-                  htmlFor="checkbox-ready-sample-match"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    cursor: 'pointer',
-                    fontSize: '13.5px',
-                    fontWeight: 600,
-                    color: '#334155',
-                    userSelect: 'none',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    id="checkbox-ready-sample-match"
-                    checked={stageForm.sampleRequirementMatch !== false}
-                    onChange={(e) => setStageForm((prev) => ({ ...prev, sampleRequirementMatch: e.target.checked }))}
-                    style={{
-                      accentColor: '#2563eb',
-                      width: '16px',
-                      height: '16px',
-                      cursor: 'pointer',
-                    }}
-                  />
-                  <span style={{ cursor: 'pointer' }}>All garments/items match client order specifications</span>
+              {/* Q3: All garments/items match client order specifications? (Radio Yes/No) */}
+              <div className="form-field" style={{ marginTop: '12px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
+                  All garments/items match client order specifications?
                 </label>
+                <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>
+                    <input
+                      type="radio"
+                      name="sampleRequirementMatch"
+                      value="yes"
+                      checked={stageForm.sampleRequirementMatch !== false && stageForm.sampleRequirementMatch !== 'no'}
+                      onChange={() => setStageForm((prev) => ({ ...prev, sampleRequirementMatch: true }))}
+                      style={{ accentColor: '#2563eb', cursor: 'pointer' }}
+                    />
+                    <span>Yes</span>
+                  </label>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>
+                    <input
+                      type="radio"
+                      name="sampleRequirementMatch"
+                      value="no"
+                      checked={stageForm.sampleRequirementMatch === false || stageForm.sampleRequirementMatch === 'no'}
+                      onChange={() => setStageForm((prev) => ({ ...prev, sampleRequirementMatch: false }))}
+                      style={{ accentColor: '#2563eb', cursor: 'pointer' }}
+                    />
+                    <span>No</span>
+                  </label>
+                </div>
               </div>
             </div>
           )}
@@ -3671,7 +3789,7 @@ function OrderManagement() {
     const currentSub = (orderApprovalData?.subStage || 'order').toLowerCase().replace(/\s+/g, '-');
     let activeSub = fromSub || currentSub;
     if (fromUrl.includes('/customer-approval-awaiting')) activeSub = 'customer-approval-awaiting';
-    else if (fromUrl.includes('/staging-ground')) activeSub = 'staging-ground';
+    else if (fromUrl.includes('/staging-ground') || fromUrl.includes('/staging-room')) activeSub = 'staging-room';
     else if (fromUrl.includes('/ready-to-pick-up')) activeSub = 'ready-to-pick-up';
     else if (fromUrl.includes('/quality-check')) activeSub = 'quality-check';
     else if (fromUrl.includes('/packaging')) activeSub = 'packaging';
@@ -3705,7 +3823,7 @@ function OrderManagement() {
     const resolvedOrderStage = (searchParams.get('stage') || (fromUrl.match(/\/order\/(sample|partial|complete)/)?.[1]) || currentStage || orderApprovalData?.orderStage || 'sample').toLowerCase();
     const isSamplePrinting = resolvedOrderStage === 'sample' && activeSub === 'printing';
     const isSampleReadyToPickup = resolvedOrderStage === 'sample' && activeSub === 'ready-to-pick-up';
-    const isSampleStagingGround = resolvedOrderStage === 'sample' && activeSub === 'staging-ground';
+    const isSampleStagingGround = resolvedOrderStage === 'sample' && (activeSub === 'staging-ground' || activeSub === 'staging-room');
     const isSampleCustomerApproval = resolvedOrderStage === 'sample' && activeSub === 'customer-approval-awaiting';
     let isTopSubmitDisabled = false;
     if (editId) {

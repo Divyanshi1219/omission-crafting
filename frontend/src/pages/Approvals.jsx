@@ -164,6 +164,7 @@ export default function Approvals({ defaultTab = "all" }) {
 
   // Production Room Form State (on-page form instead of modal)
   const [prodForm, setProdForm] = useState({
+    receivedNoOfLogos: "yes",
     logosPrinted: "",
     logosGivenForCutting: "",
     logosReceivedForCutting: "",
@@ -185,8 +186,10 @@ export default function Approvals({ defaultTab = "all" }) {
       const recForCut = prevData.logosReceivedForCutting !== undefined && prevData.logosReceivedForCutting !== null ? prevData.logosReceivedForCutting : "";
       const forPrint = prevData.logosForPrinting !== undefined && prevData.logosForPrinting !== null ? prevData.logosForPrinting : "";
       const sampleCount = prevData.sampleLogosCount !== undefined && prevData.sampleLogosCount !== null ? prevData.sampleLogosCount : 0;
+      const recLogos = prevData.receivedNoOfLogos !== undefined ? (prevData.receivedNoOfLogos === false || prevData.receivedNoOfLogos === "no" ? "no" : "yes") : "yes";
 
       setProdForm({
+        receivedNoOfLogos: recLogos,
         logosPrinted: printed,
         logosGivenForCutting: givenForCut,
         logosReceivedForCutting: recForCut,
@@ -392,6 +395,11 @@ export default function Approvals({ defaultTab = "all" }) {
         }
       }
 
+      if (actionType === "submit" && activeProdStage === "logo_cutting" && prodForm.receivedNoOfLogos === "no") {
+        alert("Logos marked as not received. Please refer back to Logo Printing.");
+        return;
+      }
+
       if (actionType === "refer_back" && !prodForm.note.trim()) {
         alert(
           activeProdStage === "logo_printing"
@@ -410,6 +418,7 @@ export default function Approvals({ defaultTab = "all" }) {
           author: currentUser?.name || "Marcus Vance",
           productionTaskData: {
             printingSubmitted: activeProdStage === "logo_printing" ? (actionType === "submit") : true,
+            receivedNoOfLogos: prodForm.receivedNoOfLogos !== "no",
             logosPrinted: prodForm.logosPrinted !== "" ? Number(prodForm.logosPrinted) : "",
             logosGivenForCutting: prodForm.logosGivenForCutting !== "" ? Number(prodForm.logosGivenForCutting) : "",
             logosCutGiven: prodForm.logosGivenForCutting !== "" ? Number(prodForm.logosGivenForCutting) : "",
@@ -2078,31 +2087,33 @@ export default function Approvals({ defaultTab = "all" }) {
                         <Save size={15} />
                         <span>{submittingAction ? "Saving..." : "Save"}</span>
                       </button>
-                      <button
-                        type="button"
-                        className="btn-approve"
-                        onClick={() => handleExecutePageAction("submit")}
-                        disabled={submittingAction}
-                      >
-                        <CheckCircle size={15} />
-                        <span>
-                          {roleView === "stock"
-                            ? (currentTaskTab === "verification"
-                              ? "Submit to Ready to Pick"
-                              : currentTaskTab === "ready-to-pick"
-                              ? "Submit to Staging Room"
-                              : currentTaskTab === "staging-room"
-                              ? "Submit Clearance"
-                              : "Submit")
-                            : (currentTaskTab === "logo-printing"
-                              ? "Submit to Logo Cutting"
-                              : currentTaskTab === "logo-cutting"
-                              ? "Submit Clearance"
-                              : (selectedOrder.productionApproval?.status === "Approved" || selectedOrder.productionTaskStage === "completed")
-                              ? "Update & Submit"
-                              : "Submit")}
-                        </span>
-                      </button>
+                      {!(roleView === "production" && (currentTaskTab === "logo-cutting" || getProductionStage(selectedOrder) === "logo_cutting") && prodForm.receivedNoOfLogos === "no") && (
+                        <button
+                          type="button"
+                          className="btn-approve"
+                          onClick={() => handleExecutePageAction("submit")}
+                          disabled={submittingAction}
+                        >
+                          <CheckCircle size={15} />
+                          <span>
+                            {roleView === "stock"
+                              ? (currentTaskTab === "verification"
+                                ? "Submit to Ready to Pick"
+                                : currentTaskTab === "ready-to-pick"
+                                ? "Submit to Staging Room"
+                                : currentTaskTab === "staging-room"
+                                ? "Submit Clearance"
+                                : "Submit")
+                              : (currentTaskTab === "logo-printing"
+                                ? "Submit to Logo Cutting"
+                                : currentTaskTab === "logo-cutting"
+                                ? "Submit Clearance"
+                                : (selectedOrder.productionApproval?.status === "Approved" || selectedOrder.productionTaskStage === "completed")
+                                ? "Update & Submit"
+                                : "Submit")}
+                          </span>
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -2297,8 +2308,8 @@ export default function Approvals({ defaultTab = "all" }) {
                     </div>
 
                     {/* 2. ITEMS ATTACHED TABLE (Stage-Specific Columns) */}
-                    <div className="table-responsive">
-                      <table className="items-review-table stock-review-table">
+                    <div className="table-responsive" style={activeStockStage === "ready_to_pick" ? { overflowX: "hidden", width: "100%" } : {}}>
+                      <table className="items-review-table stock-review-table" style={activeStockStage === "ready_to_pick" ? { width: "100%", tableLayout: "fixed" } : {}}>
                         <thead>
                           {activeStockStage === "verification" ? (
                             <tr>
@@ -2319,19 +2330,19 @@ export default function Approvals({ defaultTab = "all" }) {
                             </tr>
                           ) : activeStockStage === "ready_to_pick" ? (
                             <tr>
-                              <th style={{ minWidth: "36px", textAlign: "center", padding: "10px 6px", fontSize: "12.5px" }}>S.N</th>
-                              <th style={{ minWidth: "90px", padding: "10px 8px", fontSize: "12.5px" }}>Item</th>
-                              <th style={{ minWidth: "75px", padding: "10px 8px", fontSize: "12.5px" }}>Printing Type</th>
+                              <th style={{ width: "4%", textAlign: "center", padding: "7px 3px", fontSize: "11.5px" }}>S.N</th>
+                              <th style={{ width: "18%", padding: "7px 6px", fontSize: "11.5px" }}>Item</th>
+                              <th style={{ width: hasSublimation ? "11%" : "14%", padding: "7px 6px", fontSize: "11.5px" }}>Printing Type</th>
                               {hasSublimation && (
-                                <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Sublimation</th>
+                                <th style={{ width: "9%", padding: "7px 5px", fontSize: "11.5px" }}>Sublimation</th>
                               )}
-                              <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Fabric</th>
-                              <th style={{ minWidth: "65px", padding: "10px 8px", fontSize: "12.5px" }}>Quantity</th>
-                              <th style={{ minWidth: "40px", padding: "10px 8px", fontSize: "12.5px" }}>Size</th>
-                              <th style={{ minWidth: "55px", padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
-                              <th style={{ minWidth: "120px", padding: "10px 8px", fontSize: "12.5px" }}>Stock Status</th>
-                              <th style={{ minWidth: "100px", padding: "10px 8px", fontSize: "12.5px" }}>For Sample</th>
-                              <th style={{ minWidth: "160px", padding: "10px 8px", fontSize: "12.5px" }}>Depreciation Note</th>
+                              <th style={{ width: "10%", padding: "7px 5px", fontSize: "11.5px" }}>Fabric</th>
+                              <th style={{ width: "8%", padding: "7px 5px", fontSize: "11.5px" }}>Qty</th>
+                              <th style={{ width: "6%", padding: "7px 4px", fontSize: "11.5px" }}>Size</th>
+                              <th style={{ width: "7%", padding: "7px 5px", fontSize: "11.5px" }}>Color</th>
+                              <th style={{ width: "12%", padding: "7px 5px", fontSize: "11.5px" }}>Stock Status</th>
+                              <th style={{ width: "10%", padding: "7px 5px", fontSize: "11.5px" }}>For Sample</th>
+                              <th style={{ width: "12%", padding: "7px 5px", fontSize: "11.5px" }}>Depreciation</th>
                             </tr>
                           ) : (
                             <tr>
@@ -2507,22 +2518,22 @@ export default function Approvals({ defaultTab = "all" }) {
                                 ) : activeStockStage === "ready_to_pick" ? (
                                   <>
                                     {/* Stock Status from Verification */}
-                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
-                                        {isAvail ? "In Stock" : `Deficit (${deficitPcs || "0"} pcs)`}
+                                    <td style={{ verticalAlign: "middle", padding: "7px 5px", fontSize: "12px" }}>
+                                      <span style={{ color: "#1e293b", fontWeight: 600 }}>
+                                        {isAvail ? "In Stock" : `Deficit (${deficitPcs || "0"})`}
                                       </span>
                                     </td>
 
                                     {/* Given for Sample */}
-                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13.5px" }}>
+                                    <td style={{ verticalAlign: "middle", padding: "7px 5px", fontSize: "12px" }}>
+                                      <span style={{ color: "#1e293b", fontWeight: 600 }}>
                                         {samplePcs} pcs
                                       </span>
                                     </td>
 
                                     {/* Depreciation Note */}
-                                    <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
+                                    <td style={{ verticalAlign: "middle", padding: "7px 5px", fontSize: "12px", wordBreak: "break-word" }}>
+                                      <span style={{ color: "#1e293b", fontWeight: 500 }}>
                                         {deprecNote}
                                       </span>
                                     </td>
@@ -2564,25 +2575,11 @@ export default function Approvals({ defaultTab = "all" }) {
                     {activeStockStage === "ready_to_pick" && (
                       <div
                         style={{
-                          marginTop: "24px",
-                          paddingTop: "20px",
+                          marginTop: "14px",
+                          paddingTop: "12px",
                           borderTop: "1px solid #e2e8f0"
                         }}
                       >
-                        <h4
-                          style={{
-                            margin: "0 0 14px 0",
-                            fontSize: "15px",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px"
-                          }}
-                        >
-                          <Package size={17} />
-                          Ready to Pick
-                        </h4>
 
                         {/* Question: Sample Received? */}
                         <div style={{ marginBottom: "16px" }}>
@@ -3329,6 +3326,48 @@ export default function Approvals({ defaultTab = "all" }) {
                           <h4 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#1e293b" }}>
                             Logo Cutting
                           </h4>
+                        </div>
+
+                        {/* Received No. of Logos: Yes or No */}
+                        <div style={{ marginBottom: "16px", background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "8px" }}>
+                            Received No. of Logos?
+                          </label>
+                          {isViewOnlyProd || activeProdStage !== "logo_cutting" ? (
+                            <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "13.5px" }}>
+                              {prodForm.receivedNoOfLogos === "no" ? "No" : "Yes"}
+                            </span>
+                          ) : (
+                            <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
+                              <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "13.5px", fontWeight: 600, color: "#1e293b" }}>
+                                <input
+                                  type="radio"
+                                  name="receivedNoOfLogos"
+                                  value="yes"
+                                  checked={prodForm.receivedNoOfLogos !== "no"}
+                                  onChange={() => setProdForm((prev) => ({ ...prev, receivedNoOfLogos: "yes" }))}
+                                  style={{ accentColor: "#2563eb", cursor: "pointer" }}
+                                />
+                                <span>Yes</span>
+                              </label>
+                              <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "13.5px", fontWeight: 600, color: "#1e293b" }}>
+                                <input
+                                  type="radio"
+                                  name="receivedNoOfLogos"
+                                  value="no"
+                                  checked={prodForm.receivedNoOfLogos === "no"}
+                                  onChange={() => setProdForm((prev) => ({ ...prev, receivedNoOfLogos: "no" }))}
+                                  style={{ accentColor: "#2563eb", cursor: "pointer" }}
+                                />
+                                <span>No</span>
+                              </label>
+                            </div>
+                          )}
+                          {prodForm.receivedNoOfLogos === "no" && !isViewOnlyProd && (
+                            <div style={{ marginTop: "10px", padding: "8px 12px", borderRadius: "6px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: "12.5px", fontWeight: 500 }}>
+                              Logos marked as not received. Please provide remarks below and click <strong>Refer Back</strong> to send this order back to Logo Printing.
+                            </div>
+                          )}
                         </div>
 
                         {/* Cutting Fields: Received for Cutting, For Printing Logo, Giving for Sample */}

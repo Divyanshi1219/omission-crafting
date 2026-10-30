@@ -96,7 +96,7 @@ function Sidebar() {
     { name: 'Stock', path: '/order/sample/stock' },
     { name: 'Printing', path: '/order/sample/printing' },
     { name: 'Ready to Pick Up', path: '/order/sample/ready-to-pick-up' },
-    { name: 'Staging Ground', path: '/order/sample/staging-ground' },
+    { name: 'Staging Room', path: '/order/sample/staging-room' },
     { name: 'Customer Approval Awaiting', path: '/order/sample/customer-approval-awaiting' },
   ];
 

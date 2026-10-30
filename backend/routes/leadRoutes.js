@@ -729,7 +729,7 @@ router.patch("/:id/stage-transition", async (req, res) => {
           lead.sampleReadyToPickUpData = { ...(lead.sampleReadyToPickUpData || {}), ...stageData };
           lead.markModified("sampleReadyToPickUpData");
         }
-        if (fromSubStage === "staging-ground" || toSubStage === "staging-ground") {
+        if (fromSubStage === "staging-ground" || toSubStage === "staging-ground" || fromSubStage === "staging-room" || toSubStage === "staging-room") {
           lead.sampleStagingGroundData = { ...(lead.sampleStagingGroundData || {}), ...stageData };
           lead.markModified("sampleStagingGroundData");
         }
