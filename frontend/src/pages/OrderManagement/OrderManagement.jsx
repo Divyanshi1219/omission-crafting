@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Plus, Trash2, ArrowLeft, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, CheckCircle, Clock, Edit2, X, Eye, Package, Printer } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2, ArrowLeft, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Save } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import './OrderManagement.css';
@@ -1364,7 +1364,153 @@ function OrderManagement() {
       let toSubStage = currentSub;
       let stageData = {};
 
-      if (currentOrderStage === 'sample') {
+      if (action === 'save') {
+        toStage = currentOrderStage;
+        toSubStage = currentSub;
+        if (currentOrderStage === 'sample') {
+          if (currentSub === 'dtf-pending') {
+            stageData = { dtfVerified: true, note: stageForm.note };
+          } else if (currentSub === 'stock') {
+            stageData = { stockVerified: true, note: stageForm.note };
+          } else if (currentSub === 'printing') {
+            stageData = {
+              printingStatus: stageForm.stageStatus,
+              stockSampleReceived: stageForm.stockSampleReceived,
+              stockSampleNotReceivedCount: Number(stageForm.stockSampleNotReceivedCount) || 0,
+              prodSampleReceived: stageForm.prodSampleReceived,
+              prodSampleNotReceivedCount: Number(stageForm.prodSampleNotReceivedCount) || 0,
+              itemPrinted: stageForm.itemPrinted,
+              printedCount: Number(stageForm.printedCount) || 1,
+              receivedCount: Number(stageForm.printedCount) || Number(stageForm.receivedCount) || 1,
+              readyToPickupCount: Number(stageForm.readyToPickupCount) || 1,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'ready-to-pick-up') {
+            const finalStagingPcs = Number(stageForm.stagingCount !== undefined ? stageForm.stagingCount : stageForm.readyToPickupCount) || 1;
+            stageData = {
+              printingSampleReceived: stageForm.printingSampleReceived,
+              printingSampleNotReceivedCount: stageForm.printingSampleReceived === 'no' ? Number(stageForm.printingSampleNotReceivedCount) || 0 : 0,
+              sampleRequirementMatch: stageForm.sampleRequirementMatch !== false,
+              readyToPickupCount: finalStagingPcs,
+              verifiedPickupCount: finalStagingPcs,
+              stagingCount: finalStagingPcs,
+              pickupStatus: stageForm.stageStatus || 'Complete',
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'staging-ground') {
+            stageData = {
+              readyToPickSampleReceived: stageForm.readyToPickSampleReceived,
+              readyToPickSampleNotReceivedCount: stageForm.readyToPickSampleReceived === 'no' ? Number(stageForm.readyToPickSampleNotReceivedCount) || 0 : 0,
+              rackNo: String(stageForm.rackNo || '').trim(),
+              stagedRackNumber: String(stageForm.rackNo || '').trim(),
+              stagingStatus: stageForm.stageStatus || 'Complete',
+              orderRequirementMatch: true,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'customer-approval-awaiting') {
+            stageData = {
+              customerApproved: stageForm.customerApproved,
+              paymentStatus: stageForm.paymentStatus,
+              amountReceived: Number(stageForm.amountReceived) || 0,
+              balanceRemaining: Number(stageForm.balanceRemaining) || 0,
+              stageStatus: stageForm.stageStatus || (stageForm.customerApproved === 'yes' ? 'Complete' : 'Work in Progress'),
+              note: stageForm.note,
+            };
+          }
+        } else if (currentOrderStage === 'partial') {
+          if (currentSub === 'dtf-pending') {
+            stageData = { dtfVerified: true, note: stageForm.note };
+          } else if (currentSub === 'stock') {
+            stageData = { stockVerified: true, note: stageForm.note };
+          } else if (currentSub === 'printing') {
+            stageData = {
+              printingStatus: stageForm.partialPrintingStatus,
+              printedCount: Number(stageForm.partialPrintedCount) || 80,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'quality-check') {
+            stageData = {
+              passedCount: Number(stageForm.partialQcPassedCount) || 80,
+              rejectedCount: Number(stageForm.partialQcRejectedCount) || 0,
+              qcPassed: true,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'packaging') {
+            stageData = {
+              packedCount: Number(stageForm.partialPackedCount) || 80,
+              cartonCount: Number(stageForm.partialCartonCount) || 2,
+              packagingComplete: true,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'staging-room') {
+            stageData = {
+              stagedRackNumber: stageForm.partialStagingRack || 'Rack P-04',
+              dispatchReady: true,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'payment-confirmation') {
+            stageData = {
+              invoiceNumber: stageForm.partialInvoiceNo || 'INV-PART-01',
+              paymentMode: stageForm.partialPaymentMode || 'Bank Transfer',
+              amountReceived: Number(stageForm.partialAmountReceived) || 50000,
+              balancePending: Number(stageForm.partialBalanceRemaining) || 0,
+              paymentVerified: true,
+              note: stageForm.note,
+            };
+          }
+        } else if (currentOrderStage === 'complete') {
+          if (currentSub === 'dtf-pending') {
+            stageData = { dtfVerified: true, note: stageForm.note };
+          } else if (currentSub === 'stock') {
+            stageData = { stockVerified: true, note: stageForm.note };
+          } else if (currentSub === 'printing') {
+            stageData = {
+              printingStatus: stageForm.completePrintingStatus,
+              printedCount: Number(stageForm.completePrintedCount) || lead.totalQuantity || 100,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'quality-check') {
+            stageData = {
+              passedCount: Number(stageForm.completeQcPassedCount) || lead.totalQuantity || 100,
+              rejectedCount: Number(stageForm.completeQcRejectedCount) || 0,
+              qcPassed: true,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'packaging') {
+            stageData = {
+              masterCartonsCount: Number(stageForm.completeMasterCartonsCount) || 4,
+              totalUnitsPacked: Number(stageForm.completeUnitsPacked) || lead.totalQuantity || 100,
+              packagingComplete: true,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'delivery-pending') {
+            stageData = {
+              courierName: stageForm.completeCourierName || 'Blue Dart Express',
+              trackingNumber: stageForm.completeTrackingNumber || 'AWB-BD-882319',
+              dispatchDate: stageForm.completeDispatchDate || new Date().toISOString().split('T')[0],
+              driverPhone: stageForm.completeDriverPhone || '+91 98765 43210',
+              dispatchComplete: true,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'delivered') {
+            stageData = {
+              deliveredDate: stageForm.completeDeliveryDate || new Date().toISOString().split('T')[0],
+              receivedBy: stageForm.completeReceivedBy || lead.clientName || 'Store Manager',
+              recipientContact: stageForm.completeRecipientPhone || lead.phoneNumber || '+91 98110 00000',
+              podNumber: stageForm.completePodNumber || 'POD-99214',
+              deliveryVerified: true,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'customer-support') {
+            stageData = {
+              clientRating: Number(stageForm.completeClientRating) || 5,
+              supportResolutionStatus: stageForm.completeSupportResolution || 'Delivered & Client Fully Satisfied',
+              feedbackNotes: stageForm.completeClientFeedback || '',
+              note: stageForm.note,
+            };
+          }
+        }
+      } else if (currentOrderStage === 'sample') {
         if (currentSub === 'dtf-pending') {
           if (action === 'submit') {
             toSubStage = 'stock';
@@ -1705,6 +1851,13 @@ function OrderManagement() {
 
       const res = await api.patch(`/api/leads/${lead._id}/stage-transition`, payload);
       if (res.data?.success) {
+        if (action === 'save') {
+          if (res.data?.data) {
+            setOrderApprovalData(res.data.data);
+          }
+          alert(`Stage details for Order #${lead.orderId || 'Order'} saved successfully!`);
+          return;
+        }
         let msg = `Order #${lead.orderId || 'Order'} `;
         if (action === 'refer_back') {
           msg += `referred back to ${toSubStage.replace(/-/g, ' ')}.`;
@@ -3549,30 +3702,37 @@ function OrderManagement() {
       )
     );
 
-    const resolvedOrderStage = (searchParams.get('stage') || (fromUrl.match(/\/order\/(sample|partial|complete)/)?.[1]) || currentStage || orderApprovalData.orderStage || 'sample').toLowerCase();
+    const resolvedOrderStage = (searchParams.get('stage') || (fromUrl.match(/\/order\/(sample|partial|complete)/)?.[1]) || currentStage || orderApprovalData?.orderStage || 'sample').toLowerCase();
     const isSamplePrinting = resolvedOrderStage === 'sample' && activeSub === 'printing';
     const isSampleReadyToPickup = resolvedOrderStage === 'sample' && activeSub === 'ready-to-pick-up';
     const isSampleStagingGround = resolvedOrderStage === 'sample' && activeSub === 'staging-ground';
     const isSampleCustomerApproval = resolvedOrderStage === 'sample' && activeSub === 'customer-approval-awaiting';
-    const isTopSubmitDisabled = (isSamplePrinting && (
-      stageForm.stockSampleReceived === 'no' ||
-      stageForm.prodSampleReceived === 'no' ||
-      stageForm.stockSampleReceived !== 'yes' ||
-      stageForm.prodSampleReceived !== 'yes' ||
-      stageForm.stageStatus !== 'Complete'
-    )) || (isSampleReadyToPickup && (
-      stageForm.printingSampleReceived === 'no' ||
-      stageForm.printingSampleReceived !== 'yes' ||
-      stageForm.stageStatus !== 'Complete'
-    )) || (isSampleStagingGround && (
-      stageForm.readyToPickSampleReceived === 'no' ||
-      stageForm.readyToPickSampleReceived !== 'yes' ||
-      stageForm.stageStatus !== 'Complete' ||
-      !stageForm.rackNo?.trim()
-    )) || (isSampleCustomerApproval && (
-      !stageForm.customerApproved ||
-      (stageForm.customerApproved === 'yes' && !stageForm.paymentStatus)
-    ));
+    let isTopSubmitDisabled = false;
+    if (editId) {
+      if (isSamplePrinting) {
+        isTopSubmitDisabled =
+          stageForm.stockSampleReceived === 'no' ||
+          stageForm.prodSampleReceived === 'no' ||
+          stageForm.stockSampleReceived !== 'yes' ||
+          stageForm.prodSampleReceived !== 'yes' ||
+          stageForm.stageStatus !== 'Complete';
+      } else if (isSampleReadyToPickup) {
+        isTopSubmitDisabled =
+          stageForm.printingSampleReceived === 'no' ||
+          stageForm.printingSampleReceived !== 'yes' ||
+          stageForm.stageStatus !== 'Complete';
+      } else if (isSampleStagingGround) {
+        isTopSubmitDisabled =
+          stageForm.readyToPickSampleReceived === 'no' ||
+          stageForm.readyToPickSampleReceived !== 'yes' ||
+          stageForm.stageStatus !== 'Complete' ||
+          Boolean(!stageForm.rackNo || !stageForm.rackNo.trim());
+      } else if (isSampleCustomerApproval) {
+        isTopSubmitDisabled =
+          !stageForm.customerApproved ||
+          (stageForm.customerApproved === 'yes' && !stageForm.paymentStatus);
+      }
+    }
 
     return (
       <div className="dashboard-page">
@@ -3610,6 +3770,30 @@ function OrderManagement() {
                 >
                   <RotateCcw size={15} />
                   <span>Refer Back</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-stage-save-top"
+                  onClick={() => handleExecuteStageTransition('save')}
+                  disabled={submittingStageAction}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    border: '1px solid #cbd5e1',
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: submittingStageAction ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  }}
+                >
+                  <Save size={15} />
+                  <span>{submittingStageAction ? 'Saving...' : 'Save'}</span>
                 </button>
 
                 <button

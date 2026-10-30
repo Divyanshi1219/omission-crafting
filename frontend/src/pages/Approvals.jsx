@@ -32,6 +32,7 @@ import {
   Upload,
   Printer,
   Scissors,
+  Save,
   X
 } from "lucide-react";
 import api from "../api";
@@ -421,6 +422,14 @@ export default function Approvals({ defaultTab = "all" }) {
 
         const res = await api.patch(`/api/leads/${orderId}/production-task`, payload);
         if (res.data?.success) {
+          if (actionType === "save") {
+            showToast(`Order #${selectedOrder.orderId || "Order"} production task saved successfully!`);
+            if (res.data.data) {
+              setSelectedOrder(res.data.data);
+            }
+            fetchOrders();
+            return;
+          }
           showToast(
             actionType === "submit"
               ? (activeProdStage === "logo_printing"
@@ -543,6 +552,14 @@ export default function Approvals({ defaultTab = "all" }) {
 
         const res = await api.patch(`/api/leads/${orderId}/stock-task`, payload);
         if (res.data?.success) {
+          if (actionType === "save") {
+            showToast(`Order #${selectedOrder.orderId || "Order"} stock task saved successfully!`);
+            if (res.data.data) {
+              setSelectedOrder(res.data.data);
+            }
+            fetchOrders();
+            return;
+          }
           if (activeStage === "verification") {
             showToast(
               actionType === "submit"
@@ -2036,6 +2053,30 @@ export default function Approvals({ defaultTab = "all" }) {
                       >
                         <RotateCcw size={15} />
                         <span>Refer Back</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-save-task"
+                        onClick={() => handleExecutePageAction("save")}
+                        disabled={submittingAction}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          background: "#ffffff",
+                          color: "#0f172a",
+                          border: "1px solid #cbd5e1",
+                          padding: "8px 18px",
+                          borderRadius: "8px",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          cursor: submittingAction ? "not-allowed" : "pointer",
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <Save size={15} />
+                        <span>{submittingAction ? "Saving..." : "Save"}</span>
                       </button>
                       <button
                         type="button"

@@ -556,6 +556,7 @@ router.patch("/:id/stock-task", async (req, res) => {
 
     if (stockTaskData) {
       lead.stockTaskData = { ...(lead.stockTaskData || {}), ...stockTaskData };
+      if (comment) lead.stockTaskData.note = comment;
       lead.markModified("stockTaskData");
     }
 
@@ -599,7 +600,7 @@ router.patch("/:id/stock-task", async (req, res) => {
       }
     }
 
-    if (comment) {
+    if (comment && action !== "save") {
       if (!Array.isArray(lead.approvalComments)) lead.approvalComments = [];
       lead.approvalComments.push({
         author: author || "Elena Rostova",
@@ -627,6 +628,7 @@ router.patch("/:id/production-task", async (req, res) => {
 
     if (productionTaskData) {
       lead.productionTaskData = { ...(lead.productionTaskData || {}), ...productionTaskData };
+      if (comment) lead.productionTaskData.note = comment;
       lead.markModified("productionTaskData");
     }
 
@@ -677,7 +679,7 @@ router.patch("/:id/production-task", async (req, res) => {
       }
     }
 
-    if (comment) {
+    if (comment && action !== "save") {
       if (!Array.isArray(lead.approvalComments)) lead.approvalComments = [];
       lead.approvalComments.push({
         author: author || "Marcus Vance",
@@ -796,15 +798,17 @@ router.patch("/:id/stage-transition", async (req, res) => {
       }
     }
 
-    // Default stage updates
-    if (toStage) lead.orderStage = toStage;
-    if (toSubStage) lead.subStage = toSubStage;
-    lead.query = "order";
+    // Default stage updates (only if not saving draft)
+    if (action !== "save") {
+      if (toStage) lead.orderStage = toStage;
+      if (toSubStage) lead.subStage = toSubStage;
+      lead.query = "order";
+    }
 
     // Transition 1: Customer Approval in Sample -> Move to Partial if approved, otherwise back to Sample -> Order!
-    if (activeStage === "sample" && fromSubStage === "customer-approval-awaiting") {
+    if (action === "submit" && activeStage === "sample" && fromSubStage === "customer-approval-awaiting") {
       const isApproved = stageData?.customerApproved === "yes" || stageData?.customerApproved === true;
-      if (action === "submit" && isApproved) {
+      if (isApproved) {
         lead.orderStage = "partial";
         lead.subStage = "order";
         lead.approvalStatus = "Pending";
@@ -823,15 +827,19 @@ router.patch("/:id/stage-transition", async (req, res) => {
         };
         lead.productionTaskStage = "logo_printing";
       } else {
-        // Customer not approved or refer back -> move back to sample -> order
+        // Customer not approved -> move back to sample -> order
         lead.orderStage = "sample";
         lead.subStage = "order";
         lead.approvalStatus = "Pending";
       }
+    } else if (action === "refer_back" && activeStage === "sample" && fromSubStage === "customer-approval-awaiting") {
+      lead.orderStage = "sample";
+      lead.subStage = "order";
+      lead.approvalStatus = "Pending";
     }
 
     // Transition 2: Payment Confirmation submitted in Partial -> Move to Complete & trigger Stock and Production tasks!
-    if (activeStage === "partial" && fromSubStage === "payment-confirmation" && action === "submit") {
+    if (action === "submit" && activeStage === "partial" && fromSubStage === "payment-confirmation") {
       lead.orderStage = "complete";
       lead.subStage = "order";
       lead.approvalStatus = "Pending";
@@ -852,7 +860,7 @@ router.patch("/:id/stage-transition", async (req, res) => {
     }
 
     // Transition 3: Final step of Complete (Customer Support) completed -> Mark order as Completed!
-    if (activeStage === "complete" && fromSubStage === "customer-support" && action === "submit") {
+    if (action === "submit" && activeStage === "complete" && fromSubStage === "customer-support") {
       lead.orderStage = "complete";
       lead.subStage = "customer-support";
       lead.approvalStatus = "Completed";
@@ -860,7 +868,7 @@ router.patch("/:id/stage-transition", async (req, res) => {
     }
 
     // If referring back from printing: resets tasks for Stock & Production so corrections can be made
-    if (fromSubStage === "printing" && action === "refer_back") {
+    if (action === "refer_back" && fromSubStage === "printing") {
       lead.subStage = "order";
       lead.approvalStatus = "Pending";
       lead.stockApproval = {
@@ -879,7 +887,7 @@ router.patch("/:id/stage-transition", async (req, res) => {
       lead.productionTaskStage = "logo_printing";
     }
 
-    if (comment) {
+    if (comment && action !== "save") {
       if (!Array.isArray(lead.approvalComments)) lead.approvalComments = [];
       lead.approvalComments.push({
         author: author || "Operator",
