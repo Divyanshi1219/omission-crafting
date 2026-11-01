@@ -51,99 +51,112 @@ router.get("/", async (req, res) => {
     if (req.query.employeeName) {
       filter.employeeName = new RegExp(`^${req.query.employeeName.trim()}$`, "i");
     }
-    // Option A (photo-safe): the Approvals page fetches with ?query=order and renders
-    // direct artwork download links, so it gets the full attachment. Every other list
-    // caller (orders/leads tables, dashboard, inventory, invoices) never reads the photo,
-    // so we skip the heavy base64 `attachment` field there. Detail view (GET /:id) is
-    // untouched and always returns the full photo. Nothing is lost or hidden in the DB.
-    const includesAttachment = req.query.query === "order";
+    // Exclude heavy base64 file payloads from list queries unless explicitly requested (?includeFiles=true).
+    // Detail view (GET /:id) and file download endpoints return the full base64 data on demand.
+    const includesAttachment = req.query.includeFiles === "true";
     const leads = await Lead.find(
       filter,
-      includesAttachment ? undefined : { attachment: 0, logoDesign: 0, digitalDesign: 0 }
-    ).sort({ createdAt: -1 });
-    // Clean up contaminated approvals and ensure starting stage
-    await Promise.all(
-      leads.map(async (l) => {
-        let needsUpdate = false;
-        const updates = {};
+      includesAttachment
+        ? undefined
+        : {
+            attachment: 0,
+            logoDesign: 0,
+            digitalDesign: 0,
+            logoDesignFiles: 0,
+            digitalDesignFiles: 0,
+            "stockTaskData.readyToPickAttachments.url": 0,
+          }
+    )
+      .sort({ createdAt: -1 })
+      .lean();
 
-        if (
-          l.productionApproval &&
-          (l.productionApproval.note === "Approved by Lead Manager" ||
-            l.productionApproval.author === "Sarah Jenkins")
-        ) {
-          l.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
-          updates.productionApproval = l.productionApproval;
+    // Clean up contaminated approvals and ensure starting stage (batched in bulkWrite)
+    const bulkOps = [];
+    for (const l of leads) {
+      let needsUpdate = false;
+      const updates = {};
+
+      if (
+        l.productionApproval &&
+        (l.productionApproval.note === "Approved by Lead Manager" ||
+          l.productionApproval.author === "Sarah Jenkins")
+      ) {
+        l.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
+        updates.productionApproval = l.productionApproval;
+        needsUpdate = true;
+      }
+
+      if (
+        l.stockApproval &&
+        (l.stockApproval.note === "Approved by Lead Manager" ||
+          l.stockApproval.author === "Sarah Jenkins")
+      ) {
+        l.stockApproval = { status: "Pending", note: "", author: "Elena Rostova", updatedAt: null };
+        updates.stockApproval = l.stockApproval;
+        needsUpdate = true;
+      }
+
+      const isLeadApproved =
+        l.leadApproval?.status === "Approved" ||
+        l.subStage === "dtf-pending" ||
+        l.orderStage === "partial" ||
+        l.orderStage === "complete";
+
+      if (isLeadApproved) {
+        if (!l.stockTaskStage) {
+          l.stockTaskStage = "verification";
+          updates.stockTaskStage = "verification";
           needsUpdate = true;
         }
-
-        if (
-          l.stockApproval &&
-          (l.stockApproval.note === "Approved by Lead Manager" ||
-            l.stockApproval.author === "Sarah Jenkins")
-        ) {
-          l.stockApproval = { status: "Pending", note: "", author: "Elena Rostova", updatedAt: null };
-          updates.stockApproval = l.stockApproval;
-          needsUpdate = true;
-        }
-
-        const isLeadApproved =
-          l.leadApproval?.status === "Approved" ||
-          l.subStage === "dtf-pending" ||
-          l.orderStage === "partial" ||
-          l.orderStage === "complete";
-
-        if (isLeadApproved) {
-          if (!l.stockTaskStage) {
-            l.stockTaskStage = "verification";
-            updates.stockTaskStage = "verification";
+        // If printingSubmitted is true, but cutting not completed: stage is logo_cutting
+        if (l.productionTaskData?.printingSubmitted === true && l.productionTaskStage !== "completed") {
+          if (l.productionTaskStage !== "logo_cutting") {
+            l.productionTaskStage = "logo_cutting";
+            updates.productionTaskStage = "logo_cutting";
             needsUpdate = true;
           }
-          // If printingSubmitted is true, but cutting not completed: stage is logo_cutting
-          if (l.productionTaskData?.printingSubmitted === true && l.productionTaskStage !== "completed") {
-            if (l.productionTaskStage !== "logo_cutting") {
-              l.productionTaskStage = "logo_cutting";
-              updates.productionTaskStage = "logo_cutting";
-              needsUpdate = true;
-            }
-            if (l.productionApproval?.status !== "Pending") {
-              l.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: new Date() };
-              updates.productionApproval = l.productionApproval;
-              needsUpdate = true;
-            }
-          } else if (l.productionTaskStage !== "completed" && !l.productionTaskData?.printingSubmitted) {
-            if (l.productionTaskStage !== "logo_printing") {
-              l.productionTaskStage = "logo_printing";
-              updates.productionTaskStage = "logo_printing";
-              needsUpdate = true;
-            }
-            if (l.productionApproval?.status !== "Pending") {
-              l.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
-              updates.productionApproval = l.productionApproval;
-              needsUpdate = true;
-            }
+          if (l.productionApproval?.status !== "Pending") {
+            l.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: new Date() };
+            updates.productionApproval = l.productionApproval;
+            needsUpdate = true;
+          }
+        } else if (l.productionTaskStage !== "completed" && !l.productionTaskData?.printingSubmitted) {
+          if (l.productionTaskStage !== "logo_printing") {
+            l.productionTaskStage = "logo_printing";
+            updates.productionTaskStage = "logo_printing";
+            needsUpdate = true;
+          }
+          if (l.productionApproval?.status !== "Pending") {
+            l.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
+            updates.productionApproval = l.productionApproval;
+            needsUpdate = true;
           }
         }
+      }
 
-        if (needsUpdate) {
-          await Lead.updateOne({ _id: l._id }, { $set: updates });
-        }
-      })
-    );
+      if (!l.taskId && (l.query === "order" || l.orderId || l.orderStage)) {
+        const derivedTaskId = l.orderId
+          ? `TSK-${l.orderId.replace(/^ORD-?/i, "")}`
+          : `TSK-${String(l._id).slice(-5).toUpperCase()}`;
+        l.taskId = derivedTaskId;
+        updates.taskId = derivedTaskId;
+        needsUpdate = true;
+      }
 
-    // Fast check: only run update if any orders are actually missing a taskId
-    const missingTaskLeads = leads.filter(l => !l.taskId && (l.query === "order" || l.orderId || l.orderStage));
-    if (missingTaskLeads.length > 0) {
-      await Promise.all(
-        missingTaskLeads.map(async (l) => {
-          const derivedTaskId = l.orderId
-            ? `TSK-${l.orderId.replace(/^ORD-?/i, "")}`
-            : await getNextTaskId();
-          l.taskId = derivedTaskId;
-          await Lead.updateOne({ _id: l._id }, { $set: { taskId: derivedTaskId } });
-        })
-      );
+      if (needsUpdate) {
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: l._id },
+            update: { $set: updates },
+          },
+        });
+      }
     }
+
+    if (bulkOps.length > 0) {
+      Lead.bulkWrite(bulkOps).catch((err) => console.error("Background bulkWrite error:", err));
+    }
+
     res.json({ success: true, count: leads.length, data: leads });
   } catch (error) {
     console.error("Error fetching leads:", error);
@@ -185,6 +198,223 @@ const getNextTaskId = async () => {
     }
   });
   return `TSK-${String(maxNumber + 1).padStart(5, "0")}`;
+};
+
+const formatStageLabel = (s) => {
+  if (!s) return "Lead";
+  const str = String(s).trim().toLowerCase();
+  if (str === "sample") return "Sample";
+  if (str === "partial") return "Partial";
+  if (str === "complete") return "Complete";
+  return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
+const formatSubStageLabel = (s) => {
+  if (!s) return "Order";
+  const str = String(s).trim().toLowerCase().replace(/_/g, "-");
+  if (str === "dtf-pending") return "DTF Pending";
+  if (str === "ready-to-pick-up" || str === "ready-to-pick") return "Ready to Pick Up";
+  if (str === "staging-ground") return "Staging Ground";
+  if (str === "staging-room") return "Staging Room";
+  if (str === "customer-approval-awaiting") return "Customer Approval Awaiting";
+  if (str === "quality-check") return "Quality Check";
+  if (str === "payment-confirmation") return "Payment Confirmation";
+  if (str === "delivery-pending") return "Delivery Pending";
+  if (str === "customer-support") return "Customer Support";
+  if (str === "logo-printing") return "Logo Printing";
+  if (str === "logo-cutting") return "Logo Cutting";
+  return str
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+};
+
+const getItemDisplayName = (it) => {
+  if (!it) return "Item";
+  const raw = (it.item || it.enterItem || it.itemType || "").trim();
+  if (!raw) return "Item";
+  if (raw.toLowerCase() === "t-shirt" || raw.toLowerCase() === "tshirt") return "T-Shirt";
+  return raw;
+};
+
+const computeLeadChanges = (existing, incoming) => {
+  const changes = [];
+  const fieldDefs = [
+    { key: "employeeName", label: "Employee Name" },
+    { key: "query", label: "Query Type" },
+    { key: "companyName", label: "Company Name" },
+    { key: "clientName", label: "Client Name" },
+    { key: "companyAddress", label: "Company Address" },
+    { key: "state", label: "State" },
+    { key: "pincode", label: "Pincode" },
+    { key: "phoneNumber", label: "Phone Number" },
+    { key: "repeatedOrder", label: "Repeated Order" },
+    { key: "scheduleDate", label: "Schedule Date" },
+    { key: "scheduleTime", label: "Schedule Time" },
+    { key: "additionalNote", label: "Additional Note" },
+    { key: "logoName", label: "Logo Name" },
+    { key: "totalQuantity", label: "Total Quantity (pcs)" },
+    { key: "pricePerPiece", label: "Price Per Piece (₹)" },
+    { key: "totalAmount", label: "Total Amount (₹)" },
+    { key: "gst", label: "GST (%)" },
+    { key: "netAmount", label: "Net Amount (₹)" },
+    { key: "advanceAmount", label: "Advance Amount (₹)" },
+    { key: "pendingAmount", label: "Pending Amount (₹)" },
+    { key: "urgency", label: "Urgency" },
+    { key: "deliveryDate", label: "Delivery Date" },
+    { key: "modeOfDelivery", label: "Mode of Delivery" },
+  ];
+
+  for (const { key, label } of fieldDefs) {
+    if (incoming[key] === undefined) continue;
+    let oldVal = existing[key] !== undefined && existing[key] !== null ? String(existing[key]).trim() : "";
+    let newVal = incoming[key] !== undefined && incoming[key] !== null ? String(incoming[key]).trim() : "";
+    if (key === "deliveryDate") {
+      if (oldVal.includes("T")) oldVal = oldVal.split("T")[0];
+      if (newVal.includes("T")) newVal = newVal.split("T")[0];
+    }
+    if (["totalQuantity", "pricePerPiece", "totalAmount", "gst", "netAmount", "advanceAmount", "pendingAmount"].includes(key)) {
+      const oldNum = oldVal === "" ? 0 : Number(oldVal);
+      const newNum = newVal === "" ? 0 : Number(newVal);
+      if (!isNaN(oldNum) && !isNaN(newNum) && oldNum === newNum) continue;
+    }
+    if (oldVal !== newVal) {
+      changes.push(`${label}: "${oldVal || "Empty"}" → "${newVal || "Empty"}"`);
+    }
+  }
+
+  if (Array.isArray(incoming.logoDesignFiles)) {
+    const oldNames = (Array.isArray(existing.logoDesignFiles) ? existing.logoDesignFiles : [])
+      .map((f) => f?.name || "")
+      .filter(Boolean)
+      .join(", ");
+    const newNames = incoming.logoDesignFiles
+      .map((f) => f?.name || "")
+      .filter(Boolean)
+      .join(", ");
+    if (oldNames !== newNames) {
+      changes.push(`Logo Design Files: "${oldNames || "None"}" → "${newNames || "None"}"`);
+    }
+  }
+
+  if (Array.isArray(incoming.digitalDesignFiles)) {
+    const oldNames = (Array.isArray(existing.digitalDesignFiles) ? existing.digitalDesignFiles : [])
+      .map((f) => f?.name || "")
+      .filter(Boolean)
+      .join(", ");
+    const newNames = incoming.digitalDesignFiles
+      .map((f) => f?.name || "")
+      .filter(Boolean)
+      .join(", ");
+    if (oldNames !== newNames) {
+      changes.push(`Digital Design Files: "${oldNames || "None"}" → "${newNames || "None"}"`);
+    }
+  }
+
+  if (Array.isArray(incoming.items)) {
+    const oldItems = Array.isArray(existing.items) ? existing.items : [];
+    const newItems = incoming.items;
+    const maxLen = Math.max(oldItems.length, newItems.length);
+
+    for (let i = 0; i < maxLen; i++) {
+      const oldIt = oldItems[i];
+      const newIt = newItems[i];
+
+      if (!oldIt && newIt) {
+        const name = getItemDisplayName(newIt);
+        const parts = [];
+        if (newIt.printingType) parts.push(`Printing: ${newIt.printingType}`);
+        if (newIt.sublimationOption) parts.push(`Option: ${newIt.sublimationOption}`);
+        if (newIt.fabric) parts.push(`Fabric: ${newIt.fabric}`);
+        if (newIt.quantity) parts.push(`Qty: ${newIt.quantity} pcs`);
+        if (newIt.size) parts.push(`Size: ${newIt.size}`);
+        if (newIt.color) parts.push(`Color: ${newIt.color}`);
+        changes.push(`Added Item #${i + 1} (${name}): ${parts.join(", ") || "Added"}`);
+      } else if (oldIt && !newIt) {
+        const name = getItemDisplayName(oldIt);
+        changes.push(
+          `Removed Item #${i + 1} (${name} - Fabric: ${oldIt.fabric || "-"}, Qty: ${oldIt.quantity || 0} pcs, Size: ${oldIt.size || "-"}, Color: ${oldIt.color || "-"})`
+        );
+      } else if (oldIt && newIt) {
+        const oldName = getItemDisplayName(oldIt);
+        const newName = getItemDisplayName(newIt);
+        const itemChanges = [];
+
+        if (oldName.toLowerCase() !== newName.toLowerCase()) {
+          itemChanges.push(`Item changed from "${oldName}" to "${newName}"`);
+        }
+        const oldPrint = String(oldIt.printingType || "").trim();
+        const newPrint = String(newIt.printingType || "").trim();
+        if (oldPrint !== newPrint) {
+          itemChanges.push(`Printing Type changed from "${oldPrint || "None"}" to "${newPrint || "None"}"`);
+        }
+        const oldSub = String(oldIt.sublimationOption || "").trim();
+        const newSub = String(newIt.sublimationOption || "").trim();
+        if (oldSub !== newSub) {
+          itemChanges.push(`Sublimation Option changed from "${oldSub || "None"}" to "${newSub || "None"}"`);
+        }
+        const oldFabric = String(oldIt.fabric || "").trim();
+        const newFabric = String(newIt.fabric || "").trim();
+        if (oldFabric !== newFabric) {
+          itemChanges.push(`Fabric changed from "${oldFabric || "None"}" to "${newFabric || "None"}"`);
+        }
+        const oldQty = Number(oldIt.quantity) || 0;
+        const newQty = Number(newIt.quantity) || 0;
+        if (oldQty !== newQty) {
+          itemChanges.push(`Quantity changed from "${oldQty} pcs" to "${newQty} pcs"`);
+        }
+        const oldSize = String(oldIt.size || "").trim();
+        const newSize = String(newIt.size || "").trim();
+        if (oldSize !== newSize) {
+          itemChanges.push(`Size changed from "${oldSize || "None"}" to "${newSize || "None"}"`);
+        }
+        const oldColor = String(oldIt.color || "").trim();
+        const newColor = String(newIt.color || "").trim();
+        if (oldColor !== newColor) {
+          itemChanges.push(`Color changed from "${oldColor || "None"}" to "${newColor || "None"}"`);
+        }
+
+        if (itemChanges.length > 0) {
+          changes.push(`Item #${i + 1} (${newName}): ${itemChanges.join("; ")}`);
+        }
+      }
+    }
+  }
+
+  return changes;
+};
+
+const buildInitialCreationSummary = (leadData) => {
+  const summary = [];
+  if (leadData.orderId) summary.push(`Order ID: ${leadData.orderId}`);
+  if (leadData.employeeName) summary.push(`Employee Name: ${leadData.employeeName}`);
+  if (leadData.query) summary.push(`Query Type: ${leadData.query}`);
+  if (leadData.companyName) summary.push(`Company Name: ${leadData.companyName}`);
+  if (leadData.clientName) summary.push(`Client Name: ${leadData.clientName}`);
+  if (leadData.phoneNumber) summary.push(`Phone Number: ${leadData.phoneNumber}`);
+  if (leadData.query === "order") {
+    if (leadData.totalQuantity) summary.push(`Total Quantity: ${leadData.totalQuantity} pcs`);
+    if (leadData.pricePerPiece) summary.push(`Price Per Piece: ₹${leadData.pricePerPiece}`);
+    if (leadData.totalAmount) summary.push(`Total Amount: ₹${leadData.totalAmount}`);
+    if (leadData.netAmount) summary.push(`Net Amount: ₹${leadData.netAmount}`);
+    if (leadData.advanceAmount !== undefined && leadData.advanceAmount !== "")
+      summary.push(`Advance Amount: ₹${leadData.advanceAmount}`);
+    if (leadData.pendingAmount !== undefined && leadData.pendingAmount !== "")
+      summary.push(`Pending Amount: ₹${leadData.pendingAmount}`);
+    if (Array.isArray(leadData.items) && leadData.items.length > 0) {
+      leadData.items.forEach((it, idx) => {
+        const name = getItemDisplayName(it);
+        const parts = [];
+        if (it.printingType) parts.push(`Printing: ${it.printingType}`);
+        if (it.fabric) parts.push(`Fabric: ${it.fabric}`);
+        if (it.quantity) parts.push(`Qty: ${it.quantity} pcs`);
+        if (it.size) parts.push(`Size: ${it.size}`);
+        if (it.color) parts.push(`Color: ${it.color}`);
+        summary.push(`Item #${idx + 1} (${name}): ${parts.join(", ")}`);
+      });
+    }
+  }
+  return summary;
 };
 
 // GET /api/leads/next-order-id - Get next auto-generated orderId
@@ -259,7 +489,7 @@ router.get("/:id", async (req, res) => {
 // POST /api/leads - Create new lead (or update if _id provided)
 router.post("/", async (req, res) => {
   try {
-    const { _id, ...leadData } = req.body;
+    const { _id, performedBy, performedByRole, performedById, logAction, ...leadData } = req.body;
 
     // Normalize subStage: real orders must always sit in the 'order' sub-stage.
     // Prevents "" / "new" / "leads" values on order records, which previously
@@ -271,7 +501,7 @@ router.post("/", async (req, res) => {
       }
     }
 
-    if ((leadData.query === "order" || leadData.orderStage) && !leadData.orderId) {
+    if (!leadData.orderId) {
       leadData.orderId = await getNextOrderId();
     }
 
@@ -282,6 +512,10 @@ router.post("/", async (req, res) => {
         leadData.taskId = await getNextTaskId();
       }
     }
+
+    const actorName = performedBy || leadData.employeeName || "Sales Executive";
+    const actorRole = performedByRole || "Sales Executive";
+    const actorLogin = performedById || leadData.createdBy || "sales";
 
     if (_id) {
       const existing = await Lead.findById(_id);
@@ -329,6 +563,45 @@ router.post("/", async (req, res) => {
             createdAt: new Date(),
           });
         }
+
+        // Compute field & item diffs for Activity Log
+        const fieldChanges = computeLeadChanges(existing, leadData);
+        const wasLead = (existing.query || "lead").toLowerCase().trim() !== "order";
+        const isNowOrder = (leadData.query || existing.query || "lead").toLowerCase().trim() === "order";
+        const isConvertedToOrder = wasLead && isNowOrder;
+
+        const currentStageStr = isNowOrder
+          ? `${formatStageLabel(leadData.orderStage || existing.orderStage || "sample")} → ${formatSubStageLabel(leadData.subStage || existing.subStage || "order")}`
+          : "Leads";
+
+        let actionTitle = logAction || (isConvertedToOrder ? "Lead Converted to Order & Submitted" : isNowOrder ? "Order Edited" : "Lead Edited");
+        if (isReferredBack && !isConvertedToOrder) {
+          actionTitle = "Order Edited & Resubmitted for Clearance";
+        }
+
+        let detailsText = "";
+        if (isConvertedToOrder) {
+          detailsText = `Lead converted to Order and submitted by ${actorName} (${actorRole}). Moved to ${currentStageStr}.`;
+        } else if (isReferredBack) {
+          detailsText = `Order edited and resubmitted for approval by ${actorName} (${actorRole}).`;
+        } else if (isNowOrder) {
+          detailsText = `Edit Order performed by ${actorName} (${actorRole}) at stage ${currentStageStr}.`;
+        } else {
+          detailsText = `Lead details updated and saved to Leads by ${actorName} (${actorRole}).`;
+        }
+
+        const existingLogs = Array.isArray(existing.activityLogs) ? [...existing.activityLogs] : [];
+        existingLogs.push({
+          action: actionTitle,
+          stage: currentStageStr,
+          performedBy: actorName,
+          role: actorRole,
+          loginId: actorLogin,
+          details: detailsText,
+          changes: fieldChanges.length > 0 ? fieldChanges : ["Saved without field modifications"],
+          timestamp: new Date(),
+        });
+        leadData.activityLogs = existingLogs;
       }
 
       const updated = await Lead.findByIdAndUpdate(_id, leadData, {
@@ -337,6 +610,29 @@ router.post("/", async (req, res) => {
       });
       return res.json({ success: true, message: "Lead updated successfully", data: updated });
     }
+
+    const isOrder = (leadData.query || "lead").toLowerCase().trim() === "order";
+    const initialStageStr = isOrder
+      ? `${formatStageLabel(leadData.orderStage || "sample")} → ${formatSubStageLabel(leadData.subStage || "order")}`
+      : "Leads";
+    const createActionTitle = logAction || (isOrder ? "Order Created & Submitted" : "Lead Created & Saved");
+    const createDetails = isOrder
+      ? `New Order application (${leadData.orderId || ""}) created and submitted by ${actorName} (${actorRole}, Employee: ${leadData.employeeName || actorName}). Sent to ${initialStageStr} (Lead Manager Clearance).`
+      : `New Lead application (${leadData.orderId || ""}) created and saved to Leads by ${actorName} (${actorRole}, Employee: ${leadData.employeeName || actorName}).`;
+
+    leadData.activityLogs = [
+      ...(Array.isArray(leadData.activityLogs) ? leadData.activityLogs : []),
+      {
+        action: createActionTitle,
+        stage: initialStageStr,
+        performedBy: actorName,
+        role: actorRole,
+        loginId: actorLogin,
+        details: createDetails,
+        changes: buildInitialCreationSummary(leadData),
+        timestamp: new Date(),
+      },
+    ];
 
     const newLead = new Lead(leadData);
     const saved = await newLead.save();
@@ -350,13 +646,36 @@ router.post("/", async (req, res) => {
 // PUT /api/leads/:id - Update lead
 router.put("/:id", async (req, res) => {
   try {
-    const updated = await Lead.findByIdAndUpdate(req.params.id, req.body, {
+    const existing = await Lead.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Lead not found" });
+    }
+    const { performedBy, performedByRole, performedById, logAction, ...updateData } = req.body;
+    const changes = computeLeadChanges(existing, updateData);
+    const isNowOrder = (updateData.query || existing.query || "lead").toLowerCase().trim() === "order";
+    const stageStr = isNowOrder
+      ? `${formatStageLabel(updateData.orderStage || existing.orderStage || "sample")} → ${formatSubStageLabel(updateData.subStage || existing.subStage || "order")}`
+      : "Leads";
+    const actorName = performedBy || updateData.employeeName || existing.employeeName || "Sales Executive";
+    const actorRole = performedByRole || "Sales Executive";
+
+    const logs = Array.isArray(existing.activityLogs) ? [...existing.activityLogs] : [];
+    logs.push({
+      action: logAction || (isNowOrder ? "Order Edited" : "Lead Edited"),
+      stage: stageStr,
+      performedBy: actorName,
+      role: actorRole,
+      loginId: performedById || existing.createdBy || "sales",
+      details: `${isNowOrder ? "Order" : "Lead"} edited by ${actorName} (${actorRole}).`,
+      changes: changes.length > 0 ? changes : ["Updated application details"],
+      timestamp: new Date(),
+    });
+    updateData.activityLogs = logs;
+
+    const updated = await Lead.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true,
     });
-    if (!updated) {
-      return res.status(404).json({ success: false, message: "Lead not found" });
-    }
     res.json({ success: true, message: "Lead updated successfully", data: updated });
   } catch (error) {
     console.error("Error updating lead:", error);
@@ -476,18 +795,71 @@ router.patch("/:id/approval", async (req, res) => {
       }
     }
 
+    const resolvedRole = role || (isLeadManager ? "Lead Manager" : isStock ? "Stock Room Manager" : isProduction ? "Production Lead" : "Manager");
+    const resolvedAuthor = author || (isLeadManager ? "Sarah Jenkins" : isStock ? "Elena Rostova" : isProduction ? "Marcus Vance" : "Manager");
+
     if (comment || status) {
       if (!Array.isArray(lead.approvalComments)) {
         lead.approvalComments = [];
       }
       lead.approvalComments.push({
-        author: author || "Manager",
-        role: role || (isLeadManager ? "Lead Manager" : isStock ? "Stock Room Manager" : isProduction ? "Production Lead" : "Manager"),
+        author: resolvedAuthor,
+        role: resolvedRole,
         comment: comment || (status === "Approved" ? "Approved" : "Referred Back"),
         status,
         createdAt: new Date(),
       });
     }
+
+    // Record in Activity Logs
+    if (!Array.isArray(lead.activityLogs)) lead.activityLogs = [];
+    const currentStageStr = `${formatStageLabel(lead.orderStage || "sample")} → ${formatSubStageLabel(lead.subStage || "order")}`;
+    let logActionTitle = "";
+    let logDetails = "";
+    const logChanges = [];
+
+    if (isLeadManager) {
+      if (status === "Approved") {
+        logActionTitle = "Task 0 - Lead Manager Approved (Moved to DTF Pending)";
+        logDetails = `Order approved by ${resolvedAuthor} (${resolvedRole}). Application moved from ${formatStageLabel(lead.orderStage || "sample")} → Order to ${currentStageStr} and assigned to Stock Room Manager & Production Room.`;
+        logChanges.push(`From Stage: ${formatStageLabel(lead.orderStage || "sample")} → Order`);
+        logChanges.push(`To Stage: ${currentStageStr}`);
+        logChanges.push(`Task 0 Status: Approved`);
+        logChanges.push(`Assigned To: Task 1 - Stock Room (Verification) & Task 2 - Production Room (Logo Printing)`);
+      } else {
+        logActionTitle = "Task 0 - Referred Back by Lead Manager";
+        logDetails = `Order referred back to Sales Executive (${formatStageLabel(lead.orderStage || "sample")} → Order) by ${resolvedAuthor} (${resolvedRole}).`;
+        logChanges.push(`Task 0 Status: Referred Back`);
+      }
+    } else if (isStock) {
+      logActionTitle = `Task 1 - Stock Room ${status}`;
+      logDetails = `Stock Room clearance ${status.toLowerCase()} by ${resolvedAuthor} (${resolvedRole}).`;
+      logChanges.push(`Task 1 Status: ${status}`);
+      logChanges.push(`Current Stage: ${currentStageStr}`);
+    } else if (isProduction) {
+      logActionTitle = `Task 2 - Production Room ${status}`;
+      logDetails = `Production Room clearance ${status.toLowerCase()} by ${resolvedAuthor} (${resolvedRole}).`;
+      logChanges.push(`Task 2 Status: ${status}`);
+      logChanges.push(`Current Stage: ${currentStageStr}`);
+    } else {
+      logActionTitle = `Order ${status} by ${resolvedRole}`;
+      logDetails = `Order ${status.toLowerCase()} by ${resolvedAuthor} (${resolvedRole}). Current stage: ${currentStageStr}.`;
+      logChanges.push(`Status: ${status}`);
+    }
+    if (comment) {
+      logChanges.push(`Note: "${comment}"`);
+    }
+
+    lead.activityLogs.push({
+      action: logActionTitle,
+      stage: currentStageStr,
+      performedBy: resolvedAuthor,
+      role: resolvedRole,
+      loginId: department || "",
+      details: logDetails,
+      changes: logChanges,
+      timestamp: new Date(),
+    });
 
     await lead.save();
 
@@ -560,6 +932,9 @@ router.patch("/:id/stock-task", async (req, res) => {
       lead.markModified("stockTaskData");
     }
 
+    const actorName = author || "Elena Rostova";
+    let movedToPrinting = false;
+
     if (action === "submit") {
       if (stage === "verification") {
         lead.stockTaskStage = "ready_to_pick";
@@ -572,7 +947,7 @@ router.patch("/:id/stock-task", async (req, res) => {
         lead.stockApproval = {
           status: "Approved",
           note: comment || "Approved by Stock Room",
-          author: author || "Elena Rostova",
+          author: actorName,
           updatedAt: new Date(),
         };
 
@@ -581,6 +956,7 @@ router.patch("/:id/stock-task", async (req, res) => {
           lead.approvalStatus = "Approved";
           if (!lead.orderStage) lead.orderStage = "sample";
           lead.subStage = "printing";
+          movedToPrinting = true;
         }
       }
     } else if (action === "refer_back") {
@@ -593,7 +969,7 @@ router.patch("/:id/stock-task", async (req, res) => {
         lead.stockApproval = {
           status: "Referred Back",
           note: comment || "Stock Room referred back for revision",
-          author: author || "Elena Rostova",
+          author: actorName,
           updatedAt: new Date(),
         };
         lead.approvalStatus = "Referred Back";
@@ -603,13 +979,71 @@ router.patch("/:id/stock-task", async (req, res) => {
     if (comment && action !== "save") {
       if (!Array.isArray(lead.approvalComments)) lead.approvalComments = [];
       lead.approvalComments.push({
-        author: author || "Elena Rostova",
+        author: actorName,
         role: "Stock Room Manager",
         comment,
         status: action === "submit" ? "Approved" : "Referred Back",
         createdAt: new Date(),
       });
     }
+
+    // Record in Activity Logs
+    if (!Array.isArray(lead.activityLogs)) lead.activityLogs = [];
+    const stockStageLabel = formatSubStageLabel(stage || "verification");
+    const nextStockLabel = formatSubStageLabel(lead.stockTaskStage || "completed");
+    const logChanges = [
+      `From: Stock Room → ${stockStageLabel}`,
+      movedToPrinting
+        ? `To: ${formatStageLabel(lead.orderStage || "sample")} → Printing (Task 1 & Task 2 Clearances Approved)`
+        : `To: Stock Room → ${nextStockLabel}`,
+    ];
+    if (stockTaskData?.isStockAvailable !== undefined) {
+      logChanges.push(`Stock Available: ${stockTaskData.isStockAvailable ? "Yes (In Stock)" : "No / Partial"}`);
+    }
+    if (stockTaskData?.sampleDeduction !== undefined) {
+      logChanges.push(`Sample Quantity: ${stockTaskData.sampleDeduction} pcs`);
+    }
+    if (stockTaskData?.stockDepreciation) {
+      logChanges.push(`Remaining Stock After Deduction: ${stockTaskData.stockDepreciation}`);
+    }
+    if (stockTaskData?.receivedCount !== undefined) {
+      logChanges.push(`Received Count: ${stockTaskData.receivedCount} pcs`);
+    }
+    if (comment) {
+      logChanges.push(`Note: "${comment}"`);
+    }
+    if (movedToPrinting) {
+      logChanges.push(`Stage Transition: Moved from Stock Room & Production Clearance to ${formatStageLabel(lead.orderStage || "sample")} → Printing`);
+    }
+
+    lead.activityLogs.push({
+      action:
+        action === "save"
+          ? `Stock Task - ${stockStageLabel} Saved`
+          : action === "submit"
+          ? stage === "staging_room"
+            ? movedToPrinting
+              ? "Task 1 - Stock Room Approved (Moved to Printing)"
+              : "Task 1 - Stock Room Approved"
+            : `Stock Task - ${stockStageLabel} Submitted`
+          : `Stock Task - Referred Back from ${stockStageLabel}`,
+      stage: movedToPrinting
+        ? `${formatStageLabel(lead.orderStage || "sample")} → Printing`
+        : `Stock Task → ${nextStockLabel}`,
+      performedBy: actorName,
+      role: "Stock Room Manager",
+      loginId: "stock",
+      details:
+        action === "save"
+          ? `Stock Room ${stockStageLabel} draft saved by ${actorName}.`
+          : action === "submit"
+          ? stage === "staging_room"
+            ? `Stock Room Staging Room submitted and Task 1 Clearance approved by ${actorName}.${movedToPrinting ? ` Both Stock & Production clearances completed — Application moved to ${formatStageLabel(lead.orderStage || "sample")} → Printing.` : ""}`
+            : `Stock Room ${stockStageLabel} completed by ${actorName}. Advanced to ${nextStockLabel}.`
+          : `Stock Room referred back from ${stockStageLabel} by ${actorName}.`,
+      changes: logChanges,
+      timestamp: new Date(),
+    });
 
     await lead.save();
     res.json({ success: true, data: lead });
@@ -632,13 +1066,16 @@ router.patch("/:id/production-task", async (req, res) => {
       lead.markModified("productionTaskData");
     }
 
+    const actorName = author || "Marcus Vance";
+    let movedToPrinting = false;
+
     if (action === "submit") {
       if (stage === "logo_printing") {
         lead.productionTaskStage = "logo_cutting";
         lead.productionApproval = {
           status: "Pending",
           note: "",
-          author: author || "Marcus Vance",
+          author: actorName,
           updatedAt: new Date(),
         };
         lead.markModified("productionApproval");
@@ -647,7 +1084,7 @@ router.patch("/:id/production-task", async (req, res) => {
         lead.productionApproval = {
           status: "Approved",
           note: comment || "Approved by Production Lead",
-          author: author || "Marcus Vance",
+          author: actorName,
           updatedAt: new Date(),
         };
         lead.markModified("productionApproval");
@@ -657,6 +1094,7 @@ router.patch("/:id/production-task", async (req, res) => {
           lead.approvalStatus = "Approved";
           if (!lead.orderStage) lead.orderStage = "sample";
           lead.subStage = "printing";
+          movedToPrinting = true;
         }
       }
     } else if (action === "refer_back") {
@@ -665,14 +1103,14 @@ router.patch("/:id/production-task", async (req, res) => {
         if (lead.productionApproval) {
           lead.productionApproval.status = "Pending";
         } else {
-          lead.productionApproval = { status: "Pending", note: "", author: author || "Marcus Vance", updatedAt: new Date() };
+          lead.productionApproval = { status: "Pending", note: "", author: actorName, updatedAt: new Date() };
         }
       } else {
         // Return to sales executive / lead manager (from logo_printing)
         lead.productionApproval = {
           status: "Referred Back",
           note: comment || "Production referred back for revision",
-          author: author || "Marcus Vance",
+          author: actorName,
           updatedAt: new Date(),
         };
         lead.approvalStatus = "Referred Back";
@@ -682,13 +1120,71 @@ router.patch("/:id/production-task", async (req, res) => {
     if (comment && action !== "save") {
       if (!Array.isArray(lead.approvalComments)) lead.approvalComments = [];
       lead.approvalComments.push({
-        author: author || "Marcus Vance",
+        author: actorName,
         role: "Production Lead",
         comment,
         status: action === "submit" ? "Approved" : "Referred Back",
         createdAt: new Date(),
       });
     }
+
+    // Record in Activity Logs
+    if (!Array.isArray(lead.activityLogs)) lead.activityLogs = [];
+    const prodStageLabel = formatSubStageLabel(stage || "logo_cutting");
+    const nextProdLabel = formatSubStageLabel(lead.productionTaskStage || "completed");
+    const logChanges = [
+      `From: Production Room → ${prodStageLabel}`,
+      movedToPrinting
+        ? `To: ${formatStageLabel(lead.orderStage || "sample")} → Printing (Task 1 & Task 2 Clearances Approved)`
+        : `To: Production Room → ${nextProdLabel}`,
+    ];
+    if (productionTaskData?.logosPrinted !== undefined && productionTaskData.logosPrinted !== "") {
+      logChanges.push(`Logos Printed: ${productionTaskData.logosPrinted} pcs`);
+    }
+    if (productionTaskData?.logosGivenForCutting !== undefined && productionTaskData.logosGivenForCutting !== "") {
+      logChanges.push(`For Cutting: ${productionTaskData.logosGivenForCutting} pcs`);
+    }
+    if (productionTaskData?.logosForPrinting !== undefined && productionTaskData.logosForPrinting !== "") {
+      logChanges.push(`For Printing: ${productionTaskData.logosForPrinting} pcs`);
+    }
+    if (productionTaskData?.sampleLogosCount !== undefined && productionTaskData.sampleLogosCount !== "") {
+      logChanges.push(`For Sample: ${productionTaskData.sampleLogosCount} pcs`);
+    }
+    if (comment) {
+      logChanges.push(`Note: "${comment}"`);
+    }
+    if (movedToPrinting) {
+      logChanges.push(`Stage Transition: Moved from Stock Room & Production Clearance to ${formatStageLabel(lead.orderStage || "sample")} → Printing`);
+    }
+
+    lead.activityLogs.push({
+      action:
+        action === "save"
+          ? `Production Task - ${prodStageLabel} Saved`
+          : action === "submit"
+          ? stage === "logo_printing"
+            ? "Production Task - Logo Printing Submitted"
+            : movedToPrinting
+            ? "Task 2 - Production Approved (Moved to Printing)"
+            : "Task 2 - Production Approved"
+          : `Production Task - Referred Back from ${prodStageLabel}`,
+      stage: movedToPrinting
+        ? `${formatStageLabel(lead.orderStage || "sample")} → Printing`
+        : `Production Task → ${nextProdLabel}`,
+      performedBy: actorName,
+      role: "Production Lead",
+      loginId: "production",
+      details:
+        action === "save"
+          ? `Production ${prodStageLabel} draft saved by ${actorName} (Production Lead).`
+          : action === "submit"
+          ? stage === "logo_printing"
+            ? `Logo Printing completed by ${actorName} (Production Lead). Advanced to Logo Cutting.`
+            : `Logo Cutting & Task 2 Clearance approved by ${actorName} (Production Lead).${movedToPrinting ? ` Both Stock & Production clearances completed — Application moved to ${formatStageLabel(lead.orderStage || "sample")} → Printing.` : ""}`
+          : `Production referred back from ${prodStageLabel} by ${actorName}.`,
+      changes: logChanges,
+      timestamp: new Date(),
+    });
 
     await lead.save();
     res.json({ success: true, data: lead });
@@ -717,6 +1213,7 @@ router.patch("/:id/stage-transition", async (req, res) => {
     if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
 
     const activeStage = fromStage || lead.orderStage || "sample";
+    const prevStageDisplay = `${formatStageLabel(activeStage)} → ${formatSubStageLabel(fromSubStage || lead.subStage || "order")}`;
 
     if (stageData) {
       // 1. Sample stage data mappings
@@ -897,6 +1394,61 @@ router.patch("/:id/stage-transition", async (req, res) => {
         createdAt: new Date(),
       });
     }
+
+    // Record in Activity Logs
+    if (!Array.isArray(lead.activityLogs)) lead.activityLogs = [];
+    const nextStageDisplay = `${formatStageLabel(lead.orderStage || "sample")} → ${formatSubStageLabel(lead.subStage || "order")}`;
+    const stageChanges = [
+      `From Stage: ${prevStageDisplay}`,
+      `To Stage: ${nextStageDisplay}`,
+      `Stage Transition: ${prevStageDisplay} → ${nextStageDisplay}`,
+    ];
+    if (stageData) {
+      if (stageData.dtfVerified) stageChanges.push(`DTF Film Verification: Prepared, printed, and verified in DTF Pending`);
+      if (stageData.stockVerified) stageChanges.push(`Stock Verification: Physical inventory verified & allocated in Stock stage`);
+      if (stageData.stockSampleReceived) stageChanges.push(`Stock Sample Received in Printing: ${stageData.stockSampleReceived === "yes" ? "Yes" : "No"}`);
+      if (stageData.prodSampleReceived) stageChanges.push(`Production Logo Received in Printing: ${stageData.prodSampleReceived === "yes" ? "Yes" : "No"}`);
+      if (stageData.printingStatus) stageChanges.push(`Printing Status: ${stageData.printingStatus}`);
+      if (stageData.printedCount !== undefined) stageChanges.push(`Printed Count: ${stageData.printedCount} pcs`);
+      if (stageData.readyToPickupCount !== undefined) stageChanges.push(`Ready to Pick Up Count: ${stageData.readyToPickupCount} pcs`);
+      if (stageData.printingSampleReceived) stageChanges.push(`Sample Received from Printing: ${stageData.printingSampleReceived === "yes" ? "Yes" : "No"}`);
+      if (stageData.readyToPickSampleReceived) stageChanges.push(`Items Received from Ready to Pick: ${stageData.readyToPickSampleReceived === "yes" ? "Yes" : "No"}`);
+      if (stageData.rackNo) stageChanges.push(`Rack Number: ${stageData.rackNo}`);
+      if (stageData.customerApproved !== undefined) stageChanges.push(`Customer Approved: ${stageData.customerApproved}`);
+      if (stageData.paymentStatus) stageChanges.push(`Payment Status: ${String(stageData.paymentStatus).replace(/_/g, " ")}`);
+      if (stageData.amountReceived !== undefined && stageData.amountReceived !== "") stageChanges.push(`Amount Received: ₹${stageData.amountReceived}`);
+      if (stageData.balanceRemaining !== undefined && stageData.balanceRemaining !== "") stageChanges.push(`Balance Remaining: ₹${stageData.balanceRemaining}`);
+      if (stageData.passedCount !== undefined) stageChanges.push(`QC Passed: ${stageData.passedCount} pcs`);
+      if (stageData.packedCount !== undefined) stageChanges.push(`Packed Count: ${stageData.packedCount} pcs`);
+      if (stageData.trackingNumber) stageChanges.push(`Tracking Number: ${stageData.trackingNumber}`);
+      if (stageData.deliveredDate) stageChanges.push(`Delivered Date: ${stageData.deliveredDate}`);
+    }
+    if (comment) {
+      stageChanges.push(`Note: "${comment}"`);
+    }
+
+    lead.activityLogs.push({
+      action:
+        action === "save"
+          ? `Stage Saved (${prevStageDisplay})`
+          : action === "refer_back"
+          ? `Referred Back from ${formatSubStageLabel(fromSubStage)} to ${formatSubStageLabel(lead.subStage)}`
+          : lead.isCompleted
+          ? "Order Completed & Fulfilled"
+          : `Moved from ${formatSubStageLabel(fromSubStage)} to ${nextStageDisplay}`,
+      stage: nextStageDisplay,
+      performedBy: author || lead.employeeName || "Sales Executive",
+      role: role || "Sales Executive",
+      loginId: "",
+      details:
+        action === "save"
+          ? `Stage ${prevStageDisplay} draft saved by ${author || "Operator"} (${role || "Sales Executive"}).`
+          : action === "refer_back"
+          ? `Application referred back from ${prevStageDisplay} to ${nextStageDisplay} by ${author || "Operator"} (${role || "Manager"}).`
+          : `Stage ${prevStageDisplay} submitted by ${author || "Operator"} (${role || "Sales Executive"}). Application moved to ${nextStageDisplay}.`,
+      changes: stageChanges,
+      timestamp: new Date(),
+    });
 
     await lead.save();
     res.json({ success: true, data: lead });

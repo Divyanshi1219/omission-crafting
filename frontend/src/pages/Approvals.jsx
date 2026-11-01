@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import {
   ClipboardCheck,
@@ -33,7 +33,8 @@ import {
   Printer,
   Scissors,
   Save,
-  X
+  X,
+  Settings
 } from "lucide-react";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
@@ -112,11 +113,90 @@ export default function Approvals({ defaultTab = "all" }) {
   const [loading, setLoading] = useState(true);
   const [taskCounts, setTaskCounts] = useState({});
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [activeActivityTab, setActiveActivityTab] = useState("department");
   const [managerComment, setManagerComment] = useState("");
   const [submittingAction, setSubmittingAction] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusTab, setStatusTab] = useState(() => getTabFromParam(status)); // 'all' | 'pending' | 'referred-back' | 'approved'
   const [toast, setToast] = useState(null);
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const columnSettingsRef = useRef(null);
+  const [extraColumns, setExtraColumns] = useState({
+    clientName: false,
+    phoneNumber: false,
+    companyAddress: false,
+    state: false,
+    pincode: false,
+    repeatedOrder: false,
+    additionalNote: false,
+    orderStage: false,
+    subStage: false,
+    logoName: false,
+    totalQuantity: false,
+    pricePerPiece: false,
+    totalAmount: false,
+    gst: false,
+    netAmount: false,
+    advanceAmount: false,
+    pendingAmount: false,
+    urgency: false,
+    deliveryDate: false,
+    modeOfDelivery: false,
+  });
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (columnSettingsRef.current && !columnSettingsRef.current.contains(e.target)) {
+        setShowColumnSettings(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const EXTRA_COLUMN_DEFS = [
+    { key: "clientName", label: "Client Name" },
+    { key: "phoneNumber", label: "Phone Number" },
+    { key: "companyAddress", label: "Company Address" },
+    { key: "state", label: "State" },
+    { key: "pincode", label: "Pincode" },
+    { key: "repeatedOrder", label: "Repeated Order" },
+    { key: "additionalNote", label: "Additional Note" },
+    { key: "orderStage", label: "Order Stage" },
+    { key: "subStage", label: "Sub Stage" },
+    { key: "logoName", label: "Logo Name" },
+    { key: "totalQuantity", label: "Total Quantity" },
+    { key: "pricePerPiece", label: "Price Per Piece" },
+    { key: "totalAmount", label: "Total Amount" },
+    { key: "gst", label: "GST (%)" },
+    { key: "netAmount", label: "Net Amount" },
+    { key: "advanceAmount", label: "Advance Amount" },
+    { key: "pendingAmount", label: "Pending Amount" },
+    { key: "urgency", label: "Urgency" },
+    { key: "deliveryDate", label: "Delivery Date" },
+    { key: "modeOfDelivery", label: "Mode of Delivery" },
+  ];
+
+  const renderExtraHeaders = () =>
+    EXTRA_COLUMN_DEFS.filter((col) => extraColumns[col.key]).map((col) => (
+      <th key={col.key}>{col.label}</th>
+    ));
+
+  const renderExtraCells = (order) =>
+    EXTRA_COLUMN_DEFS.filter((col) => extraColumns[col.key]).map((col) => {
+      let val = order[col.key];
+      if (col.key === "totalQuantity") val = val ? `${val} pcs` : "—";
+      else if (["pricePerPiece", "totalAmount", "netAmount", "advanceAmount", "pendingAmount"].includes(col.key))
+        val = val !== undefined && val !== "" ? `₹${val}` : "—";
+      else if (col.key === "gst") val = val ? `${val}%` : "—";
+      else if (col.key === "deliveryDate")
+        val = val ? (String(val).includes("T") ? String(val).split("T")[0] : val) : "—";
+      return (
+        <td key={col.key} style={{ color: "#475569", fontSize: "13px", whiteSpace: "nowrap" }}>
+          {val || "—"}
+        </td>
+      );
+    });
 
   // Action Modal State for Ready to Pick, Staging Room, and Logo Cutting
   const [taskActionModal, setTaskActionModal] = useState({
@@ -582,22 +662,22 @@ export default function Approvals({ defaultTab = "all" }) {
           } else if (activeStage === "ready_to_pick") {
             showToast(
               actionType === "submit"
-                ? `Order #${selectedOrder.orderId || "Order"} moved to Staging Room!`
+                ? "Submitted"
                 : `Order #${selectedOrder.orderId || "Order"} referred back to Verification.`
             );
             setSelectedOrder(null);
             setSearchParams({});
-            navigate(actionType === "submit" ? "/tasks/staging-room" : "/tasks/verification");
+            if (actionType !== "submit") navigate("/tasks/verification");
             fetchOrders();
           } else {
             showToast(
               actionType === "submit"
-                ? `Order #${selectedOrder.orderId || "Order"} stock clearance approved!`
+                ? "Submitted"
                 : `Order #${selectedOrder.orderId || "Order"} referred back to Ready to Pick.`
             );
             setSelectedOrder(null);
             setSearchParams({});
-            navigate(actionType === "submit" ? "/tasks/all" : "/tasks/ready-to-pick");
+            if (actionType !== "submit") navigate("/tasks/ready-to-pick");
             fetchOrders();
           }
         }
@@ -639,7 +719,7 @@ export default function Approvals({ defaultTab = "all" }) {
           };
         const res = await api.patch(`/api/leads/${orderId}/stock-task`, payload);
         if (res.data?.success) {
-          showToast(actionType === "submit" ? `Order #${order.orderId || "Order"} moved to Staging Room!` : `Order #${order.orderId || "Order"} referred back.`);
+          showToast(actionType === "submit" ? "Submitted" : `Order #${order.orderId || "Order"} referred back.`);
           handleCloseTaskModal();
           if (selectedOrder) {
             handleBackToList();
@@ -660,7 +740,7 @@ export default function Approvals({ defaultTab = "all" }) {
         };
         const res = await api.patch(`/api/leads/${orderId}/stock-task`, payload);
         if (res.data?.success) {
-          showToast(actionType === "submit" ? `Order #${order.orderId || "Order"} stock clearance approved!` : `Order #${order.orderId || "Order"} referred back to Ready to Pick.`);
+          showToast(actionType === "submit" ? "Submitted" : `Order #${order.orderId || "Order"} referred back to Ready to Pick.`);
           handleCloseTaskModal();
           if (selectedOrder) {
             handleBackToList();
@@ -748,8 +828,8 @@ export default function Approvals({ defaultTab = "all" }) {
   };
 
   // Fetch all orders
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (showSpinner = false) => {
+    if (showSpinner || orders.length === 0) setLoading(true);
     try {
       const res = await api.get("/api/leads?query=order");
       if (res.data && res.data.data) {
@@ -921,9 +1001,10 @@ export default function Approvals({ defaultTab = "all" }) {
       } else if (currentTaskTab === "verification") {
         if (getStockStage(order) !== "verification") return false;
       } else if (currentTaskTab === "ready-to-pick") {
-        if (getStockStage(order) !== "ready_to_pick") return false;
+        if (getStockStage(order) === "verification") return false;
       } else if (currentTaskTab === "staging-room") {
-        if (getStockStage(order) !== "staging_room") return false;
+        const stg = getStockStage(order);
+        if (stg !== "staging_room" && stg !== "completed") return false;
       } else if (currentTaskTab === "all") {
         const orderStatus = getOrderTaskStatus(order).toLowerCase();
         if (isProdProfile || roleView === "production") {
@@ -1007,8 +1088,8 @@ export default function Approvals({ defaultTab = "all" }) {
       {/* VIEW MODE 1: LIST VIEW */}
       {!selectedOrder ? (
         <div className="approvals-container">
-          {/* Top Bar with Search */}
-          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+          {/* Top Bar with Search & Column Settings */}
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "16px", position: "relative" }} ref={columnSettingsRef}>
 
             <div className="search-box" style={{ width: "320px", maxWidth: "100%" }}>
               <Search size={16} className="search-icon" />
@@ -1031,6 +1112,77 @@ export default function Approvals({ defaultTab = "all" }) {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowColumnSettings((prev) => !prev)}
+              title="Customize Table Columns"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "9px 11px",
+                borderRadius: "8px",
+                border: "1px solid #cbd5e1",
+                background: showColumnSettings ? "#eff6ff" : "#ffffff",
+                color: showColumnSettings ? "#2563eb" : "#475569",
+                cursor: "pointer",
+              }}
+            >
+              <Settings size={17} />
+            </button>
+
+            {showColumnSettings && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  width: "240px",
+                  maxHeight: "340px",
+                  overflowY: "auto",
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "10px",
+                  boxShadow: "0 10px 25px rgba(15, 23, 42, 0.12)",
+                  padding: "10px 12px",
+                  zIndex: 50,
+                }}
+              >
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid #f1f5f9" }}>
+                  Additional Columns
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {EXTRA_COLUMN_DEFS.map((col) => (
+                    <label
+                      key={col.key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        fontSize: "12.5px",
+                        color: "#334155",
+                        cursor: "pointer",
+                        userSelect: "none",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(extraColumns[col.key])}
+                        onChange={() =>
+                          setExtraColumns((prev) => ({
+                            ...prev,
+                            [col.key]: !prev[col.key],
+                          }))
+                        }
+                        style={{ width: "14px", height: "14px", accentColor: "#2563eb", cursor: "pointer", margin: 0 }}
+                      />
+                      <span>{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Orders Table */}
@@ -1047,6 +1199,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>Date</th>
                       <th>Items</th>
                       <th>Status</th>
+                      {renderExtraHeaders()}
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -1062,6 +1215,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>Stock Status</th>
                       <th>For Sample</th>
                       <th>Status</th>
+                      {renderExtraHeaders()}
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -1078,6 +1232,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>Sample Received</th>
                       <th>Sample Files</th>
                       <th>Status</th>
+                      {renderExtraHeaders()}
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -1095,6 +1250,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>Printed</th>
                       <th>For Cutting</th>
                       <th>Status</th>
+                      {renderExtraHeaders()}
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -1114,6 +1270,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>For Printing</th>
                       <th>For Sample</th>
                       <th>Status</th>
+                      {renderExtraHeaders()}
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -1129,6 +1286,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>Stage</th>
                       <th>Items</th>
                       <th>Status</th>
+                      {renderExtraHeaders()}
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -1143,6 +1301,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>Stage</th>
                       <th>Logo Name</th>
                       <th>Status</th>
+                      {renderExtraHeaders()}
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -1158,6 +1317,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       <th>Net Amount</th>
                       <th>Date Created</th>
                       <th>Status</th>
+                      {renderExtraHeaders()}
                       <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
@@ -1246,6 +1406,7 @@ export default function Approvals({ defaultTab = "all" }) {
                                 {st}
                               </span>
                             </td>
+                            {renderExtraCells(order)}
                             <td style={{ textAlign: "right" }}>
                               <div className="task-action-btn-group">
                                 <button
@@ -1272,6 +1433,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       if (currentTaskTab === "ready-to-pick") {
                         const isAvail = order.stockTaskData?.isStockAvailable !== false;
                         const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
+                        const isReadyToPickSubmitted = order.stockTaskStage === "staging_room" || order.stockTaskStage === "completed" || order.stockTaskData?.readyToPickSubmitted || order.stockApproval?.status === "Approved";
 
                         return (
                           <tr
@@ -1319,24 +1481,30 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span className={`status-pill ${st.toLowerCase().replace(/\s+/g, "-")}`}>
+                              <span className={`status-pill ${isReadyToPickSubmitted ? "approved" : st.toLowerCase().replace(/\s+/g, "-")}`}>
                                 <span className="status-dot"></span>
-                                {st}
+                                {isReadyToPickSubmitted ? "Submitted" : st}
                               </span>
                             </td>
+                            {renderExtraCells(order)}
                             <td style={{ textAlign: "right" }}>
                               <div className="task-action-btn-group">
                                 <button
                                   type="button"
                                   className="action-btn submit-btn"
+                                  style={
+                                    isReadyToPickSubmitted
+                                      ? { background: "#059669", opacity: 0.9 }
+                                      : undefined
+                                  }
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleSelectOrder(order);
                                   }}
                                   title="Pick & Attach Sample"
                                 >
-                                  <Package size={13} />
-                                  Pick
+                                  {isReadyToPickSubmitted ? <CheckCircle size={13} /> : <Package size={13} />}
+                                  {isReadyToPickSubmitted ? "Submitted" : "Pick"}
                                 </button>
                               </div>
                             </td>
@@ -1351,6 +1519,7 @@ export default function Approvals({ defaultTab = "all" }) {
                         const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
                         const sampleReceived = order.stockTaskData?.readyToPickReceived !== false;
                         const attCount = order.stockTaskData?.readyToPickAttachments?.length || 0;
+                        const isStagingSubmitted = order.stockTaskStage === "completed" || order.stockTaskData?.stagingSubmitted || order.stockApproval?.status === "Approved";
 
                         return (
                           <tr
@@ -1402,24 +1571,30 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span className={`status-pill ${st.toLowerCase().replace(/\s+/g, "-")}`}>
+                              <span className={`status-pill ${isStagingSubmitted ? "approved" : st.toLowerCase().replace(/\s+/g, "-")}`}>
                                 <span className="status-dot"></span>
-                                {st}
+                                {isStagingSubmitted ? "Submitted" : st}
                               </span>
                             </td>
+                            {renderExtraCells(order)}
                             <td style={{ textAlign: "right" }}>
                               <div className="task-action-btn-group">
                                 <button
                                   type="button"
                                   className="action-btn submit-btn"
+                                  style={
+                                    isStagingSubmitted
+                                      ? { background: "#059669", opacity: 0.9 }
+                                      : undefined
+                                  }
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleSelectOrder(order);
                                   }}
                                   title="Check & Verify Sample"
                                 >
-                                  <Boxes size={13} />
-                                  Check
+                                  {isStagingSubmitted ? <CheckCircle size={13} /> : <Boxes size={13} />}
+                                  {isStagingSubmitted ? "Submitted" : "Check"}
                                 </button>
                               </div>
                             </td>
@@ -1439,9 +1614,9 @@ export default function Approvals({ defaultTab = "all" }) {
                         const cuttingVal = order.productionTaskData?.logosGivenForCutting ?? order.productionTaskData?.logosCutGiven;
                         const logosGivenForCutting = hasCutting ? `${cuttingVal} pcs` : "-";
                         const logoDesignFile = order.logoDesign || order.attachment;
-                        const logoDesignName = order.logoDesignName || order.attachmentName || "Logo Design";
+                        const logoDesignName = order.logoDesignName || order.attachmentName || "";
                         const digitalDesignFile = order.digitalDesign;
-                        const digitalDesignName = order.digitalDesignName || "Digital Design";
+                        const digitalDesignName = order.digitalDesignName || "";
 
                         return (
                           <tr
@@ -1473,9 +1648,9 @@ export default function Approvals({ defaultTab = "all" }) {
                                     href={logoDesignFile}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    download={logoDesignName}
+                                    download={logoDesignName || "Logo Design"}
                                     onClick={(e) => e.stopPropagation()}
-                                    title={logoDesignName}
+                                    title={logoDesignName || "Logo Design"}
                                     style={{
                                       display: "inline-flex",
                                       alignItems: "center",
@@ -1490,8 +1665,26 @@ export default function Approvals({ defaultTab = "all" }) {
                                     }}
                                   >
                                     <Paperclip size={11} style={{ flexShrink: 0 }} />
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{logoDesignName}</span>
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{logoDesignName || "Logo Design"}</span>
                                   </a>
+                                ) : logoDesignName ? (
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      color: "#2563eb",
+                                      fontSize: "12px",
+                                      maxWidth: "140px",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                    title={logoDesignName}
+                                  >
+                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{logoDesignName}</span>
+                                  </span>
                                 ) : (
                                   <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>No file</span>
                                 )}
@@ -1501,9 +1694,9 @@ export default function Approvals({ defaultTab = "all" }) {
                                     href={digitalDesignFile}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    download={digitalDesignName}
+                                    download={digitalDesignName || "Digital Design"}
                                     onClick={(e) => e.stopPropagation()}
-                                    title={digitalDesignName}
+                                    title={digitalDesignName || "Digital Design"}
                                     style={{
                                       display: "inline-flex",
                                       alignItems: "center",
@@ -1518,8 +1711,26 @@ export default function Approvals({ defaultTab = "all" }) {
                                     }}
                                   >
                                     <Paperclip size={11} style={{ flexShrink: 0 }} />
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{digitalDesignName}</span>
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{digitalDesignName || "Digital Design"}</span>
                                   </a>
+                                ) : digitalDesignName ? (
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      color: "#2563eb",
+                                      fontSize: "12px",
+                                      maxWidth: "140px",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                    title={digitalDesignName}
+                                  >
+                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{digitalDesignName}</span>
+                                  </span>
                                 ) : (
                                   <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>No file</span>
                                 )}
@@ -1551,6 +1762,7 @@ export default function Approvals({ defaultTab = "all" }) {
                                 {st}
                               </span>
                             </td>
+                            {renderExtraCells(order)}
                             <td style={{ textAlign: "right" }}>
                               <div className="task-action-btn-group">
                                 <button
@@ -1588,9 +1800,9 @@ export default function Approvals({ defaultTab = "all" }) {
                         const forPrintingLogo = order.productionTaskData?.logosForPrinting || 0;
                         const sampleLogos = order.productionTaskData?.sampleLogosCount !== undefined ? order.productionTaskData.sampleLogosCount : 0;
                         const logoDesignFile = order.logoDesign || order.attachment;
-                        const logoDesignName = order.logoDesignName || order.attachmentName || "Logo Design";
+                        const logoDesignName = order.logoDesignName || order.attachmentName || "";
                         const digitalDesignFile = order.digitalDesign;
-                        const digitalDesignName = order.digitalDesignName || "Digital Design";
+                        const digitalDesignName = order.digitalDesignName || "";
 
                         return (
                           <tr
@@ -1622,9 +1834,9 @@ export default function Approvals({ defaultTab = "all" }) {
                                     href={logoDesignFile}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    download={logoDesignName}
+                                    download={logoDesignName || "Logo Design"}
                                     onClick={(e) => e.stopPropagation()}
-                                    title={logoDesignName}
+                                    title={logoDesignName || "Logo Design"}
                                     style={{
                                       display: "inline-flex",
                                       alignItems: "center",
@@ -1639,8 +1851,26 @@ export default function Approvals({ defaultTab = "all" }) {
                                     }}
                                   >
                                     <Paperclip size={11} style={{ flexShrink: 0 }} />
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{logoDesignName}</span>
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{logoDesignName || "Logo Design"}</span>
                                   </a>
+                                ) : logoDesignName ? (
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      color: "#2563eb",
+                                      fontSize: "12px",
+                                      maxWidth: "130px",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                    title={logoDesignName}
+                                  >
+                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{logoDesignName}</span>
+                                  </span>
                                 ) : (
                                   <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>No file</span>
                                 )}
@@ -1650,9 +1880,9 @@ export default function Approvals({ defaultTab = "all" }) {
                                     href={digitalDesignFile}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    download={digitalDesignName}
+                                    download={digitalDesignName || "Digital Design"}
                                     onClick={(e) => e.stopPropagation()}
-                                    title={digitalDesignName}
+                                    title={digitalDesignName || "Digital Design"}
                                     style={{
                                       display: "inline-flex",
                                       alignItems: "center",
@@ -1667,8 +1897,26 @@ export default function Approvals({ defaultTab = "all" }) {
                                     }}
                                   >
                                     <Paperclip size={11} style={{ flexShrink: 0 }} />
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{digitalDesignName}</span>
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{digitalDesignName || "Digital Design"}</span>
                                   </a>
+                                ) : digitalDesignName ? (
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      color: "#2563eb",
+                                      fontSize: "12px",
+                                      maxWidth: "130px",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                    title={digitalDesignName}
+                                  >
+                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{digitalDesignName}</span>
+                                  </span>
                                 ) : (
                                   <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>No file</span>
                                 )}
@@ -1710,6 +1958,7 @@ export default function Approvals({ defaultTab = "all" }) {
                                 {st}
                               </span>
                             </td>
+                            {renderExtraCells(order)}
                             <td style={{ textAlign: "right" }}>
                               <div className="task-action-btn-group">
                                 <button
@@ -1816,6 +2065,7 @@ export default function Approvals({ defaultTab = "all" }) {
                                 {stockStatus}
                               </span>
                             </td>
+                            {renderExtraCells(order)}
                             <td style={{ textAlign: "right" }}>
                               <button
                                 type="button"
@@ -1904,6 +2154,7 @@ export default function Approvals({ defaultTab = "all" }) {
                                 {prodStatus}
                               </span>
                             </td>
+                            {renderExtraCells(order)}
                             <td style={{ textAlign: "right" }}>
                               <button
                                 type="button"
@@ -1988,6 +2239,7 @@ export default function Approvals({ defaultTab = "all" }) {
                               {st}
                             </span>
                           </td>
+                          {renderExtraCells(order)}
                           <td style={{ textAlign: "right" }}>
                             <button
                               type="button"
@@ -2029,10 +2281,14 @@ export default function Approvals({ defaultTab = "all" }) {
                       Approved
                     </span>
                   )}
-                  {roleView === "stock" && (selectedOrder.stockApproval?.status === "Approved" || selectedOrder.stockTaskStage === "completed") && (
+                  {roleView === "stock" && (
+                    currentTaskTab === "ready-to-pick"
+                      ? (selectedOrder.stockTaskStage === "staging_room" || selectedOrder.stockTaskStage === "completed" || selectedOrder.stockApproval?.status === "Approved")
+                      : (selectedOrder.stockApproval?.status === "Approved" || selectedOrder.stockTaskStage === "completed")
+                  ) && (
                     <span className="status-pill approved" style={{ padding: "6px 14px", fontSize: "13px" }}>
                       <span className="status-dot"></span>
-                      Approved
+                      Submitted
                     </span>
                   )}
                   {((roleView === "stock" || roleView === "production") && currentTaskTab === "all") ? (
@@ -3787,6 +4043,644 @@ export default function Approvals({ defaultTab = "all" }) {
               </div>
             </div>
           )}
+
+          {/* ACTIVITY LOG SECTION (Department Log, Application Log, Inventory Log) */}
+          {selectedOrder && (() => {
+            const leadAppr = selectedOrder.leadApproval?.status
+              ? selectedOrder.leadApproval
+              : {
+                  status: selectedOrder.approvalStatus === "Referred Back" ? "Referred Back" : (selectedOrder.approvalStatus || "Pending"),
+                  note: "",
+                  author: "Sarah Jenkins",
+                };
+            const stockAppr = selectedOrder.stockApproval?.status
+              ? selectedOrder.stockApproval
+              : { status: "Pending", note: "", author: "Elena Rostova" };
+            const prodAppr = selectedOrder.productionApproval?.status
+              ? selectedOrder.productionApproval
+              : { status: "Pending", note: "", author: "Marcus Vance" };
+
+            return (
+              <div
+                style={{
+                  marginTop: "20px",
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "12px",
+                  padding: "16px 20px",
+                  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.05)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-start",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "18px",
+                    paddingBottom: "12px",
+                    borderBottom: "1px solid #e2e8f0",
+                    marginBottom: "14px",
+                  }}
+                >
+                  <div style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
+                    Activity Log
+                  </div>
+
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      background: "#f1f5f9",
+                      padding: "3px",
+                      borderRadius: "8px",
+                      gap: "4px",
+                      border: "1px solid #e2e8f0",
+                    }}
+                  >
+                    {[
+                      { key: "department", label: "Department Log" },
+                      { key: "application", label: "Application Log" },
+                      { key: "inventory", label: "Inventory Log" },
+                    ].map((tab) => {
+                      const isActive = activeActivityTab === tab.key;
+                      return (
+                        <button
+                          key={tab.key}
+                          type="button"
+                          onClick={() => setActiveActivityTab(tab.key)}
+                          style={{
+                            border: "none",
+                            background: isActive ? "#ffffff" : "transparent",
+                            color: isActive ? "#2563eb" : "#475569",
+                            fontWeight: isActive ? 700 : 600,
+                            fontSize: "12.5px",
+                            padding: "6px 14px",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            boxShadow: isActive ? "0 1px 2px rgba(15, 23, 42, 0.08)" : "none",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* MINI TAB 1: DEPARTMENT LOG */}
+                {activeActivityTab === "department" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {[
+                      {
+                        title: "Task 0 - Lead Manager Clearance",
+                        sub: `${leadAppr.author || "Sarah Jenkins"} (Lead Manager)`,
+                        status: leadAppr.status || "Pending",
+                        noteLabel: "Lead Manager Notes",
+                        note: leadAppr.note,
+                        defaultNote: leadAppr.status === "Approved" ? "Approved by Lead Manager" : "Awaiting Review",
+                      },
+                      {
+                        title: "Task 1 - Stock Room",
+                        sub: "Elena Rostova (Stock Room Manager)",
+                        status: stockAppr.status || "Pending",
+                        noteLabel: "Stock Room Notes",
+                        note: stockAppr.note,
+                        defaultNote: stockAppr.status === "Approved" ? "Approved by Stock Room" : "Awaiting Review",
+                      },
+                      {
+                        title: "Task 2 - Production Room",
+                        sub: "Marcus Vance (Production Lead)",
+                        status: prodAppr.status || "Pending",
+                        noteLabel: "Production Notes",
+                        note: prodAppr.note,
+                        defaultNote: prodAppr.status === "Approved" ? "Approved by Production" : "Awaiting Review",
+                      },
+                    ].map((t, tIdx) => {
+                      const pillBg = t.status === "Approved" ? "#d1fae5" : t.status === "Referred Back" ? "#fee2e2" : "#fef3c7";
+                      const pillColor = t.status === "Approved" ? "#065f46" : t.status === "Referred Back" ? "#b91c1c" : "#b45309";
+                      return (
+                        <div
+                          key={tIdx}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1.2fr 150px 1.4fr",
+                            alignItems: "center",
+                            background: "#ffffff",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "9px",
+                            padding: "10px 16px",
+                            boxShadow: "0 1px 2px rgba(0, 0, 0, 0.03)",
+                          }}
+                        >
+                          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#0f172a", lineHeight: 1.25 }}>{t.title}</div>
+                            <div style={{ fontSize: "11.5px", color: "#64748b", lineHeight: 1.2 }}>{t.sub}</div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
+                            <span style={{ fontSize: "10.5px", fontWeight: 600, color: "#64748b", lineHeight: 1.1 }}>Status</span>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: "3px 12px",
+                                borderRadius: "20px",
+                                fontSize: "11.5px",
+                                fontWeight: 700,
+                                minWidth: "88px",
+                                background: pillBg,
+                                color: pillColor,
+                              }}
+                            >
+                              {t.status}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", textAlign: "right", gap: "2px" }}>
+                            <span style={{ fontSize: "10.5px", fontWeight: 600, color: "#64748b", lineHeight: 1.1 }}>{t.noteLabel}</span>
+                            {t.note ? (
+                              <div style={{ fontSize: "12px", fontWeight: 600, color: t.status === "Referred Back" ? "#dc2626" : "#0f172a", lineHeight: 1.25 }}>
+                                {t.note}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: "11.5px", color: "#94a3b8", fontStyle: "italic", lineHeight: 1.2 }}>{t.defaultNote}</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* MINI TAB 2: APPLICATION LOG */}
+                {activeActivityTab === "application" && (() => {
+                  const d = selectedOrder || {};
+                  const rawLogs = Array.isArray(d.activityLogs) ? d.activityLogs : [];
+                  const combinedLogs = [];
+
+                  const normStage = (d.orderStage || "sample").toLowerCase().trim();
+                  const normSub = (d.subStage || "order").toLowerCase().trim().replace(/\s+/g, "-");
+                  const isOrd = (d.query || "order").toLowerCase().trim() === "order";
+                  const sampleSubOrder = ["order", "dtf-pending", "stock", "printing", "ready-to-pick-up", "staging-ground", "customer-approval-awaiting"];
+                  const curSampleIdx = normStage === "sample" ? (normSub === "staging-room" ? 5 : sampleSubOrder.indexOf(normSub)) : sampleSubOrder.length;
+
+                  const hasLogMatching = (regex) =>
+                    rawLogs.some((l) => regex.test(`${l.action || ""} ${l.stage || ""} ${l.details || ""}`));
+
+                  // 1. Creation Log
+                  if (!hasLogMatching(/created/i)) {
+                    const initChanges = [];
+                    if (d.orderId) initChanges.push(`Order ID: ${d.orderId}`);
+                    if (d.employeeName) initChanges.push(`Employee Name: ${d.employeeName}`);
+                    if (d.companyName) initChanges.push(`Company Name: ${d.companyName}`);
+                    if (d.clientName) initChanges.push(`Client Name: ${d.clientName}`);
+                    if (d.phoneNumber) initChanges.push(`Phone Number: ${d.phoneNumber}`);
+                    if (d.totalQuantity) initChanges.push(`Total Quantity: ${d.totalQuantity} pcs`);
+                    if (d.totalAmount) initChanges.push(`Total Amount: ₹${d.totalAmount}`);
+                    if (d.netAmount) initChanges.push(`Net Amount: ₹${d.netAmount}`);
+                    if (Array.isArray(d.items) && d.items.length > 0) {
+                      d.items.forEach((it, idx) => {
+                        const name = it.item || it.enterItem || it.itemType || "Item";
+                        initChanges.push(
+                          `Item #${idx + 1} (${name}): Printing: ${it.printingType || "-"}, Fabric: ${it.fabric || "-"}, Qty: ${it.quantity || 0} pcs, Size: ${it.size || "-"}, Color: ${it.color || "-"}`
+                        );
+                      });
+                    }
+                    combinedLogs.push({
+                      action: "Order Created & Submitted",
+                      stage: "Sample → Order",
+                      performedBy: d.employeeName || "Sales Executive",
+                      role: "Sales Executive",
+                      details: `Application (${d.orderId || "Order"}) created and submitted by ${d.employeeName || "Sales Executive"}. Sent to Sample → Order for Lead Manager Clearance.`,
+                      changes: initChanges,
+                      timestamp: d.createdAt,
+                    });
+                  }
+
+                  // 2. Task 0 - Lead Manager Clearance & Move to DTF Pending
+                  const leadManagerApproved =
+                    d.leadApproval?.status === "Approved" ||
+                    curSampleIdx >= 1 ||
+                    normStage === "partial" ||
+                    normStage === "complete" ||
+                    (Array.isArray(d.approvalComments) && d.approvalComments.some((c) => /lead manager/i.test(c.role || "") && c.status === "Approved"));
+
+                  if (isOrd && leadManagerApproved && !hasLogMatching(/Task 0|Lead Manager Approved/i)) {
+                    const lmComment = Array.isArray(d.approvalComments)
+                      ? d.approvalComments.find((c) => /lead manager/i.test(c.role || "") && c.status === "Approved")
+                      : null;
+                    const lmAuthor = d.leadApproval?.author || lmComment?.author || "Sarah Jenkins";
+                    const lmNote = d.leadApproval?.note || lmComment?.comment || "Approved by Lead Manager";
+                    combinedLogs.push({
+                      action: "Task 0 - Approved by Lead Manager (Moved to DTF Pending)",
+                      stage: "Sample → DTF Pending",
+                      performedBy: lmAuthor,
+                      role: "Lead Manager",
+                      details: `Task 0 (Lead Manager Clearance) approved by ${lmAuthor} (Lead Manager). Application moved from Sample → Order to Sample → DTF Pending, and assigned to Stock Room Manager (Elena Rostova) & Production Room (Marcus Vance).`,
+                      changes: [
+                        "From Stage: Sample → Order",
+                        "To Stage: Sample → DTF Pending",
+                        "Task 0 (Lead Manager Clearance): Approved",
+                        "Assigned Task 1: Stock Room Clearance (Elena Rostova — Verification)",
+                        "Assigned Task 2: Production Room Clearance (Marcus Vance — Logo Printing)",
+                        ...(lmNote ? [`Lead Manager Note: "${lmNote}"`] : []),
+                      ],
+                      timestamp: d.leadApproval?.updatedAt || lmComment?.createdAt || d.createdAt,
+                    });
+                  }
+
+                  // 3. Stock Room Manager Flow (Verification -> Ready to Pick -> Staging Room -> Task 1 Approved)
+                  const stStage = (d.stockTaskStage || "").toLowerCase();
+                  const stData = d.stockTaskData || {};
+                  const isStockVerified =
+                    stData.verificationSubmitted ||
+                    ["ready_to_pick", "staging_room", "completed"].includes(stStage) ||
+                    d.stockApproval?.status === "Approved";
+                  const isStockReadyToPickDone =
+                    stData.readyToPickSubmitted ||
+                    ["staging_room", "completed"].includes(stStage) ||
+                    d.stockApproval?.status === "Approved";
+                  const isStockApproved =
+                    stStage === "completed" || d.stockApproval?.status === "Approved";
+
+                  if (isOrd && isStockVerified && !hasLogMatching(/Stock Task - Verification|Verification Submitted|Verification Completed/i)) {
+                    const sampleQty = stData.sampleDeduction !== undefined ? stData.sampleDeduction : 1;
+                    const stockChanges = [
+                      "From: Sample → DTF Pending / Task 1 Stock Room (Verification)",
+                      "To: Stock Room → Ready to Pick",
+                      `Stock Availability Verified: ${stData.isStockAvailable === false ? "Partial / Deficit Noted" : "Yes (In Stock)"}`,
+                      `Sample Quantity Allocated: ${sampleQty} pcs`,
+                    ];
+                    if (stData.stockDepreciation) {
+                      stockChanges.push(`Remaining Stock After Sample Deduction: ${stData.stockDepreciation}`);
+                    }
+                    combinedLogs.push({
+                      action: "Stock Room Manager - Verification Completed (Moved to Ready to Pick)",
+                      stage: "Stock Room → Ready to Pick",
+                      performedBy: d.stockApproval?.author || "Elena Rostova",
+                      role: "Stock Room Manager",
+                      details: `Stock Room inventory verification completed by ${d.stockApproval?.author || "Elena Rostova"} (Stock Room Manager). Application moved from Stock Verification to Ready to Pick.`,
+                      changes: stockChanges,
+                      timestamp: stData.verifiedAt || d.stockApproval?.updatedAt || d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  if (isOrd && isStockReadyToPickDone && !hasLogMatching(/Stock Task - Ready To Pick|Ready to Pick Submitted|Ready to Pick Completed/i)) {
+                    combinedLogs.push({
+                      action: "Stock Room Manager - Ready to Pick Completed (Moved to Staging Room)",
+                      stage: "Stock Room → Staging Room",
+                      performedBy: d.stockApproval?.author || "Elena Rostova",
+                      role: "Stock Room Manager",
+                      details: `Sample items picked and verified in Ready to Pick by ${d.stockApproval?.author || "Elena Rostova"} (Stock Room Manager). Application moved from Ready to Pick to Staging Room.`,
+                      changes: [
+                        "From: Stock Room → Ready to Pick",
+                        "To: Stock Room → Staging Room",
+                        `Sample Received in Ready to Pick: ${stData.readyToPickReceived === false ? "No" : "Yes"}`,
+                      ],
+                      timestamp: stData.readyToPickAt || d.stockApproval?.updatedAt || d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  if (isOrd && isStockApproved && !hasLogMatching(/Task 1 - Stock Room Approved/i)) {
+                    const stAuthor = d.stockApproval?.author || "Elena Rostova";
+                    const stNote = d.stockApproval?.note || "Approved by Stock Room";
+                    combinedLogs.push({
+                      action: "Task 1 - Stock Room Clearance Approved",
+                      stage: "Stock Room → Approved",
+                      performedBy: stAuthor,
+                      role: "Stock Room Manager",
+                      details: `Staging Room verification completed and Task 1 (Stock Room Clearance) approved by ${stAuthor} (Stock Room Manager). Stock items released to Sample → Stock / Printing.`,
+                      changes: [
+                        "From: Stock Room → Staging Room",
+                        "To: Task 1 Stock Room Clearance Approved (Released to Sample → Stock / Printing)",
+                        "Task 1 Status: Approved",
+                        `Sample Quantity Released: ${stData.sampleDeduction !== undefined ? stData.sampleDeduction : 1} pcs`,
+                        ...(stNote ? [`Stock Room Note: "${stNote}"`] : []),
+                      ],
+                      timestamp: stData.stagingApprovedAt || d.stockApproval?.updatedAt || d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  // 4. Production Room Flow (Logo Printing -> Logo Cutting -> Task 2 Approved)
+                  const prStage = (d.productionTaskStage || "").toLowerCase();
+                  const prData = d.productionTaskData || {};
+                  const isLogoPrintingDone =
+                    prData.printingSubmitted ||
+                    ["logo_cutting", "completed"].includes(prStage) ||
+                    d.productionApproval?.status === "Approved";
+                  const isProdApproved =
+                    prStage === "completed" || d.productionApproval?.status === "Approved";
+
+                  if (isOrd && isLogoPrintingDone && !hasLogMatching(/Logo Printing Submitted|Logo Printing Completed/i)) {
+                    const prChanges = [
+                      "From: Sample → DTF Pending / Task 2 Production Room (Logo Printing)",
+                      "To: Production Room → Logo Cutting",
+                    ];
+                    if (prData.logosPrinted !== undefined && prData.logosPrinted !== "") {
+                      prChanges.push(`Logos Printed: ${prData.logosPrinted} pcs`);
+                    }
+                    if (prData.logosGivenForCutting !== undefined && prData.logosGivenForCutting !== "") {
+                      prChanges.push(`Logos Given for Cutting: ${prData.logosGivenForCutting} pcs`);
+                    }
+                    combinedLogs.push({
+                      action: "Production Room - Logo Printing Completed (Moved to Logo Cutting)",
+                      stage: "Production Room → Logo Cutting",
+                      performedBy: d.productionApproval?.author || "Marcus Vance",
+                      role: "Production Lead",
+                      details: `DTF / Logo Printing completed in Production Room by ${d.productionApproval?.author || "Marcus Vance"} (Production Lead). Application moved from Logo Printing to Logo Cutting.`,
+                      changes: prChanges,
+                      timestamp: d.productionApproval?.updatedAt || d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  if (isOrd && isProdApproved && !hasLogMatching(/Task 2 - Production Approved|Task 2 - Production Room Approved/i)) {
+                    const prAuthor = d.productionApproval?.author || "Marcus Vance";
+                    const prNote = d.productionApproval?.note || "Approved by Production Lead";
+                    const prApproveChanges = [
+                      "From: Production Room → Logo Cutting",
+                      "To: Task 2 Production Room Clearance Approved (Released to Sample → Stock / Printing)",
+                      "Task 2 Status: Approved",
+                    ];
+                    if (prData.logosForPrinting !== undefined && prData.logosForPrinting !== "") {
+                      prApproveChanges.push(`Logos for Printing: ${prData.logosForPrinting} pcs`);
+                    }
+                    if (prData.sampleLogosCount !== undefined && prData.sampleLogosCount !== "") {
+                      prApproveChanges.push(`Sample Logos Released: ${prData.sampleLogosCount} pcs`);
+                    }
+                    if (prNote) {
+                      prApproveChanges.push(`Production Note: "${prNote}"`);
+                    }
+                    combinedLogs.push({
+                      action: "Task 2 - Production Room Clearance Approved",
+                      stage: "Production Room → Approved",
+                      performedBy: prAuthor,
+                      role: "Production Lead",
+                      details: `Logo Cutting completed and Task 2 (Production Room Clearance) approved by ${prAuthor} (Production Lead). DTF / Logo samples released to Sample → Stock / Printing.`,
+                      changes: prApproveChanges,
+                      timestamp: d.productionApproval?.updatedAt || d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  // 5. How Application Came to Sample -> Stock
+                  if (isOrd && curSampleIdx >= 2 && !hasLogMatching(/Moved from DTF Pending to Sample → Stock|Moved to Sample → Stock/i)) {
+                    combinedLogs.push({
+                      action: "Moved to Sample → Stock (From DTF Pending & Department Clearance)",
+                      stage: "Sample → Stock",
+                      performedBy: d.employeeName || "Sales / Operations",
+                      role: "Order Workflow",
+                      details: `Application moved from Sample → DTF Pending (and Stock Room / Production Room processing) to Sample → Stock for physical inventory & stock allocation verification.`,
+                      changes: [
+                        "From Stage: Sample → DTF Pending (after Task 0 Lead Manager Clearance)",
+                        "To Stage: Sample → Stock",
+                        "DTF Film Preparation: Prepared, printed, and verified in DTF Pending",
+                        `Stock Room Status (Task 1 - Elena Rostova): ${d.stockApproval?.status || (isStockVerified ? "In Progress" : "Pending")}`,
+                        `Production Room Status (Task 2 - Marcus Vance): ${d.productionApproval?.status || (isLogoPrintingDone ? "In Progress" : "Pending")}`,
+                      ],
+                      timestamp: d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  // 6. How Application Came to Sample -> Printing
+                  if (isOrd && curSampleIdx >= 3 && !hasLogMatching(/Moved to Printing|Moved from Stock to Sample → Printing|Moved to Sample → Printing/i)) {
+                    combinedLogs.push({
+                      action: "Moved to Sample → Printing (From Sample → Stock & Department Clearances)",
+                      stage: "Sample → Printing",
+                      performedBy:
+                        d.stockApproval?.author && d.productionApproval?.author
+                          ? `${d.stockApproval.author} & ${d.productionApproval.author}`
+                          : d.employeeName || "Operations",
+                      role: "Stock & Production Clearance",
+                      details: `Application moved to Sample → Printing after Sample → Stock verification and both Task 1 (Stock Room Manager - Elena Rostova) & Task 2 (Production Lead - Marcus Vance) clearances were approved.`,
+                      changes: [
+                        "From Stage: Sample → Stock (with Stock Room & Production Room Clearances Approved)",
+                        "To Stage: Sample → Printing",
+                        "Stock Allocation: Verified and allocated for Printing stage",
+                        `Stock Sample Released (Elena Rostova): ${stData.sampleDeduction !== undefined ? stData.sampleDeduction : 1} pcs`,
+                        `Production Logo Sample Released (Marcus Vance): ${prData.sampleLogosCount !== undefined ? prData.sampleLogosCount : 1} pcs`,
+                      ],
+                      timestamp: d.productionApproval?.updatedAt || d.stockApproval?.updatedAt || d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  // 7. How Application Came to Sample -> Ready to Pick Up
+                  if (isOrd && curSampleIdx >= 4 && !hasLogMatching(/Moved from Printing to Sample → Ready To Pick Up|Moved to Sample → Ready to Pick Up/i)) {
+                    const pData = d.printingStageData || {};
+                    combinedLogs.push({
+                      action: "Moved to Sample → Ready to Pick Up (From Sample → Printing)",
+                      stage: "Sample → Ready to Pick Up",
+                      performedBy: d.employeeName || "Printing Operator",
+                      role: "Printing Stage",
+                      details: `Sample Printing completed and verified. Application moved from Sample → Printing to Sample → Ready to Pick Up.`,
+                      changes: [
+                        "From Stage: Sample → Printing",
+                        "To Stage: Sample → Ready to Pick Up",
+                        `Stock Sample Received in Printing: ${pData.stockSampleReceived === "no" ? "No" : "Yes"}`,
+                        `Production Logo Received in Printing: ${pData.prodSampleReceived === "no" ? "No" : "Yes"}`,
+                        `Printed Count: ${pData.printedCount ?? 1} pcs`,
+                        `Ready to Pick Up Count: ${pData.readyToPickupCount ?? 1} pcs`,
+                      ],
+                      timestamp: d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  // 8. How Application Came to Sample -> Staging Ground
+                  if (isOrd && curSampleIdx >= 5 && !hasLogMatching(/Moved from Ready To Pick Up to Sample → Staging Ground|Moved to Sample → Staging Ground/i)) {
+                    const rtpData = d.sampleReadyToPickUpData || {};
+                    combinedLogs.push({
+                      action: "Moved to Sample → Staging Ground (From Sample → Ready to Pick Up)",
+                      stage: "Sample → Staging Ground",
+                      performedBy: d.employeeName || "Staging Operator",
+                      role: "Ready to Pick Up Stage",
+                      details: `Sample received from Printing in Ready to Pick Up and verified against client specifications. Application moved from Sample → Ready to Pick Up to Sample → Staging Ground.`,
+                      changes: [
+                        "From Stage: Sample → Ready to Pick Up",
+                        "To Stage: Sample → Staging Ground",
+                        "Sample Received from Printing: Yes",
+                        `Final Samples for Staging Room: ${rtpData.stagingCount ?? rtpData.readyToPickupCount ?? 1} pcs`,
+                      ],
+                      timestamp: d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  // 9. How Application Came to Sample -> Customer Approval Awaiting
+                  if (isOrd && curSampleIdx >= 6 && !hasLogMatching(/Moved from Staging Ground to Sample → Customer Approval Awaiting|Moved to Sample → Customer Approval Awaiting/i)) {
+                    const sgData = d.sampleStagingGroundData || {};
+                    combinedLogs.push({
+                      action: "Moved to Sample → Customer Approval Awaiting (From Sample → Staging Ground)",
+                      stage: "Sample → Customer Approval Awaiting",
+                      performedBy: d.employeeName || "Staging Operator",
+                      role: "Staging Ground Stage",
+                      details: `Sample verified in Staging Ground${sgData.rackNo ? ` (Rack No: ${sgData.rackNo})` : ""}. Application moved from Sample → Staging Ground to Sample → Customer Approval Awaiting.`,
+                      changes: [
+                        "From Stage: Sample → Staging Ground",
+                        "To Stage: Sample → Customer Approval Awaiting",
+                        "Items Received from Ready to Pick: Yes",
+                        ...(sgData.rackNo ? [`Staged on Rack No.: ${sgData.rackNo}`] : []),
+                      ],
+                      timestamp: d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  // 10. Transition to Partial / Complete
+                  if (isOrd && (normStage === "partial" || normStage === "complete") && !hasLogMatching(/Partial →/i)) {
+                    const caData = d.customerApprovalData || {};
+                    combinedLogs.push({
+                      action: "Customer Sample Approved — Moved to Partial Stage",
+                      stage: "Partial → Order",
+                      performedBy: d.employeeName || "Sales Executive",
+                      role: "Sales Executive",
+                      details: `Customer approved the sample in Sample → Customer Approval Awaiting. Application advanced from Sample stage to Partial → Order.`,
+                      changes: [
+                        "From Stage: Sample → Customer Approval Awaiting",
+                        "To Stage: Partial → Order",
+                        "Customer Approved Sample: Yes",
+                        ...(caData.paymentStatus ? [`Payment Status: ${String(caData.paymentStatus).replace(/_/g, " ")}`] : []),
+                        ...(caData.amountReceived !== undefined ? [`Amount Received: ₹${caData.amountReceived}`] : []),
+                      ],
+                      timestamp: d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  if (isOrd && normStage === "complete" && !hasLogMatching(/Complete →/i)) {
+                    combinedLogs.push({
+                      action: "Partial Payment Confirmed — Moved to Complete Stage",
+                      stage: "Complete → Order",
+                      performedBy: d.employeeName || "Sales Executive",
+                      role: "Sales Executive",
+                      details: `Partial stage payment confirmation completed. Application advanced from Partial → Payment Confirmation to Complete → Order.`,
+                      changes: [
+                        "From Stage: Partial → Payment Confirmation",
+                        "To Stage: Complete → Order",
+                      ],
+                      timestamp: d.updatedAt || d.createdAt,
+                    });
+                  }
+
+                  // 11. Include any approvalComments not already covered
+                  if (Array.isArray(d.approvalComments) && d.approvalComments.length > 0) {
+                    d.approvalComments.forEach((c) => {
+                      const commentText = (c.comment || "").trim();
+                      const isAlreadyCovered =
+                        combinedLogs.some((l) => (l.changes || []).some((ch) => commentText && ch.includes(commentText))) ||
+                        rawLogs.some((l) => (l.changes || []).some((ch) => commentText && ch.includes(commentText))) ||
+                        (/lead manager/i.test(c.role || "") && c.status === "Approved") ||
+                        (/stock/i.test(c.role || "") && c.status === "Approved" && isStockApproved) ||
+                        (/production/i.test(c.role || "") && c.status === "Approved" && isProdApproved);
+
+                      if (!isAlreadyCovered) {
+                        combinedLogs.push({
+                          action: `${c.role || "Department"} - ${c.status || "Update"}`,
+                          stage: d.orderStage ? `${d.orderStage.toUpperCase()} → ${(d.subStage || "order").replace(/-/g, " ").toUpperCase()}` : "Sample → Order",
+                          performedBy: c.author || "Manager",
+                          role: c.role || "Manager",
+                          details: c.comment || `Application ${c.status || "updated"} by ${c.author || "Manager"}.`,
+                          changes: c.comment ? [`Note: "${c.comment}"`] : [],
+                          timestamp: c.createdAt || d.updatedAt || d.createdAt,
+                        });
+                      }
+                    });
+                  }
+
+                  // 12. Append all recorded activityLogs
+                  rawLogs.forEach((l) => combinedLogs.push(l));
+
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      {combinedLogs.map((logItem, idx) => {
+                        const timeStr = logItem.timestamp
+                          ? new Date(logItem.timestamp).toLocaleString("en-IN", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                              hour12: true,
+                            })
+                          : "—";
+                        const isReferBack = /refer/i.test(logItem.action || "");
+                        const isEdit = /edit/i.test(logItem.action || "");
+                        const badgeBg = isReferBack ? "#fef2f2" : isEdit ? "#eff6ff" : "#ecfdf5";
+                        const badgeColor = isReferBack ? "#dc2626" : isEdit ? "#2563eb" : "#059669";
+                        const badgeBorder = isReferBack ? "#fecaca" : isEdit ? "#bfdbfe" : "#a7f3d0";
+
+                        return (
+                          <div
+                            key={logItem._id || idx}
+                            style={{
+                              background: "#f8fafc",
+                              border: "1px solid #e2e8f0",
+                              borderLeft: `4px solid ${badgeColor}`,
+                              borderRadius: "10px",
+                              padding: "14px 18px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "8px",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
+                              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                                <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 7px", borderRadius: "5px", background: "#e2e8f0", color: "#334155" }}>
+                                  #{idx + 1}
+                                </span>
+                                <span style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>
+                                  {logItem.action || "Application Activity"}
+                                </span>
+                                {logItem.stage && (
+                                  <span style={{ fontSize: "11.5px", fontWeight: 600, padding: "2px 9px", borderRadius: "999px", background: badgeBg, color: badgeColor, border: `1px solid ${badgeBorder}` }}>
+                                    Stage: {logItem.stage}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                                <span style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>
+                                  By: <strong style={{ color: "#0f172a" }}>{logItem.performedBy || "User"}</strong>
+                                  {logItem.role ? ` (${logItem.role})` : ""}
+                                </span>
+                                <span style={{ fontSize: "11.5px", fontWeight: 600, color: "#64748b", background: "#ffffff", padding: "3px 9px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                  {timeStr}
+                                </span>
+                              </div>
+                            </div>
+                            {logItem.details && (
+                              <div style={{ fontSize: "13px", color: "#334155", lineHeight: 1.45 }}>
+                                {logItem.details}
+                              </div>
+                            )}
+                            {Array.isArray(logItem.changes) && logItem.changes.length > 0 && (
+                              <div style={{ display: "flex", flexDirection: "column", gap: "4px", background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "9px 12px" }}>
+                                <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                                  Process Flow &amp; Captured Changes
+                                </div>
+                                {logItem.changes.map((chg, cIdx) => (
+                                  <div key={cIdx} style={{ fontSize: "12.5px", color: "#1e293b", fontWeight: 500, display: "flex", alignItems: "flex-start", gap: "6px" }}>
+                                    <span style={{ color: "#2563eb", fontWeight: 700 }}>•</span>
+                                    <span>{chg}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* MINI TAB 3: INVENTORY LOG (Kept empty as requested) */}
+                {activeActivityTab === "inventory" && (
+                  <div
+                    style={{
+                      minHeight: "100px",
+                      background: "#f8fafc",
+                      border: "1px dashed #cbd5e1",
+                      borderRadius: "10px",
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

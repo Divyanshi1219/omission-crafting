@@ -62,6 +62,7 @@ function Sidebar() {
   }, [isOrderRoute]);
 
   const [openSubMenus, setOpenSubMenus] = useState({
+    leads: isOrderRoute && activePath.startsWith('/order/leads'),
     sample: isOrderRoute && activePath.startsWith('/order/sample'),
     partial: isOrderRoute && activePath.startsWith('/order/partial'),
     complete: isOrderRoute && activePath.startsWith('/order/complete'),
@@ -70,16 +71,19 @@ function Sidebar() {
   useEffect(() => {
     if (!isOrderRoute) {
       setOpenSubMenus({
+        leads: false,
         sample: false,
         partial: false,
         complete: false,
       });
+    } else if (activePath.startsWith('/order/leads')) {
+      setOpenSubMenus({ leads: true, sample: false, partial: false, complete: false });
     } else if (activePath.startsWith('/order/sample')) {
-      setOpenSubMenus({ sample: true, partial: false, complete: false });
+      setOpenSubMenus({ leads: false, sample: true, partial: false, complete: false });
     } else if (activePath.startsWith('/order/partial')) {
-      setOpenSubMenus({ sample: false, partial: true, complete: false });
+      setOpenSubMenus({ leads: false, sample: false, partial: true, complete: false });
     } else if (activePath.startsWith('/order/complete')) {
-      setOpenSubMenus({ sample: false, partial: false, complete: true });
+      setOpenSubMenus({ leads: false, sample: false, partial: false, complete: true });
     }
   }, [isOrderRoute, activePath]);
 
@@ -91,6 +95,7 @@ function Sidebar() {
   };
 
   const sampleItems = [
+    { name: 'All', path: '/order/sample/all' },
     { name: 'Order', path: '/order/sample/order' },
     { name: 'DTF Pending', path: '/order/sample/dtf-pending' },
     { name: 'Stock', path: '/order/sample/stock' },
@@ -101,6 +106,7 @@ function Sidebar() {
   ];
 
   const partialItems = [
+    { name: 'All', path: '/order/partial/all' },
     { name: 'Order', path: '/order/partial/order' },
     { name: 'DTF Pending', path: '/order/partial/dtf-pending' },
     { name: 'Stock', path: '/order/partial/stock' },
@@ -112,6 +118,7 @@ function Sidebar() {
   ];
 
   const completeItems = [
+    { name: 'All', path: '/order/complete/all' },
     { name: 'Order', path: '/order/complete/order' },
     { name: 'DTF Pending', path: '/order/complete/dtf-pending' },
     { name: 'Stock', path: '/order/complete/stock' },
@@ -185,7 +192,45 @@ function Sidebar() {
                 Create lead
               </NavLink>
 
-              {/* 2. Sample */}
+              {/* 2. All */}
+              <NavLink
+                to="/order/all"
+                className={({ isActive }) =>
+                  `sidebar-submenu-item ${(isActive || (isOrderRoute && activePath === '/order/all')) ? "active" : ""}`
+                }
+              >
+                <span className="submenu-dot"></span>
+                All
+              </NavLink>
+
+              {/* 3. Lead / Leads */}
+              <div className="sidebar-nested-accordion">
+                <div
+                  className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/leads') ? 'active' : ''}`}
+                  onClick={() => toggleSubMenu('leads')}
+                >
+                  <div className="submenu-header-content">
+                    <span className="submenu-dot"></span>
+                    <span>Lead</span>
+                  </div>
+                  {openSubMenus.leads ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </div>
+                {openSubMenus.leads && (
+                  <div className="sidebar-childmenu">
+                    <NavLink
+                      to="/order/leads"
+                      className={({ isActive }) =>
+                        `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === '/order/leads')) ? "active" : ""}`
+                      }
+                    >
+                      <span className="childmenu-dot"></span>
+                      Leads
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Sample */}
               <div className="sidebar-nested-accordion">
                 <div
                   className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/sample') ? 'active' : ''}`}

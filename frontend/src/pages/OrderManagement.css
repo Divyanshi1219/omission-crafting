@@ -265,36 +265,36 @@
 
 .order-task-card {
   display: grid;
-  grid-template-columns: 1.2fr 180px 1.4fr;
+  grid-template-columns: 1.2fr 150px 1.4fr;
   align-items: center;
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 22px 32px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+  padding: 10px 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   transition: all 0.2s ease;
 }
 
 .order-task-card:hover {
   border-color: #cbd5e1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 
 .task-col-left {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .task-title {
-  font-size: 16px;
+  font-size: 13.5px;
   font-weight: 700;
   color: #0f172a;
   letter-spacing: -0.01em;
 }
 
 .task-manager-subtitle {
-  font-size: 12.5px;
+  font-size: 11.5px;
   color: #64748b;
 }
 
@@ -303,11 +303,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 3px;
 }
 
 .task-status-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #64748b;
   letter-spacing: 0.02em;
@@ -317,11 +317,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 5px 22px;
+  padding: 3px 14px;
   border-radius: 20px;
-  font-size: 13px;
+  font-size: 11.5px;
   font-weight: 700;
-  min-width: 110px;
+  min-width: 90px;
   text-align: center;
   letter-spacing: 0.01em;
 }
@@ -346,22 +346,22 @@
   flex-direction: column;
   align-items: flex-end;
   text-align: right;
-  gap: 4px;
+  gap: 2px;
 }
 
 .task-note-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #64748b;
 }
 
 .task-note-content {
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 700;
   color: #0f172a;
   max-width: 420px;
   word-break: break-word;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .task-note-content.referred {
@@ -369,7 +369,7 @@
 }
 
 .task-note-placeholder {
-  font-size: 13.5px;
+  font-size: 12px;
   font-weight: 500;
   color: #94a3b8;
   font-style: italic;

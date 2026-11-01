@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Plus, Trash2, ArrowLeft, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Save } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2, ArrowLeft, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import './OrderManagement.css';
@@ -121,8 +121,29 @@ const getLeadStageInfo = (item, targetStage, targetSubStage) => {
 
   // If viewing Leads tab
   if (normTargetSub === 'leads' || normTargetSub === 'new') {
-    const isLead = itemSub === 'leads' || itemSub === 'new' || item.query === 'lead';
+    const isLead = (item.query || '').toLowerCase().trim() === 'lead';
     return { matches: isLead, status: 'in_progress', isCompleted: false };
+  }
+
+  // If viewing All tab (/order/all or /order/sample/all, /order/partial/all, /order/complete/all)
+  if (normTargetSub === 'all') {
+    const isLead = (item.query || '').toLowerCase().trim() === 'lead';
+    if (!normTargetStage || normTargetStage === 'sample') {
+      if (isLead || itemStage === 'sample') {
+        return { matches: true, status: 'in_progress', isCompleted: false };
+      }
+      return { matches: false, status: 'none', isCompleted: false };
+    }
+    if (isLead) return { matches: false, status: 'none', isCompleted: false };
+    if (itemStage === normTargetStage) {
+      return { matches: true, status: 'in_progress', isCompleted: false };
+    }
+    return { matches: false, status: 'none', isCompleted: false };
+  }
+
+  // Exclude pure leads (query === 'lead') from appearing in order stage views
+  if ((item.query || '').toLowerCase().trim() === 'lead') {
+    return { matches: false, status: 'none', isCompleted: false };
   }
 
   // If no target stage specified, match all
@@ -312,8 +333,10 @@ function OrderManagement() {
     orderId: '',
     logoDesign: '',
     logoDesignName: '',
+    logoDesignFiles: [],
     digitalDesign: '',
     digitalDesignName: '',
+    digitalDesignFiles: [],
     attachment: '',
     attachmentName: '',
     logoName: '',
@@ -330,7 +353,54 @@ function OrderManagement() {
   });
 
   const [leadsList, setLeadsList] = useState([]);
+  const [loadingLeads, setLoadingLeads] = useState(() => location.pathname !== '/order/create-lead');
   const [orderApprovalData, setOrderApprovalData] = useState(null);
+  const [activeActivityTab, setActiveActivityTab] = useState('department');
+  const [tableSearch, setTableSearch] = useState('');
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const columnSettingsRef = useRef(null);
+  const [visibleColumns, setVisibleColumns] = useState({
+    orderId: true,
+    companyName: true,
+    employeeName: true,
+    phoneNumber: true,
+    orderStage: true,
+    subStage: true,
+    stageStatus: true,
+    printingStatus: true,
+    totalQuantity: true,
+    clearanceStatus: true,
+    createdAt: true,
+    action: true,
+    query: false,
+    clientName: false,
+    companyAddress: false,
+    state: false,
+    pincode: false,
+    repeatedOrder: false,
+    additionalNote: false,
+    logoName: false,
+    pricePerPiece: false,
+    totalAmount: false,
+    gst: false,
+    netAmount: false,
+    advanceAmount: false,
+    pendingAmount: false,
+    urgency: false,
+    deliveryDate: false,
+    modeOfDelivery: false,
+    items: false,
+  });
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (columnSettingsRef.current && !columnSettingsRef.current.contains(e.target)) {
+        setShowColumnSettings(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const [stageForm, setStageForm] = useState({
     // Sample
@@ -407,31 +477,68 @@ function OrderManagement() {
   };
 
   const handleFileChange = (field, nameField, e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 8 * 1024 * 1024) {
-      alert('Attachment file size must be under 8MB.');
+    const selectedFiles = Array.from(e.target.files || []);
+    if (!selectedFiles.length) return;
+    const filesKey = `${field}Files`;
+    const existingFiles = Array.isArray(formData[filesKey]) ? formData[filesKey] : [];
+
+    if (existingFiles.length + selectedFiles.length > 5) {
+      alert('You can upload a maximum of 5 files.');
+      if (e.target) e.target.value = '';
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFormData((prev) => ({
-        ...prev,
-        [field]: reader.result,
-        [nameField]: file.name,
-        ...(field === 'logoDesign' ? { attachment: reader.result, attachmentName: file.name } : {}),
-      }));
-    };
-    reader.readAsDataURL(file);
+
+    for (const file of selectedFiles) {
+      if (file.size > 8 * 1024 * 1024) {
+        alert(`File "${file.name}" exceeds the 8MB limit.`);
+        if (e.target) e.target.value = '';
+        return;
+      }
+    }
+
+    Promise.all(
+      selectedFiles.map(
+        (file) =>
+          new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve({ data: reader.result, name: file.name });
+            reader.readAsDataURL(file);
+          })
+      )
+    ).then((loadedFiles) => {
+      setFormData((prev) => {
+        const prevArr = Array.isArray(prev[filesKey]) ? prev[filesKey] : [];
+        const updatedArr = [...prevArr, ...loadedFiles].slice(0, 5);
+        const first = updatedArr[0] || { data: '', name: '' };
+        return {
+          ...prev,
+          [filesKey]: updatedArr,
+          [field]: first.data,
+          [nameField]: first.name,
+          ...(field === 'logoDesign' ? { attachment: first.data, attachmentName: first.name } : {}),
+        };
+      });
+      if (e.target) e.target.value = '';
+    });
   };
 
-  const handleRemoveFile = (field, nameField, ref) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: '',
-      [nameField]: '',
-      ...(field === 'logoDesign' ? { attachment: '', attachmentName: '' } : {}),
-    }));
+  const handleRemoveFile = (field, nameField, ref, indexToRemove) => {
+    const filesKey = `${field}Files`;
+    setFormData((prev) => {
+      const prevArr = Array.isArray(prev[filesKey]) ? prev[filesKey] : [];
+      const updatedArr =
+        typeof indexToRemove === 'number'
+          ? prevArr.filter((_, idx) => idx !== indexToRemove)
+          : [];
+      const first = updatedArr[0] || { data: '', name: '' };
+      return {
+        ...prev,
+        [filesKey]: updatedArr,
+        [field]: first.data,
+        [nameField]: first.name,
+        ...(field === 'logoDesign' ? { attachment: first.data, attachmentName: first.name } : {}),
+      };
+    });
     if (ref?.current) {
       ref.current.value = '';
     }
@@ -458,8 +565,14 @@ function OrderManagement() {
         orderId: d.orderId || '',
         logoDesign: d.logoDesign || d.attachment || '',
         logoDesignName: d.logoDesignName || d.attachmentName || '',
+        logoDesignFiles: Array.isArray(d.logoDesignFiles) && d.logoDesignFiles.length > 0
+          ? d.logoDesignFiles
+          : (d.logoDesign || d.attachment ? [{ data: d.logoDesign || d.attachment, name: d.logoDesignName || d.attachmentName || 'File 1' }] : []),
         digitalDesign: d.digitalDesign || '',
         digitalDesignName: d.digitalDesignName || '',
+        digitalDesignFiles: Array.isArray(d.digitalDesignFiles) && d.digitalDesignFiles.length > 0
+          ? d.digitalDesignFiles
+          : (d.digitalDesign ? [{ data: d.digitalDesign, name: d.digitalDesignName || 'File 1' }] : []),
         attachment: d.attachment || d.logoDesign || '',
         attachmentName: d.attachmentName || d.logoDesignName || '',
         logoName: d.logoName || '',
@@ -477,6 +590,9 @@ function OrderManagement() {
       setOrderStage(d.orderStage || 'sample');
       setSubStage(d.subStage || 'order');
       setItems(d.items || []);
+      const q = (d.query || 'lead').toLowerCase().trim();
+      setQuery(q);
+      setIsSubmitted(q === 'order');
     }
   };
 
@@ -497,13 +613,52 @@ function OrderManagement() {
       return;
     }
 
-    const totalQty = Number(formData.totalQuantity);
-    if (!formData.totalQuantity || isNaN(totalQty) || totalQty <= 0) {
-      alert('Please enter a valid Total Quantity (pcs).');
-      return;
-    }
+    const isLeadQuery = (query || '').toLowerCase().trim() === 'lead';
+    if (!isLeadQuery) {
+      if (
+        !(formData.companyName || '').trim() ||
+        !(formData.clientName || '').trim() ||
+        !(formData.companyAddress || '').trim() ||
+        !(formData.state || '').trim() ||
+        !(formData.pincode || '').trim()
+      ) {
+        alert('Please fill in all mandatory fields: Company Name, Client Name, Company Address, State, and Pincode.');
+        return;
+      }
 
-    if (items.length > 0) {
+      const totalQty = Number(formData.totalQuantity);
+      if (!formData.totalQuantity || isNaN(totalQty) || totalQty <= 0) {
+        alert('Please enter a valid Total Quantity (pcs).');
+        return;
+      }
+
+      if (
+        formData.pricePerPiece === '' ||
+        formData.totalAmount === '' ||
+        formData.netAmount === '' ||
+        formData.advanceAmount === '' ||
+        formData.pendingAmount === '' ||
+        !(formData.urgency || '').trim() ||
+        !(formData.deliveryDate || '').trim()
+      ) {
+        alert('Please fill in all mandatory Order Information fields (Price Per Piece, Total Amount, Net Amount, Advance Amount, Pending Amount, Urgency, and Delivery Date).');
+        return;
+      }
+
+      if (items.length === 0) {
+        alert('Please add at least one item using "Add Item".');
+        return;
+      }
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const itemVal = (it.item || it.enterItem || '').trim();
+        if (!itemVal || !(it.fabric || '').trim() || !it.quantity || Number(it.quantity) <= 0 || !(it.size || '').trim() || !(it.color || '').trim()) {
+          alert(`Please fill in all mandatory fields for Item #${i + 1} (Item, Fabric, Quantity, Size, and Color).`);
+          return;
+        }
+      }
+
       if (itemsTotalQty > totalQty) {
         alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) cannot be greater than Total Quantity (${totalQty} pcs). Sum of items must equal Total Quantity (${totalQty} === ${totalQty}).`);
         return;
@@ -516,27 +671,40 @@ function OrderManagement() {
 
     try {
       const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
+      const wasLeadBefore = (orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order';
       const payload = {
         _id: editId,
         employeeName: currentEmpName,
         createdBy: currentUser?.id || 'sales',
-        query: 'order',
+        performedBy: currentUser?.name || currentEmpName,
+        performedByRole: currentUser?.role || 'Sales Executive',
+        performedById: currentUser?.id || 'sales',
+        logAction: (wasLeadBefore && !isLeadQuery)
+          ? 'Lead Converted to Order & Submitted'
+          : (isLeadQuery ? 'Lead Edited' : 'Order Edited'),
+        query: isLeadQuery ? 'lead' : 'order',
         queryStatus,
-        orderStage: orderStage || 'sample',
-        subStage: subStage || 'order',
+        orderStage: isLeadQuery ? '' : (orderStage || 'sample'),
+        subStage: isLeadQuery ? 'leads' : (subStage || 'order'),
         ...formData,
+        employeeName: currentEmpName,
         orderId: formData.orderId,
         items,
       };
       const res = await api.post('/api/leads', payload);
-      alert('Order updated successfully!');
+      alert(isLeadQuery ? 'Lead updated successfully!' : 'Order updated successfully!');
       if (res.data?.data) {
         setOrderApprovalData(res.data.data);
       }
       setIsEditing(false);
+      if (!isLeadQuery && searchParams.get('from')?.includes('/order/leads')) {
+        const targetStage = orderStage || 'sample';
+        const targetSub = !subStage || subStage === 'new' || subStage === 'leads' ? 'order' : subStage.replace(/\s+/g, '-');
+        navigate(`/order/${targetStage}/${targetSub}`);
+      }
     } catch (err) {
       console.error('Error updating order:', err);
-      alert('Failed to update order: ' + (err.response?.data?.message || err.message));
+      alert('Failed to update: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -857,6 +1025,7 @@ function OrderManagement() {
               setSubStage(d.subStage || 'order');
               setItems(d.items || []);
               setFormData({
+                employeeName: d.employeeName || '',
                 companyName: d.companyName || '',
                 clientName: d.clientName || '',
                 companyAddress: d.companyAddress || '',
@@ -870,8 +1039,14 @@ function OrderManagement() {
                 orderId: d.orderId || '',
                 logoDesign: d.logoDesign || d.attachment || '',
                 logoDesignName: d.logoDesignName || d.attachmentName || '',
+                logoDesignFiles: Array.isArray(d.logoDesignFiles) && d.logoDesignFiles.length > 0
+                  ? d.logoDesignFiles
+                  : (d.logoDesign || d.attachment ? [{ data: d.logoDesign || d.attachment, name: d.logoDesignName || d.attachmentName || 'File 1' }] : []),
                 digitalDesign: d.digitalDesign || '',
                 digitalDesignName: d.digitalDesignName || '',
+                digitalDesignFiles: Array.isArray(d.digitalDesignFiles) && d.digitalDesignFiles.length > 0
+                  ? d.digitalDesignFiles
+                  : (d.digitalDesign ? [{ data: d.digitalDesign, name: d.digitalDesignName || 'File 1' }] : []),
                 attachment: d.attachment || d.logoDesign || '',
                 attachmentName: d.attachmentName || d.logoDesignName || '',
                 logoName: d.logoName || '',
@@ -886,7 +1061,19 @@ function OrderManagement() {
                 urgency: d.urgency || '',
                 modeOfDelivery: d.modeOfDelivery || '',
               });
-              setIsSubmitted(true);
+              setIsSubmitted(q === 'order');
+              if (!d.orderId) {
+                api.get('/api/leads/next-order-id')
+                  .then((idRes) => {
+                    if (idRes.data?.nextOrderId) {
+                      setFormData((prev) => ({
+                        ...prev,
+                        orderId: prev.orderId || idRes.data.nextOrderId,
+                      }));
+                    }
+                  })
+                  .catch(() => {});
+              }
             }
           })
           .catch((err) => console.error('Error loading lead for edit:', err));
@@ -901,6 +1088,7 @@ function OrderManagement() {
         setIsEditing(false);
         setPhoneTouched(false);
         setFormData({
+          employeeName: currentUser?.name || '',
           companyName: '',
           clientName: '',
           companyAddress: '',
@@ -914,8 +1102,10 @@ function OrderManagement() {
           orderId: '',
           logoDesign: '',
           logoDesignName: '',
+          logoDesignFiles: [],
           digitalDesign: '',
           digitalDesignName: '',
+          digitalDesignFiles: [],
           attachment: '',
           attachmentName: '',
           logoName: '',
@@ -930,6 +1120,16 @@ function OrderManagement() {
           urgency: '',
           modeOfDelivery: '',
         });
+        api.get('/api/leads/next-order-id')
+          .then((res) => {
+            if (res.data?.nextOrderId) {
+              setFormData((prev) => ({
+                ...prev,
+                orderId: prev.orderId || res.data.nextOrderId,
+              }));
+            }
+          })
+          .catch(() => {});
       }
     }
   }, [location.pathname, editId]);
@@ -937,13 +1137,15 @@ function OrderManagement() {
   // Fetch leads list for stage and sub-stage table visibility
   useEffect(() => {
     if (location.pathname !== '/order/create-lead') {
+      setLoadingLeads((prev) => (leadsList.length === 0 ? true : prev));
       api.get('/api/leads')
         .then((res) => {
           if (res.data?.data) {
             setLeadsList(res.data.data);
           }
         })
-        .catch((err) => console.error('Error fetching leads:', err));
+        .catch((err) => console.error('Error fetching leads:', err))
+        .finally(() => setLoadingLeads(false));
     }
   }, [location.pathname]);
 
@@ -1122,6 +1324,8 @@ function OrderManagement() {
     const from = searchParams.get('from');
     if (from) {
       navigate(from);
+    } else if ((query || '').toLowerCase().trim() === 'lead') {
+      navigate('/order/leads');
     } else if (isLeadManager) {
       navigate('/approvals');
     } else if (subStage === 'customer-support') {
@@ -1149,15 +1353,21 @@ function OrderManagement() {
     const action = e.nativeEvent?.submitter?.name;
     if (action === 'save') {
       try {
+        const isLeadQuery = (query || 'lead').toLowerCase().trim() === 'lead';
         const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
         const payload = {
           employeeName: currentEmpName,
           createdBy: currentUser?.id || 'sales',
+          performedBy: currentUser?.name || currentEmpName,
+          performedByRole: currentUser?.role || 'Sales Executive',
+          performedById: currentUser?.id || 'sales',
+          logAction: editId ? 'Lead Edited & Saved' : 'Lead Created & Saved',
           query: query || 'lead',
           queryStatus,
-          orderStage,
-          subStage,
+          orderStage: isLeadQuery ? '' : orderStage,
+          subStage: isLeadQuery ? 'leads' : subStage,
           ...formData,
+          employeeName: currentEmpName,
           items,
         };
         if (editId) payload._id = editId;
@@ -1166,17 +1376,58 @@ function OrderManagement() {
         const from = searchParams.get('from');
         if (from) {
           navigate(from);
+        } else if (isLeadQuery) {
+          navigate('/order/leads');
         } else if (orderStage) {
           const target = !subStage || subStage === 'new' || subStage === 'leads' ? 'order' : subStage.replace(/\s+/g, '-');
           navigate(`/order/${orderStage}/${target}`);
         } else {
-          navigate('/order/sample/order');
+          navigate('/order/leads');
         }
       } catch (err) {
         console.error('Error saving lead:', err);
         alert('Failed to save lead: ' + (err.response?.data?.message || err.message));
       }
     } else if (action === 'submit') {
+      const isLeadQuery = (query || 'lead').toLowerCase().trim() === 'lead';
+      if (isLeadQuery) {
+        try {
+          const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
+          const payload = {
+            employeeName: currentEmpName,
+            createdBy: currentUser?.id || 'sales',
+            performedBy: currentUser?.name || currentEmpName,
+            performedByRole: currentUser?.role || 'Sales Executive',
+            performedById: currentUser?.id || 'sales',
+            logAction: editId ? 'Lead Edited & Submitted to Leads' : 'Lead Created & Submitted to Leads',
+            query: 'lead',
+            queryStatus,
+            orderStage: '',
+            subStage: 'leads',
+            ...formData,
+            employeeName: currentEmpName,
+            items,
+          };
+          if (editId) payload._id = editId;
+          await api.post('/api/leads', payload);
+          alert('Lead saved successfully!');
+          navigate('/order/leads');
+        } catch (err) {
+          console.error('Error saving lead:', err);
+          alert('Failed to save lead: ' + (err.response?.data?.message || err.message));
+        }
+        return;
+      }
+      if (
+        !(formData.companyName || '').trim() ||
+        !(formData.clientName || '').trim() ||
+        !(formData.companyAddress || '').trim() ||
+        !(formData.state || '').trim() ||
+        !(formData.pincode || '').trim()
+      ) {
+        alert('Please fill in all mandatory fields: Company Name, Client Name, Company Address, State, and Pincode.');
+        return;
+      }
       setIsSubmitted(true);
       if (!formData.orderId) {
         let maxNumber = 0;
@@ -1222,21 +1473,57 @@ function OrderManagement() {
       return;
     }
 
+    if (
+      !(formData.companyName || '').trim() ||
+      !(formData.clientName || '').trim() ||
+      !(formData.companyAddress || '').trim() ||
+      !(formData.state || '').trim() ||
+      !(formData.pincode || '').trim()
+    ) {
+      alert('Please fill in all mandatory fields: Company Name, Client Name, Company Address, State, and Pincode.');
+      return;
+    }
+
     const totalQty = Number(formData.totalQuantity);
     if (!formData.totalQuantity || isNaN(totalQty) || totalQty <= 0) {
       alert('Please enter a valid Total Quantity (pcs).');
       return;
     }
 
-    if (items.length > 0) {
-      if (itemsTotalQty > totalQty) {
-        alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) cannot be greater than Total Quantity (${totalQty} pcs). Sum of items must equal Total Quantity (${totalQty} === ${totalQty}).`);
+    if (
+      formData.pricePerPiece === '' ||
+      formData.totalAmount === '' ||
+      formData.netAmount === '' ||
+      formData.advanceAmount === '' ||
+      formData.pendingAmount === '' ||
+      !(formData.urgency || '').trim() ||
+      !(formData.deliveryDate || '').trim()
+    ) {
+      alert('Please fill in all mandatory Order Information fields (Price Per Piece, Total Amount, Net Amount, Advance Amount, Pending Amount, Urgency, and Delivery Date).');
+      return;
+    }
+
+    if (items.length === 0) {
+      alert('Please add at least one item using "Add Item".');
+      return;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const itemVal = (it.item || it.enterItem || '').trim();
+      if (!itemVal || !(it.fabric || '').trim() || !it.quantity || Number(it.quantity) <= 0 || !(it.size || '').trim() || !(it.color || '').trim()) {
+        alert(`Please fill in all mandatory fields for Item #${i + 1} (Item, Fabric, Quantity, Size, and Color).`);
         return;
       }
-      if (itemsTotalQty !== totalQty) {
-        alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) must equal Total Quantity (${totalQty} pcs). (${totalQty} === ${itemsTotalQty})`);
-        return;
-      }
+    }
+
+    if (itemsTotalQty > totalQty) {
+      alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) cannot be greater than Total Quantity (${totalQty} pcs). Sum of items must equal Total Quantity (${totalQty} === ${totalQty}).`);
+      return;
+    }
+    if (itemsTotalQty !== totalQty) {
+      alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) must equal Total Quantity (${totalQty} pcs). (${totalQty} === ${itemsTotalQty})`);
+      return;
     }
     try {
       let finalOrderId = formData.orderId;
@@ -1250,11 +1537,16 @@ function OrderManagement() {
       const payload = {
         employeeName: currentEmpName,
         createdBy: currentUser?.id || 'sales',
+        performedBy: currentUser?.name || currentEmpName,
+        performedByRole: currentUser?.role || 'Sales Executive',
+        performedById: currentUser?.id || 'sales',
+        logAction: 'Order Created & Submitted',
         query: 'order',
         queryStatus,
         orderStage: orderStage || 'sample',
         subStage: subStage || 'order',
         ...formData,
+        employeeName: currentEmpName,
         orderId: finalOrderId || formData.orderId,
         items,
         approvalStatus: 'Pending',
@@ -1327,7 +1619,7 @@ function OrderManagement() {
     setItems(items.filter(item => item.id !== id));
   };
 
-  const canSubmit = query === 'order';
+  const canSubmit = Boolean(query);
 
   const handleOpenWorkflowModal = (lead, e) => {
     if (e) e.stopPropagation();
@@ -3766,7 +4058,21 @@ function OrderManagement() {
     }
 
     const info = getLeadStageInfo(item, currentStage, currentSubStage);
-    return info.matches;
+    if (!info.matches) return false;
+
+    if (tableSearch.trim()) {
+      const term = tableSearch.toLowerCase().trim();
+      const oid = (item.orderId || (item._id ? `ORD-${String(item._id).slice(-5)}` : '')).toLowerCase();
+      const comp = (item.companyName || '').toLowerCase();
+      const client = (item.clientName || '').toLowerCase();
+      const emp = (item.employeeName || '').toLowerCase();
+      const phone = (item.phoneNumber || '').toLowerCase();
+      if (!oid.includes(term) && !comp.includes(term) && !client.includes(term) && !emp.includes(term) && !phone.includes(term)) {
+        return false;
+      }
+    }
+
+    return true;
   });
 
   const matchingLeads = allStageLeads;
@@ -3862,7 +4168,7 @@ function OrderManagement() {
               className="back-to-order-btn"
             >
               <ArrowLeft size={18} />
-              <span>{searchParams.get('from')?.includes('/approvals') || isLeadManager ? 'Back to Approvals' : 'Back to Order'}</span>
+              <span>{searchParams.get('from')?.includes('/approvals') || isLeadManager ? 'Back to Approvals' : searchParams.get('from')?.includes('/order/leads') || (query || '').toLowerCase().trim() === 'lead' ? 'Back to Leads' : searchParams.get('from')?.endsWith('/all') ? 'Back to All' : 'Back to Order'}</span>
             </button>
 
             {/* Top Right Action Buttons opposite to Back to Order */}
@@ -4038,7 +4344,7 @@ function OrderManagement() {
                       }}
                     >
                       <Edit2 size={15} />
-                      <span>Edit Order</span>
+                      <span>{(query || '').toLowerCase().trim() === 'lead' ? 'Edit Lead' : 'Edit Order'}</span>
                     </button>
                   ) : (
                     <>
@@ -4097,8 +4403,8 @@ function OrderManagement() {
 
         <div className="dashboard-content">
           {/* Definition Bar & Change Management Process Flow (shown only inside orders) */}
-          {editId && renderDefinitionBar()}
-          {editId && renderChangeManagementBar()}
+          {editId && (query || '').toLowerCase().trim() === 'order' && renderDefinitionBar()}
+          {editId && (query || '').toLowerCase().trim() === 'order' && renderChangeManagementBar()}
 
           {/* Action Success Notification */}
           {actionSuccessMsg && (
@@ -4163,6 +4469,18 @@ function OrderManagement() {
               
               <div className="form-grid">
                 <div className="form-group">
+                  <label>Order ID</label>
+                  <input
+                    type="text"
+                    disabled={isReadOnly}
+                    value={formData.orderId}
+                    onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
+                    placeholder="ORD00001"
+                    style={{ background: 'rgba(0,0,0,0.02)', fontWeight: 600, color: '#1e40af' }}
+                  />
+                </div>
+
+                <div className="form-group">
                   <label>Employee Name</label>
                   <input
                     type="text"
@@ -4194,9 +4512,10 @@ function OrderManagement() {
                 </div> */}
 
                 <div className="form-group">
-                  <label>Company Name</label>
+                  <label>Company Name {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
                   <input
                     type="text"
+                    required={(query || '').toLowerCase().trim() === 'order'}
                     disabled={isReadOnly}
                     value={formData.companyName}
                     onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
@@ -4204,9 +4523,10 @@ function OrderManagement() {
                 </div>
 
                 <div className="form-group">
-                  <label>Client Name</label>
+                  <label>Client Name {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
                   <input
                     type="text"
+                    required={(query || '').toLowerCase().trim() === 'order'}
                     disabled={isReadOnly}
                     value={formData.clientName}
                     onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
@@ -4214,9 +4534,10 @@ function OrderManagement() {
                 </div>
 
                 <div className="form-group">
-                  <label>Company Address</label>
+                  <label>Company Address {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
                   <input
                     type="text"
+                    required={(query || '').toLowerCase().trim() === 'order'}
                     disabled={isReadOnly}
                     value={formData.companyAddress}
                     onChange={(e) => setFormData({ ...formData, companyAddress: e.target.value })}
@@ -4224,9 +4545,10 @@ function OrderManagement() {
                 </div>
 
                 <div className="form-group">
-                  <label>State</label>
+                  <label>State {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
                   <input
                     type="text"
+                    required={(query || '').toLowerCase().trim() === 'order'}
                     disabled={isReadOnly}
                     value={formData.state}
                     onChange={(e) => setFormData({ ...formData, state: e.target.value })}
@@ -4234,9 +4556,10 @@ function OrderManagement() {
                 </div>
 
                 <div className="form-group">
-                  <label>Pincode</label>
+                  <label>Pincode {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
                   <input
                     type="text"
+                    required={(query || '').toLowerCase().trim() === 'order'}
                     disabled={isReadOnly}
                     value={formData.pincode}
                     onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
@@ -4331,7 +4654,7 @@ function OrderManagement() {
                 ></textarea>
               </div>
               
-              {!isSubmitted && !editId && !isLeadManager && (
+              {!isSubmitted && !isLeadManager && (!editId || (!isReadOnly && (orderApprovalData?.query || 'lead').toLowerCase().trim() === 'lead')) && (
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '32px' }}>
                   <button type="submit" name="save" className="btn-secondary" style={{ padding: '10px 24px' }}>
                     Save
@@ -4341,7 +4664,6 @@ function OrderManagement() {
                     name="submit" 
                     className="btn-primary" 
                     disabled={!canSubmit} 
-                    title={!canSubmit ? "Only available if Query is 'Order'" : ""}
                     style={{ padding: '10px 24px', opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
                   >
                     Submit
@@ -4351,145 +4673,136 @@ function OrderManagement() {
             </div>
 
             {/* MORE INFORMATION FORM */}
-            {(isSubmitted || !!editId) && (
+            {isSubmitted && (query || '').toLowerCase().trim() === 'order' && (
               <div className="form-section" style={{ marginTop: '24px' }}>
                 <div className="form-section-title">Order Information</div>
                 
                 <div className="form-grid">
                   <div className="form-group">
-                    <label>Order ID</label>
+                    <label>Order Stage *</label>
                     <input
                       type="text"
-                      disabled={isReadOnly}
-                      value={formData.orderId}
-                      onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
-                      placeholder="ORD00001"
-                      style={{ background: 'rgba(0,0,0,0.02)', fontWeight: 600, color: '#1e40af' }}
+                      readOnly
+                      disabled
+                      value={(orderStage || 'sample').replace(/-/g, ' ')}
+                      style={{
+                        background: 'rgba(0,0,0,0.03)',
+                        color: '#334155',
+                        fontWeight: 600,
+                        textTransform: 'capitalize',
+                        cursor: 'not-allowed',
+                      }}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Order Stage *</label>
-                    <select 
-                      required 
-                      disabled={isReadOnly}
-                      value={orderStage || 'sample'} 
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setOrderStage(val);
-                        if (val === 'sample') {
-                          setSubStage('order');
-                        } else if (val && SUB_STAGES_BY_ORDER_STAGE[val]?.length) {
-                          setSubStage(SUB_STAGES_BY_ORDER_STAGE[val][0].toLowerCase());
-                        } else {
-                          setSubStage('');
-                        }
-                      }}
-                    >
-                      <option value="sample">Sample</option>
-                      <option value="partial">Partial</option>
-                      <option value="complete">Complete</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
                     <label>Sub Stage *</label>
-                    <select 
-                      required 
-                      disabled={isReadOnly || !orderStage}
-                      value={subStage || 'order'} 
-                      onChange={(e) => setSubStage(e.target.value)}
-                      style={!orderStage ? { cursor: 'not-allowed', opacity: 0.7 } : {}}
-                    >
-                      <option value="">{orderStage ? 'Select sub stage...' : 'Select order stage first'}</option>
-                      {orderStage && SUB_STAGES_BY_ORDER_STAGE[orderStage]?.map((stage) => (
-                        <option key={stage} value={stage.toLowerCase()}>{stage}</option>
-                      ))}
-                    </select>
+                    <input
+                      type="text"
+                      readOnly
+                      disabled
+                      value={((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage).replace(/-/g, ' ')}
+                      style={{
+                        background: 'rgba(0,0,0,0.03)',
+                        color: '#334155',
+                        fontWeight: 600,
+                        textTransform: 'capitalize',
+                        cursor: 'not-allowed',
+                      }}
+                    />
                   </div>
 
                   {/* 1. Logo Design Attachment */}
                   <div className="form-group">
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Paperclip size={15} style={{ color: '#2563eb' }} />
-                      <span>Logo Design</span>
+                      <span>Logo Design (Max 5)</span>
                     </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
-                      <input
-                        ref={logoDesignInputRef}
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={(e) => handleFileChange('logoDesign', 'logoDesignName', e)}
-                        style={{ display: 'none' }}
-                        disabled={isReadOnly}
-                      />
-                      {!isReadOnly && (
-                        <button
-                          type="button"
-                          onClick={() => logoDesignInputRef.current?.click()}
-                          className="btn-secondary"
-                          style={{
-                            padding: '7px 12px',
-                            fontSize: '13px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            borderRadius: '8px',
-                            background: 'white',
-                            border: '1px solid #cbd5e1',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
-                          }}
-                        >
-                          <Upload size={14} />
-                          {formData.logoDesign ? 'Change File' : 'Upload File'}
-                        </button>
-                      )}
-                      {formData.logoDesign ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1, overflow: 'hidden' }}>
-                          <a
-                            href={formData.logoDesign}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download={formData.logoDesignName || 'logo-design'}
-                            title={formData.logoDesignName}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          ref={logoDesignInputRef}
+                          type="file"
+                          multiple
+                          accept="image/*,application/pdf"
+                          onChange={(e) => handleFileChange('logoDesign', 'logoDesignName', e)}
+                          style={{ display: 'none' }}
+                          disabled={isReadOnly}
+                        />
+                        {!isReadOnly && (formData.logoDesignFiles?.length || 0) < 5 && (
+                          <button
+                            type="button"
+                            onClick={() => logoDesignInputRef.current?.click()}
+                            className="btn-secondary"
                             style={{
-                              fontSize: '12px',
-                              color: '#2563eb',
-                              fontWeight: 600,
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              textDecoration: 'underline',
-                              maxWidth: '120px'
+                              padding: '7px 12px',
+                              fontSize: '13px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              borderRadius: '8px',
+                              background: 'white',
+                              border: '1px solid #cbd5e1',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
                             }}
                           >
-                            {formData.logoDesignName || 'Attached'}
-                          </a>
-                          {!isReadOnly && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveFile('logoDesign', 'logoDesignName', logoDesignInputRef)}
-                              style={{
-                                border: 'none',
-                                background: 'transparent',
-                                color: '#ef4444',
-                                cursor: 'pointer',
-                                padding: '0 4px',
-                                fontSize: '15px',
-                                fontWeight: 'bold',
-                                lineHeight: 1
-                              }}
-                              title="Remove attachment"
-                            >
-                              ×
-                            </button>
-                          )}
+                            <Upload size={14} />
+                            {(formData.logoDesignFiles?.length || 0) > 0 ? `Add Files (${formData.logoDesignFiles.length}/5)` : 'Upload Files'}
+                          </button>
+                        )}
+                        {(formData.logoDesignFiles?.length || 0) === 0 && (
+                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                            No file chosen
+                          </span>
+                        )}
+                      </div>
+                      {(formData.logoDesignFiles?.length || 0) > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {formData.logoDesignFiles.map((fileObj, idx) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                              <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>{idx + 1}.</span>
+                              <a
+                                href={fileObj.data}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download={fileObj.name || `logo-design-${idx + 1}`}
+                                title={fileObj.name}
+                                style={{
+                                  fontSize: '12px',
+                                  color: '#2563eb',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  textDecoration: 'underline',
+                                  maxWidth: '160px'
+                                }}
+                              >
+                                {fileObj.name || `File ${idx + 1}`}
+                              </a>
+                              {!isReadOnly && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFile('logoDesign', 'logoDesignName', logoDesignInputRef, idx)}
+                                  style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: '#ef4444',
+                                    cursor: 'pointer',
+                                    padding: '0 4px',
+                                    fontSize: '15px',
+                                    fontWeight: 'bold',
+                                    lineHeight: 1
+                                  }}
+                                  title="Remove file"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                      ) : (
-                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                          No file chosen
-                        </span>
                       )}
                     </div>
                   </div>
@@ -4498,84 +4811,93 @@ function OrderManagement() {
                   <div className="form-group">
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Paperclip size={15} style={{ color: '#2563eb' }} />
-                      <span>Digital Design</span>
+                      <span>Digital Design (Max 5)</span>
                     </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
-                      <input
-                        ref={digitalDesignInputRef}
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={(e) => handleFileChange('digitalDesign', 'digitalDesignName', e)}
-                        style={{ display: 'none' }}
-                        disabled={isReadOnly}
-                      />
-                      {!isReadOnly && (
-                        <button
-                          type="button"
-                          onClick={() => digitalDesignInputRef.current?.click()}
-                          className="btn-secondary"
-                          style={{
-                            padding: '7px 12px',
-                            fontSize: '13px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            borderRadius: '8px',
-                            background: 'white',
-                            border: '1px solid #cbd5e1',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
-                          }}
-                        >
-                          <Upload size={14} />
-                          {formData.digitalDesign ? 'Change File' : 'Upload File'}
-                        </button>
-                      )}
-                      {formData.digitalDesign ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1, overflow: 'hidden' }}>
-                          <a
-                            href={formData.digitalDesign}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download={formData.digitalDesignName || 'digital-design'}
-                            title={formData.digitalDesignName}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          ref={digitalDesignInputRef}
+                          type="file"
+                          multiple
+                          accept="image/*,application/pdf"
+                          onChange={(e) => handleFileChange('digitalDesign', 'digitalDesignName', e)}
+                          style={{ display: 'none' }}
+                          disabled={isReadOnly}
+                        />
+                        {!isReadOnly && (formData.digitalDesignFiles?.length || 0) < 5 && (
+                          <button
+                            type="button"
+                            onClick={() => digitalDesignInputRef.current?.click()}
+                            className="btn-secondary"
                             style={{
-                              fontSize: '12px',
-                              color: '#2563eb',
-                              fontWeight: 600,
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              textDecoration: 'underline',
-                              maxWidth: '120px'
+                              padding: '7px 12px',
+                              fontSize: '13px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              borderRadius: '8px',
+                              background: 'white',
+                              border: '1px solid #cbd5e1',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
                             }}
                           >
-                            {formData.digitalDesignName || 'Attached'}
-                          </a>
-                          {!isReadOnly && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveFile('digitalDesign', 'digitalDesignName', digitalDesignInputRef)}
-                              style={{
-                                border: 'none',
-                                background: 'transparent',
-                                color: '#ef4444',
-                                cursor: 'pointer',
-                                padding: '0 4px',
-                                fontSize: '15px',
-                                fontWeight: 'bold',
-                                lineHeight: 1
-                              }}
-                              title="Remove attachment"
-                            >
-                              ×
-                            </button>
-                          )}
+                            <Upload size={14} />
+                            {(formData.digitalDesignFiles?.length || 0) > 0 ? `Add Files (${formData.digitalDesignFiles.length}/5)` : 'Upload Files'}
+                          </button>
+                        )}
+                        {(formData.digitalDesignFiles?.length || 0) === 0 && (
+                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                            No file chosen
+                          </span>
+                        )}
+                      </div>
+                      {(formData.digitalDesignFiles?.length || 0) > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {formData.digitalDesignFiles.map((fileObj, idx) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                              <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>{idx + 1}.</span>
+                              <a
+                                href={fileObj.data}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download={fileObj.name || `digital-design-${idx + 1}`}
+                                title={fileObj.name}
+                                style={{
+                                  fontSize: '12px',
+                                  color: '#2563eb',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  textDecoration: 'underline',
+                                  maxWidth: '160px'
+                                }}
+                              >
+                                {fileObj.name || `File ${idx + 1}`}
+                              </a>
+                              {!isReadOnly && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFile('digitalDesign', 'digitalDesignName', digitalDesignInputRef, idx)}
+                                  style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: '#ef4444',
+                                    cursor: 'pointer',
+                                    padding: '0 4px',
+                                    fontSize: '15px',
+                                    fontWeight: 'bold',
+                                    lineHeight: 1
+                                  }}
+                                  title="Remove file"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                      ) : (
-                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                          No file chosen
-                        </span>
                       )}
                     </div>
                   </div>
@@ -4758,7 +5080,7 @@ function OrderManagement() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       {!isReadOnly && (
                         <button type="button" onClick={handleAddItem} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Plus size={16} /> Add Item
+                          <Plus size={16} /> Add Item *
                         </button>
                       )}
                       {orderTotalQty > 0 && (
@@ -5002,7 +5324,9 @@ function OrderManagement() {
                           className="btn-primary"
                           style={{ padding: '10px 32px' }}
                         >
-                          Save Changes
+                          {(orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order' && (query || '').toLowerCase().trim() === 'order'
+                            ? 'Submit'
+                            : 'Save Changes'}
                         </button>
                       </>
                     )}
@@ -5098,147 +5422,796 @@ function OrderManagement() {
             </form>
           )}
 
-          {/* TASK SECTION AFTER THE FORM IN ORDERS (Only in orders of sample, partial, and complete) */}
-          {Boolean(editId) && !isExecutionStageView && (
-            <div className="order-tasks-wrapper">
-              <div className="tasks-section-header">
-                <div className="tasks-section-title">Department Clearance Tasks</div>
-                <p className="tasks-section-subtitle">
-                  Review status and feedback from Lead Manager, Stock Room Manager, and Production Room Manager
-                </p>
-              </div>
-
-              {/* Task 0 - Lead Manager */}
-              <div className="order-task-card">
-                <div className="task-col-left">
-                  <div className="task-title">Task 0 - Lead Manager Clearance</div>
-                  <div className="task-manager-subtitle">{leadAppr.author || 'Sarah Jenkins'} (Lead Manager)</div>
+          {/* ACTIVITY LOG SECTION (Shown in all opened applications across all profiles and stages) */}
+          {Boolean(editId) && (
+            <div
+              className="order-tasks-wrapper"
+              style={{
+                marginTop: '20px',
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.05)',
+              }}
+            >
+              <div
+                className="tasks-section-header"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-start',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '18px',
+                  paddingBottom: '12px',
+                  borderBottom: '1px solid #e2e8f0',
+                  marginBottom: '14px',
+                }}
+              >
+                <div className="tasks-section-title" style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                  Activity Log
                 </div>
 
-                <div className="task-col-center">
-                  <span className="task-status-label">Status</span>
-                  <span
-                    className={`task-status-pill ${
-                      leadAppr.status === 'Approved'
-                        ? 'approved'
-                        : leadAppr.status === 'Referred Back'
-                        ? 'referred'
-                        : 'pending'
-                    }`}
-                  >
-                    {leadAppr.status || 'Pending'}
-                  </span>
-                </div>
-
-                <div className="task-col-right">
-                  <span className="task-note-label">Lead Manager Notes</span>
-                  {leadAppr.note ? (
-                    <div
-                      className={`task-note-content ${
-                        leadAppr.status === 'Referred Back' ? 'referred' : ''
-                      }`}
-                    >
-                      {leadAppr.note}
-                    </div>
-                  ) : (
-                    <div className="task-note-placeholder">
-                      {leadAppr.status === 'Approved'
-                        ? 'Approved by Lead Manager'
-                        : 'Awaiting Review'}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Task 1 - Stock Room */}
-              <div className="order-task-card">
-                <div className="task-col-left">
-                  <div className="task-title">Task 1 - Stock Room</div>
-                  <div className="task-manager-subtitle">Elena Rostova (Stock Room Manager)</div>
-                </div>
-
-                <div className="task-col-center">
-                  <span className="task-status-label">Status</span>
-                  <span
-                    className={`task-status-pill ${
-                      stockAppr.status === 'Approved'
-                        ? 'approved'
-                        : stockAppr.status === 'Referred Back'
-                        ? 'referred'
-                        : 'pending'
-                    }`}
-                  >
-                    {stockAppr.status || 'Pending'}
-                  </span>
-                </div>
-
-                <div className="task-col-right">
-                  <span className="task-note-label">Stock Room Notes</span>
-                  {stockAppr.note ? (
-                    <div
-                      className={`task-note-content ${
-                        stockAppr.status === 'Referred Back' ? 'referred' : ''
-                      }`}
-                    >
-                      {stockAppr.note}
-                    </div>
-                  ) : (
-                    <div className="task-note-placeholder">
-                      {stockAppr.status === 'Approved'
-                        ? 'Approved by Stock Room'
-                        : 'Awaiting Review'}
-                    </div>
-                  )}
+                {/* Three Horizontal Mini Tabs (Left Aligned next to Activity Log) */}
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    background: '#f1f5f9',
+                    padding: '3px',
+                    borderRadius: '8px',
+                    gap: '4px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  {[
+                    { key: 'department', label: 'Department Log' },
+                    { key: 'application', label: 'Application Log' },
+                    { key: 'inventory', label: 'Inventory Log' },
+                  ].map((tab) => {
+                    const isActive = activeActivityTab === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setActiveActivityTab(tab.key)}
+                        style={{
+                          border: 'none',
+                          background: isActive ? '#ffffff' : 'transparent',
+                          color: isActive ? '#2563eb' : '#475569',
+                          fontWeight: isActive ? 700 : 600,
+                          fontSize: '12.5px',
+                          padding: '6px 14px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          boxShadow: isActive ? '0 1px 2px rgba(15, 23, 42, 0.08)' : 'none',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Task 2 - Production Room */}
-              <div className="order-task-card">
-                <div className="task-col-left">
-                  <div className="task-title">Task 2 - Production Room</div>
-                  <div className="task-manager-subtitle">Marcus Vance (Production Lead)</div>
-                </div>
-
-                <div className="task-col-center">
-                  <span className="task-status-label">Status</span>
-                  <span
-                    className={`task-status-pill ${
-                      prodAppr.status === 'Approved'
-                        ? 'approved'
-                        : prodAppr.status === 'Referred Back'
-                        ? 'referred'
-                        : 'pending'
-                    }`}
-                  >
-                    {prodAppr.status || 'Pending'}
-                  </span>
-                </div>
-
-                <div className="task-col-right">
-                  <span className="task-note-label">Production Notes</span>
-                  {prodAppr.note ? (
-                    <div
-                      className={`task-note-content ${
-                        prodAppr.status === 'Referred Back' ? 'referred' : ''
-                      }`}
-                    >
-                      {prodAppr.note}
+              {/* MINI TAB 1: DEPARTMENT LOG */}
+              {activeActivityTab === 'department' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {/* Task 0 - Lead Manager */}
+                  <div className="order-task-card">
+                    <div className="task-col-left">
+                      <div className="task-title">Task 0 - Lead Manager Clearance</div>
+                      <div className="task-manager-subtitle">{leadAppr.author || 'Sarah Jenkins'} (Lead Manager)</div>
                     </div>
-                  ) : (
-                    <div className="task-note-placeholder">
-                      {prodAppr.status === 'Approved'
-                        ? 'Approved by Production'
-                        : 'Awaiting Review'}
+
+                    <div className="task-col-center">
+                      <span className="task-status-label">Status</span>
+                      <span
+                        className={`task-status-pill ${
+                          leadAppr.status === 'Approved'
+                            ? 'approved'
+                            : leadAppr.status === 'Referred Back'
+                            ? 'referred'
+                            : 'pending'
+                        }`}
+                      >
+                        {leadAppr.status || 'Pending'}
+                      </span>
                     </div>
-                  )}
+
+                    <div className="task-col-right">
+                      <span className="task-note-label">Lead Manager Notes</span>
+                      {leadAppr.note ? (
+                        <div
+                          className={`task-note-content ${
+                            leadAppr.status === 'Referred Back' ? 'referred' : ''
+                          }`}
+                        >
+                          {leadAppr.note}
+                        </div>
+                      ) : (
+                        <div className="task-note-placeholder">
+                          {leadAppr.status === 'Approved'
+                            ? 'Approved by Lead Manager'
+                            : 'Awaiting Review'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Task 1 - Stock Room */}
+                  <div className="order-task-card">
+                    <div className="task-col-left">
+                      <div className="task-title">Task 1 - Stock Room</div>
+                      <div className="task-manager-subtitle">Elena Rostova (Stock Room Manager)</div>
+                    </div>
+
+                    <div className="task-col-center">
+                      <span className="task-status-label">Status</span>
+                      <span
+                        className={`task-status-pill ${
+                          stockAppr.status === 'Approved'
+                            ? 'approved'
+                            : stockAppr.status === 'Referred Back'
+                            ? 'referred'
+                            : 'pending'
+                        }`}
+                      >
+                        {stockAppr.status || 'Pending'}
+                      </span>
+                    </div>
+
+                    <div className="task-col-right">
+                      <span className="task-note-label">Stock Room Notes</span>
+                      {stockAppr.note ? (
+                        <div
+                          className={`task-note-content ${
+                            stockAppr.status === 'Referred Back' ? 'referred' : ''
+                          }`}
+                        >
+                          {stockAppr.note}
+                        </div>
+                      ) : (
+                        <div className="task-note-placeholder">
+                          {stockAppr.status === 'Approved'
+                            ? 'Approved by Stock Room'
+                            : 'Awaiting Review'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Task 2 - Production Room */}
+                  <div className="order-task-card">
+                    <div className="task-col-left">
+                      <div className="task-title">Task 2 - Production Room</div>
+                      <div className="task-manager-subtitle">Marcus Vance (Production Lead)</div>
+                    </div>
+
+                    <div className="task-col-center">
+                      <span className="task-status-label">Status</span>
+                      <span
+                        className={`task-status-pill ${
+                          prodAppr.status === 'Approved'
+                            ? 'approved'
+                            : prodAppr.status === 'Referred Back'
+                            ? 'referred'
+                            : 'pending'
+                        }`}
+                      >
+                        {prodAppr.status || 'Pending'}
+                      </span>
+                    </div>
+
+                    <div className="task-col-right">
+                      <span className="task-note-label">Production Notes</span>
+                      {prodAppr.note ? (
+                        <div
+                          className={`task-note-content ${
+                            prodAppr.status === 'Referred Back' ? 'referred' : ''
+                          }`}
+                        >
+                          {prodAppr.note}
+                        </div>
+                      ) : (
+                        <div className="task-note-placeholder">
+                          {prodAppr.status === 'Approved'
+                            ? 'Approved by Production'
+                            : 'Awaiting Review'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* MINI TAB 2: APPLICATION LOG */}
+              {activeActivityTab === 'application' && (() => {
+                const d = orderApprovalData || {};
+                const rawLogs = Array.isArray(d.activityLogs) ? d.activityLogs : [];
+                const combinedLogs = [];
+
+                const normStage = (d.orderStage || 'sample').toLowerCase().trim();
+                const normSub = (d.subStage || 'order').toLowerCase().trim().replace(/\s+/g, '-');
+                const isOrd = (d.query || query || 'lead').toLowerCase().trim() === 'order';
+                const sampleSubOrder = ['order', 'dtf-pending', 'stock', 'printing', 'ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'];
+                const curSampleIdx = normStage === 'sample' ? (normSub === 'staging-room' ? 5 : sampleSubOrder.indexOf(normSub)) : sampleSubOrder.length;
+
+                const hasLogMatching = (regex) =>
+                  rawLogs.some((l) => regex.test(`${l.action || ''} ${l.stage || ''} ${l.details || ''}`));
+
+                // 1. Creation Log
+                if (!hasLogMatching(/created/i) && (d._id || editId)) {
+                  const initChanges = [];
+                  if (d.orderId || formData.orderId) initChanges.push(`Order ID: ${d.orderId || formData.orderId}`);
+                  if (d.employeeName || formData.employeeName) initChanges.push(`Employee Name: ${d.employeeName || formData.employeeName}`);
+                  initChanges.push(`Query Type: ${isOrd ? 'order' : 'lead'}`);
+                  if (d.companyName || formData.companyName) initChanges.push(`Company Name: ${d.companyName || formData.companyName}`);
+                  if (d.clientName || formData.clientName) initChanges.push(`Client Name: ${d.clientName || formData.clientName}`);
+                  if (d.phoneNumber || formData.phoneNumber) initChanges.push(`Phone Number: ${d.phoneNumber || formData.phoneNumber}`);
+                  if (isOrd) {
+                    if (d.totalQuantity) initChanges.push(`Total Quantity: ${d.totalQuantity} pcs`);
+                    if (d.totalAmount) initChanges.push(`Total Amount: ₹${d.totalAmount}`);
+                    if (d.netAmount) initChanges.push(`Net Amount: ₹${d.netAmount}`);
+                    if (Array.isArray(d.items) && d.items.length > 0) {
+                      d.items.forEach((it, idx) => {
+                        const name = it.item || it.enterItem || it.itemType || 'Item';
+                        initChanges.push(
+                          `Item #${idx + 1} (${name}): Printing: ${it.printingType || '-'}, Fabric: ${it.fabric || '-'}, Qty: ${it.quantity || 0} pcs, Size: ${it.size || '-'}, Color: ${it.color || '-'}`
+                        );
+                      });
+                    }
+                  }
+                  combinedLogs.push({
+                    action: isOrd ? 'Order Created & Submitted' : 'Lead Created & Saved',
+                    stage: isOrd ? 'Sample → Order' : 'Leads',
+                    performedBy: d.employeeName || formData.employeeName || 'Sales Executive',
+                    role: 'Sales Executive',
+                    details: isOrd
+                      ? `Application (${d.orderId || formData.orderId || 'Order'}) created and submitted by ${d.employeeName || 'Sales Executive'}. Sent to Sample → Order for Lead Manager Clearance.`
+                      : `Lead application (${d.orderId || formData.orderId || 'Lead'}) created and saved to Leads by ${d.employeeName || 'Sales Executive'}.`,
+                    changes: initChanges,
+                    timestamp: d.createdAt || new Date().toISOString(),
+                  });
+                }
+
+                // 2. Task 0 - Lead Manager Clearance & Move to DTF Pending
+                const leadManagerApproved =
+                  d.leadApproval?.status === 'Approved' ||
+                  curSampleIdx >= 1 ||
+                  normStage === 'partial' ||
+                  normStage === 'complete' ||
+                  (Array.isArray(d.approvalComments) && d.approvalComments.some((c) => /lead manager/i.test(c.role || '') && c.status === 'Approved'));
+
+                if (isOrd && leadManagerApproved && !hasLogMatching(/Task 0|Lead Manager Approved/i)) {
+                  const lmComment = Array.isArray(d.approvalComments)
+                    ? d.approvalComments.find((c) => /lead manager/i.test(c.role || '') && c.status === 'Approved')
+                    : null;
+                  const lmAuthor = d.leadApproval?.author || lmComment?.author || 'Sarah Jenkins';
+                  const lmNote = d.leadApproval?.note || lmComment?.comment || 'Approved by Lead Manager';
+                  combinedLogs.push({
+                    action: 'Task 0 - Approved by Lead Manager (Moved to DTF Pending)',
+                    stage: 'Sample → DTF Pending',
+                    performedBy: lmAuthor,
+                    role: 'Lead Manager',
+                    details: `Task 0 (Lead Manager Clearance) approved by ${lmAuthor} (Lead Manager). Application moved from Sample → Order to Sample → DTF Pending, and assigned to Stock Room Manager (Elena Rostova) & Production Room (Marcus Vance).`,
+                    changes: [
+                      'From Stage: Sample → Order',
+                      'To Stage: Sample → DTF Pending',
+                      'Task 0 (Lead Manager Clearance): Approved',
+                      'Assigned Task 1: Stock Room Clearance (Elena Rostova — Verification)',
+                      'Assigned Task 2: Production Room Clearance (Marcus Vance — Logo Printing)',
+                      ...(lmNote ? [`Lead Manager Note: "${lmNote}"`] : []),
+                    ],
+                    timestamp: d.leadApproval?.updatedAt || lmComment?.createdAt || d.createdAt,
+                  });
+                }
+
+                // 3. Stock Room Manager Flow (Verification -> Ready to Pick -> Staging Room -> Task 1 Approved)
+                const stStage = (d.stockTaskStage || '').toLowerCase();
+                const stData = d.stockTaskData || {};
+                const isStockVerified =
+                  stData.verificationSubmitted ||
+                  ['ready_to_pick', 'staging_room', 'completed'].includes(stStage) ||
+                  d.stockApproval?.status === 'Approved';
+                const isStockReadyToPickDone =
+                  stData.readyToPickSubmitted ||
+                  ['staging_room', 'completed'].includes(stStage) ||
+                  d.stockApproval?.status === 'Approved';
+                const isStockApproved =
+                  stStage === 'completed' || d.stockApproval?.status === 'Approved';
+
+                if (isOrd && isStockVerified && !hasLogMatching(/Stock Task - Verification|Verification Submitted|Verification Completed/i)) {
+                  const sampleQty = stData.sampleDeduction !== undefined ? stData.sampleDeduction : 1;
+                  const stockChanges = [
+                    'From: Sample → DTF Pending / Task 1 Stock Room (Verification)',
+                    'To: Stock Room → Ready to Pick',
+                    `Stock Availability Verified: ${stData.isStockAvailable === false ? 'Partial / Deficit Noted' : 'Yes (In Stock)'}`,
+                    `Sample Quantity Allocated: ${sampleQty} pcs`,
+                  ];
+                  if (stData.stockDepreciation) {
+                    stockChanges.push(`Remaining Stock After Sample Deduction: ${stData.stockDepreciation}`);
+                  }
+                  combinedLogs.push({
+                    action: 'Stock Room Manager - Verification Completed (Moved to Ready to Pick)',
+                    stage: 'Stock Room → Ready to Pick',
+                    performedBy: d.stockApproval?.author || 'Elena Rostova',
+                    role: 'Stock Room Manager',
+                    details: `Stock Room inventory verification completed by ${d.stockApproval?.author || 'Elena Rostova'} (Stock Room Manager). Application moved from Stock Verification to Ready to Pick.`,
+                    changes: stockChanges,
+                    timestamp: stData.verifiedAt || d.stockApproval?.updatedAt || d.updatedAt || d.createdAt,
+                  });
+                }
+
+                if (isOrd && isStockReadyToPickDone && !hasLogMatching(/Stock Task - Ready To Pick|Ready to Pick Submitted|Ready to Pick Completed/i)) {
+                  combinedLogs.push({
+                    action: 'Stock Room Manager - Ready to Pick Completed (Moved to Staging Room)',
+                    stage: 'Stock Room → Staging Room',
+                    performedBy: d.stockApproval?.author || 'Elena Rostova',
+                    role: 'Stock Room Manager',
+                    details: `Sample items picked and verified in Ready to Pick by ${d.stockApproval?.author || 'Elena Rostova'} (Stock Room Manager). Application moved from Ready to Pick to Staging Room.`,
+                    changes: [
+                      'From: Stock Room → Ready to Pick',
+                      'To: Stock Room → Staging Room',
+                      `Sample Received in Ready to Pick: ${stData.readyToPickReceived === false ? 'No' : 'Yes'}`,
+                    ],
+                    timestamp: stData.readyToPickAt || d.stockApproval?.updatedAt || d.updatedAt || d.createdAt,
+                  });
+                }
+
+                if (isOrd && isStockApproved && !hasLogMatching(/Task 1 - Stock Room Approved/i)) {
+                  const stAuthor = d.stockApproval?.author || 'Elena Rostova';
+                  const stNote = d.stockApproval?.note || 'Approved by Stock Room';
+                  combinedLogs.push({
+                    action: 'Task 1 - Stock Room Clearance Approved',
+                    stage: 'Stock Room → Approved',
+                    performedBy: stAuthor,
+                    role: 'Stock Room Manager',
+                    details: `Staging Room verification completed and Task 1 (Stock Room Clearance) approved by ${stAuthor} (Stock Room Manager). Stock items released to Sample → Stock / Printing.`,
+                    changes: [
+                      'From: Stock Room → Staging Room',
+                      'To: Task 1 Stock Room Clearance Approved (Released to Sample → Stock / Printing)',
+                      'Task 1 Status: Approved',
+                      `Sample Quantity Released: ${stData.sampleDeduction !== undefined ? stData.sampleDeduction : 1} pcs`,
+                      ...(stNote ? [`Stock Room Note: "${stNote}"`] : []),
+                    ],
+                    timestamp: stData.stagingApprovedAt || d.stockApproval?.updatedAt || d.updatedAt || d.createdAt,
+                  });
+                }
+
+                // 4. Production Room Flow (Logo Printing -> Logo Cutting -> Task 2 Approved)
+                const prStage = (d.productionTaskStage || '').toLowerCase();
+                const prData = d.productionTaskData || {};
+                const isLogoPrintingDone =
+                  prData.printingSubmitted ||
+                  ['logo_cutting', 'completed'].includes(prStage) ||
+                  d.productionApproval?.status === 'Approved';
+                const isProdApproved =
+                  prStage === 'completed' || d.productionApproval?.status === 'Approved';
+
+                if (isOrd && isLogoPrintingDone && !hasLogMatching(/Logo Printing Submitted|Logo Printing Completed/i)) {
+                  const prChanges = [
+                    'From: Sample → DTF Pending / Task 2 Production Room (Logo Printing)',
+                    'To: Production Room → Logo Cutting',
+                  ];
+                  if (prData.logosPrinted !== undefined && prData.logosPrinted !== '') {
+                    prChanges.push(`Logos Printed: ${prData.logosPrinted} pcs`);
+                  }
+                  if (prData.logosGivenForCutting !== undefined && prData.logosGivenForCutting !== '') {
+                    prChanges.push(`Logos Given for Cutting: ${prData.logosGivenForCutting} pcs`);
+                  }
+                  combinedLogs.push({
+                    action: 'Production Room - Logo Printing Completed (Moved to Logo Cutting)',
+                    stage: 'Production Room → Logo Cutting',
+                    performedBy: d.productionApproval?.author || 'Marcus Vance',
+                    role: 'Production Lead',
+                    details: `DTF / Logo Printing completed in Production Room by ${d.productionApproval?.author || 'Marcus Vance'} (Production Lead). Application moved from Logo Printing to Logo Cutting.`,
+                    changes: prChanges,
+                    timestamp: d.productionApproval?.updatedAt || d.updatedAt || d.createdAt,
+                  });
+                }
+
+                if (isOrd && isProdApproved && !hasLogMatching(/Task 2 - Production Approved|Task 2 - Production Room Approved/i)) {
+                  const prAuthor = d.productionApproval?.author || 'Marcus Vance';
+                  const prNote = d.productionApproval?.note || 'Approved by Production Lead';
+                  const prApproveChanges = [
+                    'From: Production Room → Logo Cutting',
+                    'To: Task 2 Production Room Clearance Approved (Released to Sample → Stock / Printing)',
+                    'Task 2 Status: Approved',
+                  ];
+                  if (prData.logosForPrinting !== undefined && prData.logosForPrinting !== '') {
+                    prApproveChanges.push(`Logos for Printing: ${prData.logosForPrinting} pcs`);
+                  }
+                  if (prData.sampleLogosCount !== undefined && prData.sampleLogosCount !== '') {
+                    prApproveChanges.push(`Sample Logos Released: ${prData.sampleLogosCount} pcs`);
+                  }
+                  if (prNote) {
+                    prApproveChanges.push(`Production Note: "${prNote}"`);
+                  }
+                  combinedLogs.push({
+                    action: 'Task 2 - Production Room Clearance Approved',
+                    stage: 'Production Room → Approved',
+                    performedBy: prAuthor,
+                    role: 'Production Lead',
+                    details: `Logo Cutting completed and Task 2 (Production Room Clearance) approved by ${prAuthor} (Production Lead). DTF / Logo samples released to Sample → Stock / Printing.`,
+                    changes: prApproveChanges,
+                    timestamp: d.productionApproval?.updatedAt || d.updatedAt || d.createdAt,
+                  });
+                }
+
+                // 5. How Application Came to Sample -> Stock (from DTF Pending / Stock Room & Production Clearance)
+                if (isOrd && curSampleIdx >= 2 && !hasLogMatching(/Moved from DTF Pending to Sample → Stock|Moved to Sample → Stock/i)) {
+                  combinedLogs.push({
+                    action: 'Moved to Sample → Stock (From DTF Pending & Department Clearance)',
+                    stage: 'Sample → Stock',
+                    performedBy: d.employeeName || 'Sales / Operations',
+                    role: 'Order Workflow',
+                    details: `Application moved from Sample → DTF Pending (and Stock Room / Production Room processing) to Sample → Stock for physical inventory & stock allocation verification.`,
+                    changes: [
+                      'From Stage: Sample → DTF Pending (after Task 0 Lead Manager Clearance)',
+                      'To Stage: Sample → Stock',
+                      'DTF Film Preparation: Prepared, printed, and verified in DTF Pending',
+                      `Stock Room Status (Task 1 - Elena Rostova): ${d.stockApproval?.status || (isStockVerified ? 'In Progress' : 'Pending')}`,
+                      `Production Room Status (Task 2 - Marcus Vance): ${d.productionApproval?.status || (isLogoPrintingDone ? 'In Progress' : 'Pending')}`,
+                    ],
+                    timestamp: d.updatedAt || d.createdAt,
+                  });
+                }
+
+                // 6. How Application Came to Sample -> Printing (from Sample -> Stock & Stock/Production Room Clearances)
+                if (isOrd && curSampleIdx >= 3 && !hasLogMatching(/Moved to Printing|Moved from Stock to Sample → Printing|Moved to Sample → Printing/i)) {
+                  combinedLogs.push({
+                    action: 'Moved to Sample → Printing (From Sample → Stock & Department Clearances)',
+                    stage: 'Sample → Printing',
+                    performedBy:
+                      d.stockApproval?.author && d.productionApproval?.author
+                        ? `${d.stockApproval.author} & ${d.productionApproval.author}`
+                        : d.employeeName || 'Operations',
+                    role: 'Stock & Production Clearance',
+                    details: `Application moved to Sample → Printing after Sample → Stock verification and both Task 1 (Stock Room Manager - Elena Rostova) & Task 2 (Production Lead - Marcus Vance) clearances were approved.`,
+                    changes: [
+                      'From Stage: Sample → Stock (with Stock Room & Production Room Clearances Approved)',
+                      'To Stage: Sample → Printing',
+                      'Stock Allocation: Verified and allocated for Printing stage',
+                      `Stock Sample Released (Elena Rostova): ${stData.sampleDeduction !== undefined ? stData.sampleDeduction : 1} pcs`,
+                      `Production Logo Sample Released (Marcus Vance): ${prData.sampleLogosCount !== undefined ? prData.sampleLogosCount : 1} pcs`,
+                    ],
+                    timestamp: d.productionApproval?.updatedAt || d.stockApproval?.updatedAt || d.updatedAt || d.createdAt,
+                  });
+                }
+
+                // 7. How Application Came to Sample -> Ready to Pick Up (from Sample -> Printing)
+                if (isOrd && curSampleIdx >= 4 && !hasLogMatching(/Moved from Printing to Sample → Ready To Pick Up|Moved to Sample → Ready to Pick Up/i)) {
+                  const pData = d.printingStageData || {};
+                  combinedLogs.push({
+                    action: 'Moved to Sample → Ready to Pick Up (From Sample → Printing)',
+                    stage: 'Sample → Ready to Pick Up',
+                    performedBy: d.employeeName || 'Printing Operator',
+                    role: 'Printing Stage',
+                    details: `Sample Printing completed and verified. Application moved from Sample → Printing to Sample → Ready to Pick Up.`,
+                    changes: [
+                      'From Stage: Sample → Printing',
+                      'To Stage: Sample → Ready to Pick Up',
+                      `Stock Sample Received in Printing: ${pData.stockSampleReceived === 'no' ? 'No' : 'Yes'}`,
+                      `Production Logo Received in Printing: ${pData.prodSampleReceived === 'no' ? 'No' : 'Yes'}`,
+                      `Printed Count: ${pData.printedCount ?? 1} pcs`,
+                      `Ready to Pick Up Count: ${pData.readyToPickupCount ?? 1} pcs`,
+                    ],
+                    timestamp: d.updatedAt || d.createdAt,
+                  });
+                }
+
+                // 8. How Application Came to Sample -> Staging Ground (from Sample -> Ready to Pick Up)
+                if (isOrd && curSampleIdx >= 5 && !hasLogMatching(/Moved from Ready To Pick Up to Sample → Staging Ground|Moved to Sample → Staging Ground/i)) {
+                  const rtpData = d.sampleReadyToPickUpData || {};
+                  combinedLogs.push({
+                    action: 'Moved to Sample → Staging Ground (From Sample → Ready to Pick Up)',
+                    stage: 'Sample → Staging Ground',
+                    performedBy: d.employeeName || 'Staging Operator',
+                    role: 'Ready to Pick Up Stage',
+                    details: `Sample received from Printing in Ready to Pick Up and verified against client specifications. Application moved from Sample → Ready to Pick Up to Sample → Staging Ground.`,
+                    changes: [
+                      'From Stage: Sample → Ready to Pick Up',
+                      'To Stage: Sample → Staging Ground',
+                      'Sample Received from Printing: Yes',
+                      `Final Samples for Staging Room: ${rtpData.stagingCount ?? rtpData.readyToPickupCount ?? 1} pcs`,
+                    ],
+                    timestamp: d.updatedAt || d.createdAt,
+                  });
+                }
+
+                // 9. How Application Came to Sample -> Customer Approval Awaiting (from Sample -> Staging Ground)
+                if (isOrd && curSampleIdx >= 6 && !hasLogMatching(/Moved from Staging Ground to Sample → Customer Approval Awaiting|Moved to Sample → Customer Approval Awaiting/i)) {
+                  const sgData = d.sampleStagingGroundData || {};
+                  combinedLogs.push({
+                    action: 'Moved to Sample → Customer Approval Awaiting (From Sample → Staging Ground)',
+                    stage: 'Sample → Customer Approval Awaiting',
+                    performedBy: d.employeeName || 'Staging Operator',
+                    role: 'Staging Ground Stage',
+                    details: `Sample verified in Staging Ground${sgData.rackNo ? ` (Rack No: ${sgData.rackNo})` : ''}. Application moved from Sample → Staging Ground to Sample → Customer Approval Awaiting.`,
+                    changes: [
+                      'From Stage: Sample → Staging Ground',
+                      'To Stage: Sample → Customer Approval Awaiting',
+                      'Items Received from Ready to Pick: Yes',
+                      ...(sgData.rackNo ? [`Staged on Rack No.: ${sgData.rackNo}`] : []),
+                    ],
+                    timestamp: d.updatedAt || d.createdAt,
+                  });
+                }
+
+                // 10. Transition to Partial / Complete if applicable
+                if (isOrd && (normStage === 'partial' || normStage === 'complete') && !hasLogMatching(/Partial →/i)) {
+                  const caData = d.customerApprovalData || {};
+                  combinedLogs.push({
+                    action: 'Customer Sample Approved — Moved to Partial Stage',
+                    stage: 'Partial → Order',
+                    performedBy: d.employeeName || 'Sales Executive',
+                    role: 'Sales Executive',
+                    details: `Customer approved the sample in Sample → Customer Approval Awaiting. Application advanced from Sample stage to Partial → Order.`,
+                    changes: [
+                      'From Stage: Sample → Customer Approval Awaiting',
+                      'To Stage: Partial → Order',
+                      'Customer Approved Sample: Yes',
+                      ...(caData.paymentStatus ? [`Payment Status: ${String(caData.paymentStatus).replace(/_/g, ' ')}`] : []),
+                      ...(caData.amountReceived !== undefined ? [`Amount Received: ₹${caData.amountReceived}`] : []),
+                    ],
+                    timestamp: d.updatedAt || d.createdAt,
+                  });
+                }
+
+                if (isOrd && normStage === 'complete' && !hasLogMatching(/Complete →/i)) {
+                  combinedLogs.push({
+                    action: 'Partial Payment Confirmed — Moved to Complete Stage',
+                    stage: 'Complete → Order',
+                    performedBy: d.employeeName || 'Sales Executive',
+                    role: 'Sales Executive',
+                    details: `Partial stage payment confirmation completed. Application advanced from Partial → Payment Confirmation to Complete → Order.`,
+                    changes: [
+                      'From Stage: Partial → Payment Confirmation',
+                      'To Stage: Complete → Order',
+                    ],
+                    timestamp: d.updatedAt || d.createdAt,
+                  });
+                }
+
+                // 11. Include any approvalComments not already covered
+                if (Array.isArray(d.approvalComments) && d.approvalComments.length > 0) {
+                  d.approvalComments.forEach((c) => {
+                    const commentText = (c.comment || '').trim();
+                    const isAlreadyCovered =
+                      combinedLogs.some((l) => (l.changes || []).some((ch) => commentText && ch.includes(commentText))) ||
+                      rawLogs.some((l) => (l.changes || []).some((ch) => commentText && ch.includes(commentText))) ||
+                      (/lead manager/i.test(c.role || '') && c.status === 'Approved') ||
+                      (/stock/i.test(c.role || '') && c.status === 'Approved' && isStockApproved) ||
+                      (/production/i.test(c.role || '') && c.status === 'Approved' && isProdApproved);
+
+                    if (!isAlreadyCovered) {
+                      combinedLogs.push({
+                        action: `${c.role || 'Department'} - ${c.status || 'Update'}`,
+                        stage: d.orderStage ? `${d.orderStage.toUpperCase()} → ${(d.subStage || 'order').replace(/-/g, ' ').toUpperCase()}` : 'Sample → Order',
+                        performedBy: c.author || 'Manager',
+                        role: c.role || 'Manager',
+                        details: c.comment || `Application ${c.status || 'updated'} by ${c.author || 'Manager'}.`,
+                        changes: c.comment ? [`Note: "${c.comment}"`] : [],
+                        timestamp: c.createdAt || d.updatedAt || d.createdAt,
+                      });
+                    }
+                  });
+                }
+
+                // 12. Append all recorded activityLogs (Order Edited, Lead Edited, stage transitions, etc.)
+                rawLogs.forEach((l) => combinedLogs.push(l));
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {combinedLogs.length === 0 ? (
+                      <div
+                        style={{
+                          padding: '30px 20px',
+                          textAlign: 'center',
+                          color: '#64748b',
+                          background: '#f8fafc',
+                          borderRadius: '10px',
+                          border: '1px dashed #cbd5e1',
+                          fontSize: '13.5px',
+                        }}
+                      >
+                        No application activity recorded yet.
+                      </div>
+                    ) : (
+                      combinedLogs.map((logItem, idx) => {
+                        const timeStr = logItem.timestamp
+                          ? new Date(logItem.timestamp).toLocaleString('en-IN', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hour12: true,
+                            })
+                          : '—';
+                        const isReferBack = /refer/i.test(logItem.action || '');
+                        const isEdit = /edit/i.test(logItem.action || '');
+                        const badgeBg = isReferBack ? '#fef2f2' : isEdit ? '#eff6ff' : '#ecfdf5';
+                        const badgeColor = isReferBack ? '#dc2626' : isEdit ? '#2563eb' : '#059669';
+                        const badgeBorder = isReferBack ? '#fecaca' : isEdit ? '#bfdbfe' : '#a7f3d0';
+
+                        return (
+                          <div
+                            key={logItem._id || idx}
+                            style={{
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              borderLeft: `4px solid ${badgeColor}`,
+                              borderRadius: '10px',
+                              padding: '14px 18px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '8px',
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'flex-start',
+                                flexWrap: 'wrap',
+                                gap: '10px',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                <span
+                                  style={{
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    padding: '2px 7px',
+                                    borderRadius: '5px',
+                                    background: '#e2e8f0',
+                                    color: '#334155',
+                                  }}
+                                >
+                                  #{idx + 1}
+                                </span>
+                                <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                                  {logItem.action || 'Application Activity'}
+                                </span>
+                                {logItem.stage && (
+                                  <span
+                                    style={{
+                                      fontSize: '11.5px',
+                                      fontWeight: 600,
+                                      padding: '2px 9px',
+                                      borderRadius: '999px',
+                                      background: badgeBg,
+                                      color: badgeColor,
+                                      border: `1px solid ${badgeBorder}`,
+                                    }}
+                                  >
+                                    Stage: {logItem.stage}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+                                  By: <strong style={{ color: '#0f172a' }}>{logItem.performedBy || 'User'}</strong>
+                                  {logItem.role ? ` (${logItem.role})` : ''}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: '11.5px',
+                                    fontWeight: 600,
+                                    color: '#64748b',
+                                    background: '#ffffff',
+                                    padding: '3px 9px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #e2e8f0',
+                                  }}
+                                >
+                                  {timeStr}
+                                </span>
+                              </div>
+                            </div>
+
+                            {logItem.details && (
+                              <div style={{ fontSize: '13px', color: '#334155', lineHeight: 1.45 }}>
+                                {logItem.details}
+                              </div>
+                            )}
+
+                            {Array.isArray(logItem.changes) && logItem.changes.length > 0 && (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '4px',
+                                  background: '#ffffff',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: '8px',
+                                  padding: '9px 12px',
+                                  marginTop: '2px',
+                                }}
+                              >
+                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                  Process Flow &amp; Captured Changes
+                                </div>
+                                {logItem.changes.map((chg, cIdx) => (
+                                  <div
+                                    key={cIdx}
+                                    style={{
+                                      fontSize: '12.5px',
+                                      color: '#1e293b',
+                                      fontWeight: 500,
+                                      display: 'flex',
+                                      alignItems: 'flex-start',
+                                      gap: '6px',
+                                    }}
+                                  >
+                                    <span style={{ color: '#2563eb', fontWeight: 700 }}>•</span>
+                                    <span>{chg}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* MINI TAB 3: INVENTORY LOG (Kept empty as requested) */}
+              {activeActivityTab === 'inventory' && (
+                <div
+                  style={{
+                    minHeight: '100px',
+                    background: '#f8fafc',
+                    border: '1px dashed #cbd5e1',
+                    borderRadius: '10px',
+                  }}
+                />
+              )}
             </div>
           )}
         </div>
       </div>
     );
   }
+
+  const ALL_TABLE_COLUMNS = [
+    { key: 'orderId', label: 'Order ID' },
+    { key: 'companyName', label: 'Company' },
+    { key: 'employeeName', label: 'Employee' },
+    { key: 'phoneNumber', label: 'Phone' },
+    { key: 'orderStage', label: 'Stage' },
+    { key: 'subStage', label: 'Sub Stage' },
+    { key: 'stageStatus', label: 'Stage Status' },
+    ...(currentSubStage === 'printing' ? [{ key: 'printingStatus', label: 'Printing Status' }] : []),
+    { key: 'totalQuantity', label: 'Quantity' },
+    { key: 'clearanceStatus', label: 'Clearance Status' },
+    { key: 'createdAt', label: 'Date' },
+    { key: 'query', label: 'Query' },
+    { key: 'clientName', label: 'Client Name' },
+    { key: 'companyAddress', label: 'Company Address' },
+    { key: 'state', label: 'State' },
+    { key: 'pincode', label: 'Pincode' },
+    { key: 'repeatedOrder', label: 'Repeated Order' },
+    { key: 'additionalNote', label: 'Additional Note' },
+    { key: 'logoName', label: 'Logo Name' },
+    { key: 'pricePerPiece', label: 'Price Per Piece' },
+    { key: 'totalAmount', label: 'Total Amount' },
+    { key: 'gst', label: 'GST (%)' },
+    { key: 'netAmount', label: 'Net Amount' },
+    { key: 'advanceAmount', label: 'Advance Amount' },
+    { key: 'pendingAmount', label: 'Pending Amount' },
+    { key: 'urgency', label: 'Urgency' },
+    { key: 'deliveryDate', label: 'Delivery Date' },
+    { key: 'modeOfDelivery', label: 'Mode of Delivery' },
+    { key: 'items', label: 'Add Items' },
+    { key: 'action', label: 'Action' },
+  ];
 
   return (
     <div className="page-container">
@@ -5247,7 +6220,7 @@ function OrderManagement() {
       </div>
       
       <div className="chart-card hover-scale" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
-        <div className="chart-header">
+        <div className="chart-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div className="chart-title-sec">
             <div>
               <h3 style={{ textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -5255,9 +6228,109 @@ function OrderManagement() {
               </h3>
             </div>
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative' }} ref={columnSettingsRef}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Search size={15} color="#64748b" style={{ position: 'absolute', left: '10px', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder="Search Order ID, company..."
+                value={tableSearch}
+                onChange={(e) => setTableSearch(e.target.value)}
+                style={{
+                  padding: '7px 12px 7px 32px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '13px',
+                  width: '220px',
+                  outline: 'none',
+                  background: '#ffffff',
+                  color: '#1e293b',
+                }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowColumnSettings((prev) => !prev)}
+              title="Customize Table Columns"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '7px 10px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                background: showColumnSettings ? '#eff6ff' : '#ffffff',
+                color: showColumnSettings ? '#2563eb' : '#475569',
+                cursor: 'pointer',
+              }}
+            >
+              <Settings size={16} />
+            </button>
+
+            {showColumnSettings && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  right: 0,
+                  width: '240px',
+                  maxHeight: '340px',
+                  overflowY: 'auto',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  boxShadow: '0 10px 25px rgba(15, 23, 42, 0.12)',
+                  padding: '10px 12px',
+                  zIndex: 50,
+                }}
+              >
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9' }}>
+                  Show / Hide Columns
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {ALL_TABLE_COLUMNS.map((col) => (
+                    <label
+                      key={col.key}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '12.5px',
+                        color: '#334155',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(visibleColumns[col.key])}
+                        onChange={() =>
+                          setVisibleColumns((prev) => ({
+                            ...prev,
+                            [col.key]: !prev[col.key],
+                          }))
+                        }
+                        style={{ width: '14px', height: '14px', accentColor: '#2563eb', cursor: 'pointer', margin: 0 }}
+                      />
+                      <span>{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {matchingLeads.length === 0 ? (
+        {loadingLeads && leadsList.length === 0 ? (
+          <div className="chart-body centered empty-chart" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <Clock size={28} color="#94a3b8" style={{ animation: 'spin 1.5s linear infinite' }} />
+            <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
+              Loading orders...
+            </p>
+          </div>
+        ) : matchingLeads.length === 0 ? (
           <div className="chart-body centered empty-chart" style={{ flex: 1 }}>
             <p style={{ color: '#64748b', fontSize: '15px' }}>
               No data available for {currentSection || 'Order Management'} yet.
@@ -5267,25 +6340,42 @@ function OrderManagement() {
           <div style={{ padding: '16px 20px', overflowX: 'auto', flex: 1 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600 }}>
-                  <th style={{ padding: '10px 12px' }}>Order ID</th>
-                  <th style={{ padding: '10px 12px' }}>Company</th>
-                  <th style={{ padding: '10px 12px' }}>Employee</th>
-                  <th style={{ padding: '10px 12px' }}>Phone</th>
-                  <th style={{ padding: '10px 12px' }}>Stage</th>
-                  <th style={{ padding: '10px 12px' }}>Sub Stage</th>
-                  <th style={{ padding: '10px 12px' }}>Stage Status</th>
-                  {currentSubStage === 'printing' && <th style={{ padding: '10px 12px' }}>Printing Status</th>}
-                  <th style={{ padding: '10px 12px' }}>Quantity</th>
-                  <th style={{ padding: '10px 12px' }}>Clearance Status</th>
-                  <th style={{ padding: '10px 12px' }}>Date</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Action</th>
+                <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  {visibleColumns.orderId && <th style={{ padding: '10px 12px' }}>Order ID</th>}
+                  {visibleColumns.companyName && <th style={{ padding: '10px 12px' }}>Company</th>}
+                  {visibleColumns.employeeName && <th style={{ padding: '10px 12px' }}>Employee</th>}
+                  {visibleColumns.phoneNumber && <th style={{ padding: '10px 12px' }}>Phone</th>}
+                  {visibleColumns.orderStage && <th style={{ padding: '10px 12px' }}>Stage</th>}
+                  {visibleColumns.subStage && <th style={{ padding: '10px 12px' }}>Sub Stage</th>}
+                  {visibleColumns.stageStatus && <th style={{ padding: '10px 12px' }}>Stage Status</th>}
+                  {currentSubStage === 'printing' && visibleColumns.printingStatus && <th style={{ padding: '10px 12px' }}>Printing Status</th>}
+                  {visibleColumns.totalQuantity && <th style={{ padding: '10px 12px' }}>Quantity</th>}
+                  {visibleColumns.clearanceStatus && <th style={{ padding: '10px 12px' }}>Clearance Status</th>}
+                  {visibleColumns.createdAt && <th style={{ padding: '10px 12px' }}>Date</th>}
+                  {visibleColumns.query && <th style={{ padding: '10px 12px' }}>Query</th>}
+                  {visibleColumns.clientName && <th style={{ padding: '10px 12px' }}>Client Name</th>}
+                  {visibleColumns.companyAddress && <th style={{ padding: '10px 12px' }}>Company Address</th>}
+                  {visibleColumns.state && <th style={{ padding: '10px 12px' }}>State</th>}
+                  {visibleColumns.pincode && <th style={{ padding: '10px 12px' }}>Pincode</th>}
+                  {visibleColumns.repeatedOrder && <th style={{ padding: '10px 12px' }}>Repeated Order</th>}
+                  {visibleColumns.additionalNote && <th style={{ padding: '10px 12px' }}>Additional Note</th>}
+                  {visibleColumns.logoName && <th style={{ padding: '10px 12px' }}>Logo Name</th>}
+                  {visibleColumns.pricePerPiece && <th style={{ padding: '10px 12px' }}>Price Per Piece</th>}
+                  {visibleColumns.totalAmount && <th style={{ padding: '10px 12px' }}>Total Amount</th>}
+                  {visibleColumns.gst && <th style={{ padding: '10px 12px' }}>GST (%)</th>}
+                  {visibleColumns.netAmount && <th style={{ padding: '10px 12px' }}>Net Amount</th>}
+                  {visibleColumns.advanceAmount && <th style={{ padding: '10px 12px' }}>Advance Amount</th>}
+                  {visibleColumns.pendingAmount && <th style={{ padding: '10px 12px' }}>Pending Amount</th>}
+                  {visibleColumns.urgency && <th style={{ padding: '10px 12px' }}>Urgency</th>}
+                  {visibleColumns.deliveryDate && <th style={{ padding: '10px 12px' }}>Delivery Date</th>}
+                  {visibleColumns.modeOfDelivery && <th style={{ padding: '10px 12px' }}>Mode of Delivery</th>}
+                  {visibleColumns.items && <th style={{ padding: '10px 12px' }}>Add Items</th>}
+                  {visibleColumns.action && <th style={{ padding: '10px 12px', textAlign: 'center' }}>Action</th>}
                 </tr>
               </thead>
               <tbody>
                 {matchingLeads.map((item, itemIdx) => {
                   const stageInfo = getLeadStageInfo(item, currentStage, currentSubStage);
-                  const isActionRequired = stageInfo.status === 'in_progress';
                   return (
                     <tr
                       key={item._id || item.orderId || `order-row-${itemIdx}`}
@@ -5297,88 +6387,203 @@ function OrderManagement() {
                         borderBottom: '1px solid #f1f5f9',
                         cursor: 'pointer',
                         transition: 'background 0.15s',
+                        whiteSpace: 'nowrap',
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                       title="Click to open order lead"
                     >
-                      <td style={{ padding: '12px', fontWeight: 600, color: '#1e293b' }}>
-                        {item.orderId || (item._id ? `ORD-${String(item._id).slice(-5).toUpperCase()}` : '—')}
-                      </td>
-                      <td style={{ padding: '12px', color: '#475569' }}>
-                        {item.companyName || '—'}
-                      </td>
-                      <td style={{ padding: '12px', color: '#64748b' }}>
-                        {item.employeeName || 'Sales Executive'}
-                      </td>
-                      <td style={{ padding: '12px', color: '#64748b' }}>
-                        {item.phoneNumber || '—'}
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        <span style={{ color: '#334155', textTransform: 'capitalize', fontSize: '13px' }}>
-                          {item.orderStage || 'Sample'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        <span style={{ color: '#334155', textTransform: 'capitalize', fontSize: '13px' }}>
-                          {(item.subStage === 'new' ? 'Leads' : (item.subStage || 'Leads')).replace(/-/g, ' ')}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        <span style={{ color: stageInfo.status === 'approved' ? '#059669' : '#b45309', fontWeight: 600, fontSize: '13px' }}>
-                          {stageInfo.status === 'approved' ? 'Approved & Advanced' : 'In Progress'}
-                        </span>
-                      </td>
-                      {currentSubStage === 'printing' && (
+                      {visibleColumns.orderId && (
+                        <td style={{ padding: '12px', fontWeight: 600, color: '#1e293b' }}>
+                          {item.orderId || (item._id ? `ORD-${String(item._id).slice(-5).toUpperCase()}` : '—')}
+                        </td>
+                      )}
+                      {visibleColumns.companyName && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.companyName || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.employeeName && (
+                        <td style={{ padding: '12px', color: '#64748b' }}>
+                          {item.employeeName || 'Sales Executive'}
+                        </td>
+                      )}
+                      {visibleColumns.phoneNumber && (
+                        <td style={{ padding: '12px', color: '#64748b' }}>
+                          {item.phoneNumber || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.orderStage && (
+                        <td style={{ padding: '12px' }}>
+                          <span style={{ color: '#334155', textTransform: 'capitalize', fontSize: '13px' }}>
+                            {(item.query || '').toLowerCase() === 'lead' ? 'Lead' : (item.orderStage || 'Sample')}
+                          </span>
+                        </td>
+                      )}
+                      {visibleColumns.subStage && (
+                        <td style={{ padding: '12px' }}>
+                          <span style={{ color: '#334155', textTransform: 'capitalize', fontSize: '13px' }}>
+                            {(item.subStage === 'new' || (item.query || '').toLowerCase() === 'lead' ? 'Leads' : (item.subStage || 'Order')).replace(/-/g, ' ')}
+                          </span>
+                        </td>
+                      )}
+                      {visibleColumns.stageStatus && (
+                        <td style={{ padding: '12px' }}>
+                          <span style={{ color: stageInfo.status === 'approved' ? '#059669' : '#b45309', fontWeight: 600, fontSize: '13px' }}>
+                            {stageInfo.status === 'approved' ? 'Approved & Advanced' : 'In Progress'}
+                          </span>
+                        </td>
+                      )}
+                      {currentSubStage === 'printing' && visibleColumns.printingStatus && (
                         <td style={{ padding: '12px' }}>
                           <span style={{ color: '#334155', fontSize: '13px' }}>
                             {item.printingStageData?.printingStatus || 'Work in Progress'}
                           </span>
                         </td>
                       )}
-                      <td style={{ padding: '12px', color: '#475569' }}>
-                        {item.totalQuantity ? `${item.totalQuantity} pcs` : '—'}
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        <span style={{ color: (item.leadApproval?.status || item.approvalStatus) === 'Approved' ? '#059669' : (item.leadApproval?.status || item.approvalStatus) === 'Referred Back' ? '#dc2626' : '#d97706', fontWeight: 600, fontSize: '13px' }}>
-                          {(item.leadApproval?.status || item.approvalStatus) === 'Approved'
-                            ? 'Approved'
-                            : (item.leadApproval?.status || item.approvalStatus) === 'Referred Back'
-                            ? 'Referred Back'
-                            : 'Pending'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px', color: '#94a3b8', fontSize: '12px' }}>
-                        {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
-                      </td>
-                      <td style={{ padding: '12px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const editParam = isLeadManager ? 'false' : 'true';
-                            navigate(`/order/create-lead?id=${item._id}&edit=${editParam}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(item.orderStage || 'sample')}`);
-                          }}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            background: '#eff6ff',
-                            color: '#2563eb',
-                            border: '1px solid #bfdbfe',
-                            cursor: 'pointer',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#dbeafe')}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#eff6ff')}
-                          title={isLeadManager ? "View this order" : "Edit this order"}
-                        >
-                          {isLeadManager ? <Eye size={13} /> : <Edit2 size={13} />}
-                          <span>{isLeadManager ? 'View' : 'Edit'}</span>
-                        </button>
-                      </td>
+                      {visibleColumns.totalQuantity && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.totalQuantity ? `${item.totalQuantity} pcs` : '—'}
+                        </td>
+                      )}
+                      {visibleColumns.clearanceStatus && (
+                        <td style={{ padding: '12px' }}>
+                          <span style={{ color: (item.leadApproval?.status || item.approvalStatus) === 'Approved' ? '#059669' : (item.leadApproval?.status || item.approvalStatus) === 'Referred Back' ? '#dc2626' : '#d97706', fontWeight: 600, fontSize: '13px' }}>
+                            {(item.leadApproval?.status || item.approvalStatus) === 'Approved'
+                              ? 'Approved'
+                              : (item.leadApproval?.status || item.approvalStatus) === 'Referred Back'
+                              ? 'Referred Back'
+                              : 'Pending'}
+                          </span>
+                        </td>
+                      )}
+                      {visibleColumns.createdAt && (
+                        <td style={{ padding: '12px', color: '#94a3b8', fontSize: '12px' }}>
+                          {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
+                        </td>
+                      )}
+                      {visibleColumns.query && (
+                        <td style={{ padding: '12px', color: '#475569', textTransform: 'capitalize' }}>
+                          {item.query || 'lead'}
+                        </td>
+                      )}
+                      {visibleColumns.clientName && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.clientName || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.companyAddress && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.companyAddress || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.state && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.state || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.pincode && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.pincode || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.repeatedOrder && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.repeatedOrder || 'No'}
+                        </td>
+                      )}
+                      {visibleColumns.additionalNote && (
+                        <td style={{ padding: '12px', color: '#475569', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.additionalNote || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.logoName && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.logoName || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.pricePerPiece && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.pricePerPiece ? `₹${item.pricePerPiece}` : '—'}
+                        </td>
+                      )}
+                      {visibleColumns.totalAmount && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.totalAmount ? `₹${item.totalAmount}` : '—'}
+                        </td>
+                      )}
+                      {visibleColumns.gst && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.gst ? `${item.gst}%` : '—'}
+                        </td>
+                      )}
+                      {visibleColumns.netAmount && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.netAmount ? `₹${item.netAmount}` : '—'}
+                        </td>
+                      )}
+                      {visibleColumns.advanceAmount && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.advanceAmount ? `₹${item.advanceAmount}` : '—'}
+                        </td>
+                      )}
+                      {visibleColumns.pendingAmount && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.pendingAmount !== undefined && item.pendingAmount !== '' ? `₹${item.pendingAmount}` : '—'}
+                        </td>
+                      )}
+                      {visibleColumns.urgency && (
+                        <td style={{ padding: '12px', color: '#475569', textTransform: 'capitalize' }}>
+                          {item.urgency || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.deliveryDate && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.deliveryDate ? (item.deliveryDate.includes('T') ? item.deliveryDate.split('T')[0] : item.deliveryDate) : '—'}
+                        </td>
+                      )}
+                      {visibleColumns.modeOfDelivery && (
+                        <td style={{ padding: '12px', color: '#475569', textTransform: 'capitalize' }}>
+                          {item.modeOfDelivery || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.items && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {Array.isArray(item.items) && item.items.length > 0
+                            ? item.items.map((it) => `${it.item || it.enterItem || 'Item'} (${it.quantity || 0})`).join(', ')
+                            : '—'}
+                        </td>
+                      )}
+                      {visibleColumns.action && (
+                        <td style={{ padding: '12px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const editParam = isLeadManager ? 'false' : 'true';
+                              navigate(`/order/create-lead?id=${item._id}&edit=${editParam}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(item.orderStage || 'sample')}`);
+                            }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '5px 12px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              background: '#eff6ff',
+                              color: '#2563eb',
+                              border: '1px solid #bfdbfe',
+                              cursor: 'pointer',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#dbeafe')}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#eff6ff')}
+                            title={isLeadManager ? "View this order" : "Edit this order"}
+                          >
+                            {isLeadManager ? <Eye size={13} /> : <Edit2 size={13} />}
+                            <span>{isLeadManager ? 'View' : 'Edit'}</span>
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

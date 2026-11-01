@@ -108,6 +108,10 @@ const leadSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    logoDesignFiles: {
+      type: [{ data: String, name: String }],
+      default: [],
+    },
     digitalDesign: {
       type: String,
       default: "",
@@ -115,6 +119,10 @@ const leadSchema = new mongoose.Schema(
     digitalDesignName: {
       type: String,
       default: "",
+    },
+    digitalDesignFiles: {
+      type: [{ data: String, name: String }],
+      default: [],
     },
     logoName: {
       type: String,
@@ -201,6 +209,18 @@ const leadSchema = new mongoose.Schema(
         comment: { type: String, default: "" },
         status: { type: String, default: "" },
         createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    activityLogs: [
+      {
+        action: { type: String, default: "" },
+        stage: { type: String, default: "" },
+        performedBy: { type: String, default: "" },
+        role: { type: String, default: "" },
+        loginId: { type: String, default: "" },
+        details: { type: String, default: "" },
+        changes: { type: [String], default: [] },
+        timestamp: { type: Date, default: Date.now },
       },
     ],
     // Workflow tracking fields across Sample, Partial, and Complete
