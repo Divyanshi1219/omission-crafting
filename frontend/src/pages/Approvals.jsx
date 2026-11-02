@@ -211,8 +211,8 @@ export default function Approvals({ defaultTab = "all" }) {
     stockDepreciation: "",
     receivedCount: 0,
     pendingCount: 0,
-    logosPrinted: 100,
-    logosCutGiven: 100,
+    logosPrinted: "",
+    logosCutGiven: "",
     sampleLogosCount: 0,
   });
 
@@ -232,8 +232,8 @@ export default function Approvals({ defaultTab = "all" }) {
       stockDepreciation: order.stockTaskData?.stockDepreciation || `${Math.max(0, totalQty - sampleQty)} pcs`,
       receivedCount: order.stockTaskData?.receivedCount !== undefined ? Number(order.stockTaskData.receivedCount) : sampleQty,
       pendingCount: order.stockTaskData?.pendingCount || 0,
-      logosPrinted: order.productionTaskData?.logosPrinted || totalQty,
-      logosCutGiven: order.productionTaskData?.logosCutGiven || totalQty,
+      logosPrinted: (order.productionTaskData?.printingSubmitted && order.productionTaskData?.logosPrinted !== undefined && order.productionTaskData?.logosPrinted !== null) ? order.productionTaskData.logosPrinted : "",
+      logosCutGiven: (order.productionTaskData?.printingSubmitted && (order.productionTaskData?.logosCutGiven !== undefined || order.productionTaskData?.logosGivenForCutting !== undefined)) ? (order.productionTaskData.logosGivenForCutting ?? order.productionTaskData.logosCutGiven) : "",
       sampleLogosCount: order.productionTaskData?.sampleLogosCount !== undefined ? Number(order.productionTaskData.sampleLogosCount) : sampleQty,
     });
   };
@@ -257,15 +257,28 @@ export default function Approvals({ defaultTab = "all" }) {
     if (selectedOrder) {
       const prevData = selectedOrder.productionTaskData || {};
       const isSubmitted = Boolean(prevData.printingSubmitted);
+      const isPartial = selectedOrder.orderStage === "partial";
+      const isComplete = selectedOrder.orderStage === "complete";
+      const defaultBatchQty = selectedOrder.productionTaskData?.batchQuantity ||
+        (isPartial
+          ? (Number(selectedOrder.customerApprovalData?.partialQuantity) || Math.floor((selectedOrder.totalQuantity || 100) / 2))
+          : isComplete
+          ? Math.max(0, (selectedOrder.totalQuantity || 100) - (Number(selectedOrder.customerApprovalData?.partialQuantity) || 0))
+          : (selectedOrder.totalQuantity || 100));
+
       const printed = (isSubmitted && prevData.logosPrinted !== undefined && prevData.logosPrinted !== null && prevData.logosPrinted !== "")
         ? prevData.logosPrinted
         : "";
-      const givenForCut = (isSubmitted && (prevData.logosGivenForCutting !== undefined || prevData.logosCutGiven !== undefined))
+      const givenForCut = (isSubmitted && ((prevData.logosGivenForCutting !== undefined && prevData.logosGivenForCutting !== null && prevData.logosGivenForCutting !== "") || (prevData.logosCutGiven !== undefined && prevData.logosCutGiven !== null && prevData.logosCutGiven !== "")))
         ? (prevData.logosGivenForCutting ?? prevData.logosCutGiven)
         : "";
-      const recForCut = prevData.logosReceivedForCutting !== undefined && prevData.logosReceivedForCutting !== null ? prevData.logosReceivedForCutting : "";
+      const recForCut = prevData.logosReceivedForCutting !== undefined && prevData.logosReceivedForCutting !== null && prevData.logosReceivedForCutting !== ""
+        ? prevData.logosReceivedForCutting
+        : (givenForCut || (isPartial || isComplete ? defaultBatchQty : ""));
       const forPrint = prevData.logosForPrinting !== undefined && prevData.logosForPrinting !== null ? prevData.logosForPrinting : "";
-      const sampleCount = prevData.sampleLogosCount !== undefined && prevData.sampleLogosCount !== null ? prevData.sampleLogosCount : 0;
+      const sampleCount = prevData.sampleLogosCount !== undefined && prevData.sampleLogosCount !== null && prevData.sampleLogosCount !== ""
+        ? prevData.sampleLogosCount
+        : (isPartial || isComplete ? defaultBatchQty : 0);
       const recLogos = prevData.receivedNoOfLogos !== undefined ? (prevData.receivedNoOfLogos === false || prevData.receivedNoOfLogos === "no" ? "no" : "yes") : "yes";
 
       setProdForm({
@@ -353,19 +366,82 @@ export default function Approvals({ defaultTab = "all" }) {
         : [{ item: selectedOrder.item || "Apparel Item", quantity: selectedOrder.totalQuantity || 100 }];
 
       const prevItemsStockData = selectedOrder.stockTaskData?.itemsStockData || [];
+      const partialItemsList = selectedOrder.stockTaskData?.partialItemsStockData || [];
 
+      const isPartial = selectedOrder.orderStage === "partial" || String(selectedOrder.currentStageId || selectedOrder.stageId || "").startsWith("PRT");
+      const isComplete = selectedOrder.orderStage === "complete" || String(selectedOrder.currentStageId || selectedOrder.stageId || "").startsWith("CMP");
+      const totalStockQty = selectedOrder.totalQuantity || items.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
+      const explicitBatch = Number(selectedOrder.stockTaskData?.batchQuantity) || Number(selectedOrder.customerApprovalData?.partialQuantity);
+      const targetBatch = explicitBatch > 0
+        ? explicitBatch
+        : (isPartial
+          ? Math.floor(totalStockQty / 2)
+          : isComplete
+          ? Math.max(0, totalStockQty - (Number(selectedOrder.customerApprovalData?.partialQuantity) || 0))
+          : 5);
+
+      const getPartialDeduction = (it, idx) => {
+        const pItem = partialItemsList.find(
+          (p, i) => (p.id && (p.id === it.id || p.id === it._id)) || i === idx
+        ) || partialItemsList[idx] || (isComplete && !selectedOrder.stockTaskData?.verificationSubmitted ? prevItemsStockData[idx] : null);
+
+        if (pItem && pItem.sampleDeduction !== undefined && pItem.sampleDeduction !== "") {
+          return Number(pItem.sampleDeduction) || 0;
+        }
+        const partialQty = Number(selectedOrder.customerApprovalData?.partialQuantity) || 0;
+        if (partialQty > 0) {
+          return idx === 0 ? Math.min(Number(it.quantity) || 0, partialQty) : 0;
+        }
+        return 0;
+      };
+
+      const isNewBatchRun = (isPartial || isComplete) && (!selectedOrder.stockTaskData?.verificationSubmitted);
+
+      let allocatedRunning = 0;
       const initializedItemsData = items.map((it, idx) => {
         const saved = prevItemsStockData[idx] || {};
         const isAvail = saved.isStockAvailable !== undefined ? saved.isStockAvailable : (selectedOrder.stockTaskData?.isStockAvailable !== false);
-        const sampleCount = saved.sampleDeduction !== undefined ? Number(saved.sampleDeduction) || 0 : (idx === 0 ? (Number(selectedOrder.stockTaskData?.sampleDeduction) || 0) : 0);
-        const deficitCount = saved.notInStockCount !== undefined ? saved.notInStockCount : (selectedOrder.stockTaskData?.notInStockCount || "");
         const qty = Number(it.quantity) || 0;
-        const deficitNum = Number(deficitCount) || 0;
-        const rem = isAvail ? Math.max(0, qty - sampleCount) : Math.max(0, qty - deficitNum - sampleCount);
+        const partialDed = getPartialDeduction(it, idx);
+        const remainingToComplete = Math.max(0, qty - partialDed);
 
-        let defaultDeprec = saved.stockDepreciation;
-        if (!defaultDeprec || /full\s*stock|deficit|giving|available/i.test(defaultDeprec)) {
+        let sampleCount;
+        if (isComplete) {
+          if (isNewBatchRun) {
+            sampleCount = remainingToComplete;
+          } else if (saved.sampleDeduction !== undefined) {
+            sampleCount = Number(saved.sampleDeduction) || 0;
+          } else {
+            sampleCount = remainingToComplete;
+          }
+        } else if (isPartial) {
+          if (isNewBatchRun) {
+            const neededRemaining = Math.max(0, targetBatch - allocatedRunning);
+            sampleCount = Math.min(qty, neededRemaining);
+            allocatedRunning += sampleCount;
+          } else if (saved.sampleDeduction !== undefined) {
+            sampleCount = Number(saved.sampleDeduction) || 0;
+          } else {
+            sampleCount = idx === 0 ? Math.min(qty, targetBatch) : 0;
+          }
+        } else {
+          sampleCount = saved.sampleDeduction !== undefined ? Number(saved.sampleDeduction) : (idx === 0 ? 5 : 0);
+        }
+
+        const deficitCount = saved.notInStockCount !== undefined ? saved.notInStockCount : (selectedOrder.stockTaskData?.notInStockCount || "");
+        const deficitNum = Number(deficitCount) || 0;
+
+        let rem;
+        let defaultDeprec;
+        if (isComplete) {
+          rem = Math.max(0, remainingToComplete - sampleCount);
           defaultDeprec = `${rem} pcs`;
+        } else {
+          rem = isAvail ? Math.max(0, qty - sampleCount) : Math.max(0, qty - deficitNum - sampleCount);
+          defaultDeprec = saved.stockDepreciation;
+          if (!defaultDeprec || /full\s*stock|deficit|giving|available/i.test(defaultDeprec) || isNewBatchRun) {
+            defaultDeprec = `${rem} pcs`;
+          }
         }
 
         return {
@@ -381,6 +457,8 @@ export default function Approvals({ defaultTab = "all" }) {
           notInStockCount: deficitCount,
           sampleDeduction: sampleCount,
           stockDepreciation: defaultDeprec,
+          partialDeduction: partialDed,
+          remainingToComplete: remainingToComplete,
         };
       });
 
@@ -388,7 +466,45 @@ export default function Approvals({ defaultTab = "all" }) {
 
       // Ready to Pick state
       setReadyToPickReceived(selectedOrder.stockTaskData?.readyToPickReceived === false ? "no" : "yes");
-      setReadyToPickAttachments(selectedOrder.stockTaskData?.readyToPickAttachments || []);
+
+      let initialReadyAttachments = [];
+      if (isPartial) {
+        const sampleNames = new Set([
+          "bestseller-banne.png",
+          "bestseller-banner.png",
+          ...(selectedOrder.stockTaskData?.sampleReadyToPickAttachments || []).map(a => a?.name || a?.filename || String(a))
+        ]);
+
+        const rawPartial = Array.isArray(selectedOrder.stockTaskData?.partialReadyToPickAttachments)
+          ? selectedOrder.stockTaskData.partialReadyToPickAttachments
+          : [];
+
+        // Exclude sample files so stock room manager gets a clean upload state for the partial order
+        initialReadyAttachments = rawPartial.filter(a => {
+          const name = (a?.name || a?.filename || String(a)).toLowerCase();
+          return !sampleNames.has(name) && !name.includes("bestseller");
+        });
+      } else if (isComplete) {
+        const prevNames = new Set([
+          "bestseller-banne.png",
+          "bestseller-banner.png",
+          ...(selectedOrder.stockTaskData?.sampleReadyToPickAttachments || []).map(a => a?.name || a?.filename || String(a)),
+          ...(selectedOrder.stockTaskData?.partialReadyToPickAttachments || []).map(a => a?.name || a?.filename || String(a))
+        ]);
+
+        const rawComplete = Array.isArray(selectedOrder.stockTaskData?.completeReadyToPickAttachments)
+          ? selectedOrder.stockTaskData.completeReadyToPickAttachments
+          : [];
+
+        initialReadyAttachments = rawComplete.filter(a => {
+          const name = (a?.name || a?.filename || String(a)).toLowerCase();
+          return !prevNames.has(name) && !name.includes("bestseller");
+        });
+      } else {
+        initialReadyAttachments = selectedOrder.stockTaskData?.readyToPickAttachments || [];
+      }
+
+      setReadyToPickAttachments(initialReadyAttachments);
       setReadyToPickNotReceivedCount(selectedOrder.stockTaskData?.readyToPickNotReceivedCount || "");
 
       // Staging Room state
@@ -434,19 +550,71 @@ export default function Approvals({ defaultTab = "all" }) {
     if (files.length === 0) return;
 
     files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setReadyToPickAttachments((prev) => [
-          ...prev,
-          {
-            name: file.name,
-            url: reader.result,
-            size: (file.size / 1024).toFixed(1) + " KB",
-            type: file.type,
-          },
-        ]);
-      };
-      reader.readAsDataURL(file);
+      // Compress image files to avoid exceeding MongoDB 16MB document limit
+      if (file.type && file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const img = new Image();
+          img.onload = () => {
+            const maxDim = 1400;
+            let { width, height } = img;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const compressedUrl = canvas.toDataURL("image/jpeg", 0.82);
+            const approxKb = Math.round((compressedUrl.length * 3) / 4 / 1024);
+
+            setReadyToPickAttachments((prev) => [
+              ...prev,
+              {
+                name: file.name.replace(/\.[^/.]+$/, "") + ".jpg",
+                url: compressedUrl,
+                size: (approxKb > 0 ? approxKb : (file.size / 1024).toFixed(1)) + " KB",
+                type: "image/jpeg",
+              },
+            ]);
+          };
+          img.onerror = () => {
+            setReadyToPickAttachments((prev) => [
+              ...prev,
+              {
+                name: file.name,
+                url: evt.target.result,
+                size: (file.size / 1024).toFixed(1) + " KB",
+                type: file.type,
+              },
+            ]);
+          };
+          img.src = evt.target.result;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setReadyToPickAttachments((prev) => [
+            ...prev,
+            {
+              name: file.name,
+              url: reader.result,
+              size: (file.size / 1024).toFixed(1) + " KB",
+              type: file.type,
+            },
+          ]);
+        };
+        reader.readAsDataURL(file);
+      }
     });
   };
 
@@ -468,16 +636,50 @@ export default function Approvals({ defaultTab = "all" }) {
         ? "logo_printing"
         : "logo_cutting";
 
+      const isPartialStage = selectedOrder?.orderStage === "partial" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("PRT");
+      const isCompleteStage = selectedOrder?.orderStage === "complete" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("CMP");
+      const totalStockQty = selectedOrder?.totalQuantity || selectedOrder?.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
+      const partialBatchQty = Number(selectedOrder?.customerApprovalData?.partialQuantity) || Math.floor(totalStockQty / 2);
+      const remainingCompleteQty = Math.max(0, totalStockQty - partialBatchQty);
+
+      const targetBatchLimit = isCompleteStage
+        ? (Number(selectedOrder?.productionTaskData?.batchQuantity) || remainingCompleteQty || totalStockQty)
+        : isPartialStage
+        ? (Number(selectedOrder?.productionTaskData?.batchQuantity) || partialBatchQty || Math.floor(totalStockQty / 2))
+        : (Number(selectedOrder?.productionTaskData?.batchQuantity) || totalStockQty);
+
       if (actionType === "submit" && activeProdStage === "logo_printing") {
         if (prodForm.logosPrinted === "" || prodForm.logosGivenForCutting === "") {
           alert("Please fill in Printed (pcs) and For Cutting (pcs) before submitting.");
           return;
         }
+        if (Number(prodForm.logosPrinted) > targetBatchLimit) {
+          alert(`Printed logos (${prodForm.logosPrinted} pcs) cannot exceed the needed limit of ${targetBatchLimit} pcs.`);
+          return;
+        }
+        if (Number(prodForm.logosGivenForCutting) > targetBatchLimit) {
+          alert(`Logos for cutting (${prodForm.logosGivenForCutting} pcs) cannot exceed the needed limit of ${targetBatchLimit} pcs.`);
+          return;
+        }
+        if (Number(prodForm.logosGivenForCutting) > Number(prodForm.logosPrinted)) {
+          alert(`Logos for cutting (${prodForm.logosGivenForCutting} pcs) cannot exceed printed logos (${prodForm.logosPrinted} pcs).`);
+          return;
+        }
       }
 
-      if (actionType === "submit" && activeProdStage === "logo_cutting" && prodForm.receivedNoOfLogos === "no") {
-        alert("Logos marked as not received. Please refer back to Logo Printing.");
-        return;
+      if (actionType === "submit" && activeProdStage === "logo_cutting") {
+        if (prodForm.receivedNoOfLogos === "no") {
+          alert("Logos marked as not received. Please refer back to Logo Printing.");
+          return;
+        }
+        if (prodForm.logosReceivedForCutting !== "" && Number(prodForm.logosReceivedForCutting) > targetBatchLimit) {
+          alert(`Logos received for cutting (${prodForm.logosReceivedForCutting} pcs) cannot exceed the limit of ${targetBatchLimit} pcs.`);
+          return;
+        }
+        if (prodForm.sampleLogosCount !== "" && Number(prodForm.sampleLogosCount) > targetBatchLimit) {
+          alert(`Logos cut for batch (${prodForm.sampleLogosCount} pcs) cannot exceed the limit of ${targetBatchLimit} pcs.`);
+          return;
+        }
       }
 
       if (actionType === "refer_back" && !prodForm.note.trim()) {
@@ -600,6 +802,8 @@ export default function Approvals({ defaultTab = "all" }) {
             return;
           }
 
+          const isPartial = selectedOrder?.orderStage === "partial" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("PRT");
+          const isComplete = selectedOrder?.orderStage === "complete" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("CMP");
           payload = {
             action: actionType,
             stage: "ready_to_pick",
@@ -608,6 +812,8 @@ export default function Approvals({ defaultTab = "all" }) {
             stockTaskData: {
               readyToPickReceived: readyToPickReceived === "yes",
               readyToPickAttachments: readyToPickReceived === "yes" ? readyToPickAttachments : [],
+              ...(isPartial ? { partialReadyToPickAttachments: readyToPickReceived === "yes" ? readyToPickAttachments : [] } : {}),
+              ...(isComplete ? { completeReadyToPickAttachments: readyToPickReceived === "yes" ? readyToPickAttachments : [] } : {}),
               readyToPickNotReceivedCount: readyToPickReceived === "no" ? (Number(readyToPickNotReceivedCount) || 0) : 0,
               readyToPickSubmitted: actionType === "submit",
               readyToPickAt: new Date(),
@@ -749,6 +955,31 @@ export default function Approvals({ defaultTab = "all" }) {
           }
         }
       } else if (taskType === "logo_cutting") {
+        if (actionType === "submit") {
+          const mIsPartial = order.orderStage === "partial" || String(order.currentStageId || order.stageId || "").startsWith("PRT");
+          const mIsComplete = order.orderStage === "complete" || String(order.currentStageId || order.stageId || "").startsWith("CMP");
+          const mTotalQty = order.totalQuantity || order.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
+          const mPartialQty = Number(order.customerApprovalData?.partialQuantity) || Math.floor(mTotalQty / 2);
+          const mRemainingQty = Math.max(0, mTotalQty - mPartialQty);
+          const mTargetQty = mIsComplete
+            ? (Number(order.productionTaskData?.batchQuantity) || mRemainingQty || mTotalQty)
+            : mIsPartial
+            ? (Number(order.productionTaskData?.batchQuantity) || mPartialQty || Math.floor(mTotalQty / 2))
+            : (Number(order.productionTaskData?.batchQuantity) || mTotalQty);
+
+          if (Number(logosPrinted) > mTargetQty) {
+            alert(`Logos printed (${logosPrinted} pcs) cannot exceed the limit of ${mTargetQty} pcs.`);
+            return;
+          }
+          if (Number(logosCutGiven) > mTargetQty) {
+            alert(`Logos cut or given (${logosCutGiven} pcs) cannot exceed the limit of ${mTargetQty} pcs.`);
+            return;
+          }
+          if (Number(sampleLogosCount) > mTargetQty) {
+            alert(`Logos giving (${sampleLogosCount} pcs) cannot exceed the limit of ${mTargetQty} pcs.`);
+            return;
+          }
+        }
         const payload = {
           action: actionType,
           comment: note.trim(),
@@ -827,13 +1058,157 @@ export default function Approvals({ defaultTab = "all" }) {
     return s;
   };
 
+  // Helper: Derive stage-specific ID (SMP-00001, PRT-00001, CMP-00001)
+  const getStageId = (order) => {
+    if (!order) return "";
+    const stage = (order.orderStage || "sample").toLowerCase();
+    const rawNum = (order.orderId || (order._id ? String(order._id).slice(-5) : "00001")).replace(/^ORD-?/i, "");
+    const numPart = rawNum || "00001";
+    if (stage === "complete") return order.completeId || `CMP-${numPart}`;
+    if (stage === "partial") return order.partialId || `PRT-${numPart}`;
+    return order.sampleId || `SMP-${numPart}`;
+  };
+
+  // Helper: Stage badge styling and label (clean neutral styling, no color grading)
+  const getStageBadgeData = (order) => {
+    const stage = (order?.orderStage || "sample").toLowerCase();
+    const stageId = getStageId(order);
+    return {
+      stage,
+      label: stage === "complete" ? "Complete Run" : stage === "partial" ? "Partial Batch" : "Sample Stage",
+      stageId,
+      color: "#0f172a",
+      bg: "#f8fafc",
+      border: "#cbd5e1",
+    };
+  };
+
+  // Helper: Payment status information for Stock & Production profiles (clean neutral styling, no color grading)
+  const getPaymentDisplayInfo = (order) => {
+    if (!order) {
+      return {
+        status: "pending",
+        label: "Pending",
+        amountReceived: 0,
+        balanceRemaining: 0,
+        mode: "-",
+        refId: "",
+        color: "#64748b",
+        bg: "#f8fafc",
+        border: "#cbd5e1",
+        detail: "Payment verification pending",
+      };
+    }
+
+    const stage = (order.orderStage || "sample").toLowerCase();
+    const cust = order.customerApprovalData || {};
+    const stock = order.stockTaskData || {};
+    const prod = order.productionTaskData || {};
+
+    const paymentStatus =
+      cust.paymentStatus ||
+      stock.paymentStatus ||
+      prod.paymentStatus ||
+      (stage === "complete" ? "fully_received" : stage === "partial" ? "partial_received" : "");
+
+    const mode =
+      cust.paymentMode ||
+      order.paymentDetails?.paymentMethod ||
+      order.paymentMethod ||
+      "-";
+
+    const refId =
+      cust.transactionRef ||
+      cust.referenceId ||
+      order.paymentDetails?.referenceId ||
+      "";
+
+    const recAmount = Number(
+      cust.amountReceived ??
+      cust.remainingAmountReceived ??
+      stock.amountReceived ??
+      prod.amountReceived ??
+      (stage === "complete" ? (order.netAmount || order.totalAmount) : 0)
+    ) || 0;
+
+    const balAmount = Number(
+      cust.balanceRemaining ??
+      stock.balanceRemaining ??
+      prod.balanceRemaining ??
+      0
+    ) || 0;
+
+    if (paymentStatus === "fully_received" || stage === "complete") {
+      const finalAmount = recAmount || Number(order.netAmount || order.totalAmount || 0);
+      return {
+        status: "fully_received",
+        label: "Fully Received",
+        amountReceived: finalAmount,
+        balanceRemaining: 0,
+        mode,
+        refId,
+        color: "#15803d",
+        bg: "#f8fafc",
+        border: "#cbd5e1",
+        detail: `₹${finalAmount.toLocaleString()} full cleared${mode !== "-" ? ` via ${mode}` : ""}${refId ? ` (Ref: ${refId})` : ""}`,
+      };
+    }
+
+    if (paymentStatus === "partial_received" || stage === "partial") {
+      return {
+        status: "partial_received",
+        label: "Partially Received",
+        amountReceived: recAmount,
+        balanceRemaining: balAmount,
+        mode,
+        refId,
+        color: "#b45309",
+        bg: "#f8fafc",
+        border: "#cbd5e1",
+        detail: `₹${recAmount.toLocaleString()} rec. (₹${balAmount.toLocaleString()} bal.)${mode !== "-" ? ` via ${mode}` : ""}${refId ? ` (Ref: ${refId})` : ""}`,
+      };
+    }
+
+    const adv = Number(order.paymentDetails?.advanceAmount) || 0;
+    if (adv > 0) {
+      return {
+        status: "advance_received",
+        label: "Advance Received",
+        amountReceived: adv,
+        balanceRemaining: Math.max(0, (Number(order.netAmount || order.totalAmount) || 0) - adv),
+        mode,
+        refId,
+        color: "#334155",
+        bg: "#f8fafc",
+        border: "#cbd5e1",
+        detail: `₹${adv.toLocaleString()} advance paid${mode !== "-" ? ` via ${mode}` : ""}`,
+      };
+    }
+
+    return {
+      status: "sample",
+      label: "Sample Stage",
+      amountReceived: 0,
+      balanceRemaining: Number(order.netAmount || order.totalAmount || 0),
+      mode: "-",
+      refId: "",
+      color: "#475569",
+      bg: "#f8fafc",
+      border: "#cbd5e1",
+      detail: "Sample verification in progress",
+    };
+  };
+
   // Fetch all orders
   const fetchOrders = async (showSpinner = false) => {
     if (showSpinner || orders.length === 0) setLoading(true);
     try {
       const res = await api.get("/api/leads?query=order");
       if (res.data && res.data.data) {
-        setOrders(res.data.data);
+        const sorted = [...res.data.data].sort(
+          (a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)
+        );
+        setOrders(sorted);
       }
     } catch (err) {
       console.error("Error fetching approval orders:", err);
@@ -1028,6 +1403,9 @@ export default function Approvals({ defaultTab = "all" }) {
       // Search filter
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase();
+        const stageId = getStageId(order).toLowerCase();
+        const paymentDisplay = getPaymentDisplayInfo(order);
+        const paymentTerm = `${paymentDisplay.label} ${paymentDisplay.mode} ${paymentDisplay.detail}`.toLowerCase();
         const taskId = (order.taskId || (order.orderId ? `TSK-${order.orderId.replace(/^ORD-?/i, "")}` : "")).toLowerCase();
         const orderId = (order.orderId || "").toLowerCase();
         const client = (order.clientName || "").toLowerCase();
@@ -1044,6 +1422,8 @@ export default function Approvals({ defaultTab = "all" }) {
           : false;
 
         return (
+          stageId.includes(term) ||
+          paymentTerm.includes(term) ||
           taskId.includes(term) ||
           orderId.includes(term) ||
           employee.includes(term) ||
@@ -1054,7 +1434,7 @@ export default function Approvals({ defaultTab = "all" }) {
         );
       }
       return true;
-    });
+    }).sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
   }, [visibleOrders, currentTaskTab, statusTab, searchTerm, roleView, isProdProfile, isStockProfile]);
 
   // Statistics
@@ -1193,125 +1573,110 @@ export default function Approvals({ defaultTab = "all" }) {
                   {/* VERIFICATION TABLE HEADERS */}
                   {currentTaskTab === "verification" && (
                     <tr>
+                      <th>Stage ID</th>
                       <th>Order ID</th>
                       <th>Employee Name</th>
                       <th>Company Name</th>
+                      <th>Payment Status</th>
                       <th>Date</th>
                       <th>Items</th>
                       <th>Status</th>
                       {renderExtraHeaders()}
-                      <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
 
                   {/* READY TO PICK TABLE HEADERS */}
                   {currentTaskTab === "ready-to-pick" && (
                     <tr>
+                      <th>Stage ID</th>
                       <th>Order ID</th>
                       <th>Employee Name</th>
                       <th>Company Name</th>
+                      <th>Payment Status</th>
                       <th>Date</th>
                       <th>Items</th>
-                      <th>Stock Status</th>
-                      <th>For Sample</th>
                       <th>Status</th>
                       {renderExtraHeaders()}
-                      <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
 
                   {/* STAGING ROOM TABLE HEADERS */}
                   {currentTaskTab === "staging-room" && (
                     <tr>
+                      <th>Stage ID</th>
                       <th>Order ID</th>
                       <th>Employee Name</th>
                       <th>Company Name</th>
+                      <th>Payment Status</th>
                       <th>Date</th>
                       <th>Items</th>
-                      <th>For Sample</th>
-                      <th>Sample Received</th>
-                      <th>Sample Files</th>
                       <th>Status</th>
                       {renderExtraHeaders()}
-                      <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
 
                   {/* LOGO PRINTING TABLE HEADERS */}
                   {currentTaskTab === "logo-printing" && (
                     <tr>
+                      <th>Stage ID</th>
                       <th>Order ID</th>
                       <th>Employee Name</th>
                       <th>Company Name</th>
-                      <th>Date</th>
-                      <th>Attachments</th>
-                      <th>Logo Name</th>
-                      <th>Needed</th>
-                      <th>Printed</th>
-                      <th>For Cutting</th>
+                      <th>Payment Status</th>
                       <th>Status</th>
                       {renderExtraHeaders()}
-                      <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
 
                   {/* LOGO CUTTING TABLE HEADERS */}
                   {currentTaskTab === "logo-cutting" && (
                     <tr>
+                      <th>Stage ID</th>
                       <th>Order ID</th>
                       <th>Employee Name</th>
                       <th>Company Name</th>
+                      <th>Payment Status</th>
                       <th>Date</th>
                       <th>Attachments</th>
-                      <th>Logo Name</th>
-                      <th>Printed</th>
-                      <th>For Cutting</th>
-                      <th>Received</th>
-                      <th>For Printing</th>
-                      <th>For Sample</th>
                       <th>Status</th>
                       {renderExtraHeaders()}
-                      <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
 
                   {/* ALL VIEW HEADERS */}
                   {currentTaskTab === "all" && roleView === "stock" && (
                     <tr>
-                      <th>Task ID</th>
                       <th>Order ID</th>
                       <th>Employee Name</th>
                       <th>Company Name</th>
-                      <th>Date</th>
+                      <th>Payment Status</th>
                       <th>Stage</th>
-                      <th>Items</th>
                       <th>Status</th>
                       {renderExtraHeaders()}
-                      <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
 
                   {currentTaskTab === "all" && roleView === "production" && (
                     <tr>
-                      <th>Task ID</th>
+                      <th>Stage ID</th>
                       <th>Order ID</th>
                       <th>Employee Name</th>
                       <th>Company Name</th>
-                      <th>Date</th>
+                      <th>Payment Status</th>
                       <th>Stage</th>
-                      <th>Logo Name</th>
                       <th>Status</th>
                       {renderExtraHeaders()}
-                      <th style={{ textAlign: "right" }}>Action</th>
                     </tr>
                   )}
 
                   {currentTaskTab === "all" && roleView === "all" && (
                     <tr>
                       <th>Task ID</th>
+                      <th>Stage ID</th>
                       <th>Order ID</th>
                       <th>Client / Company</th>
                       <th>Sales Rep</th>
+                      <th>Payment Status</th>
                       <th>Stage</th>
                       <th>Quantity</th>
                       <th>Net Amount</th>
@@ -1326,7 +1691,7 @@ export default function Approvals({ defaultTab = "all" }) {
                   {loading ? (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={12}
                         style={{
                           textAlign: "center",
                           padding: "60px 20px",
@@ -1340,7 +1705,7 @@ export default function Approvals({ defaultTab = "all" }) {
                   ) : filteredOrders.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={12}
                         style={{
                           textAlign: "center",
                           padding: "60px 20px",
@@ -1361,6 +1726,8 @@ export default function Approvals({ defaultTab = "all" }) {
                       const totalItemsCount = itemsList.length;
                       const totalStockQty = order.totalQuantity || itemsList.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
                       const taskIdDisplay = order.taskId || (order.orderId ? `TSK-${order.orderId.replace(/^ORD-?/i, "")}` : `TSK-${String(order._id || order.id).slice(-5).toUpperCase()}`);
+                      const stageData = getStageBadgeData(order);
+                      const payInfo = getPaymentDisplayInfo(order);
 
                       /* =========================================================================
                          1. VERIFICATION (Stock Room Manager Task)
@@ -1374,6 +1741,25 @@ export default function Approvals({ defaultTab = "all" }) {
                             title="Click to view and verify stock"
                           >
                             <td>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "2px 7px",
+                                  borderRadius: "5px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  fontFamily: "monospace",
+                                  backgroundColor: stageData.bg,
+                                  color: stageData.color,
+                                  border: `1px solid ${stageData.border}`,
+                                  width: "fit-content",
+                                }}
+                              >
+                                {stageData.stageId}
+                              </span>
+                            </td>
+                            <td>
                               <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
                               </span>
@@ -1384,6 +1770,34 @@ export default function Approvals({ defaultTab = "all" }) {
                             <td>
                               <span style={{ fontWeight: 600, color: "#1e293b" }}>
                                 {order.companyName || order.clientName || "-"}
+                              </span>
+                            </td>
+                            <td>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                  padding: "2px 8px",
+                                  borderRadius: "12px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  backgroundColor: payInfo.bg,
+                                  color: payInfo.color,
+                                  border: `1px solid ${payInfo.border}`,
+                                  width: "fit-content",
+                                }}
+                                title={payInfo.detail}
+                              >
+                                <span
+                                  style={{
+                                    width: "6px",
+                                    height: "6px",
+                                    borderRadius: "50%",
+                                    backgroundColor: payInfo.color,
+                                  }}
+                                />
+                                {payInfo.label}
                               </span>
                             </td>
                             <td>
@@ -1407,22 +1821,6 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             {renderExtraCells(order)}
-                            <td style={{ textAlign: "right" }}>
-                              <div className="task-action-btn-group">
-                                <button
-                                  type="button"
-                                  className="action-btn submit-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Verify Stock"
-                                >
-                                  <CheckSquare size={13} />
-                                  Verify
-                                </button>
-                              </div>
-                            </td>
                           </tr>
                         );
                       }
@@ -1432,8 +1830,15 @@ export default function Approvals({ defaultTab = "all" }) {
                          ========================================================================= */
                       if (currentTaskTab === "ready-to-pick") {
                         const isAvail = order.stockTaskData?.isStockAvailable !== false;
-                        const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
                         const isReadyToPickSubmitted = order.stockTaskStage === "staging_room" || order.stockTaskStage === "completed" || order.stockTaskData?.readyToPickSubmitted || order.stockApproval?.status === "Approved";
+                        const isPartialOrComplete = order.orderStage === "partial" || order.orderStage === "complete";
+                        const targetBatch = order.stockTaskData?.batchQuantity ||
+                          (order.orderStage === "partial"
+                            ? (Number(order.customerApprovalData?.partialQuantity) || Math.floor((order.totalQuantity || 100) / 2))
+                            : order.orderStage === "complete"
+                            ? Math.max(0, (order.totalQuantity || 100) - (Number(order.customerApprovalData?.partialQuantity) || 0))
+                            : (order.stockTaskData?.sampleDeduction || 5));
+                        const sampleDeduction = isPartialOrComplete ? targetBatch : (order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0);
 
                         return (
                           <tr
@@ -1442,6 +1847,25 @@ export default function Approvals({ defaultTab = "all" }) {
                             style={{ cursor: "pointer" }}
                             title="Click to view ready to pick details"
                           >
+                            <td>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "2px 7px",
+                                  borderRadius: "5px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  fontFamily: "monospace",
+                                  backgroundColor: stageData.bg,
+                                  color: stageData.color,
+                                  border: `1px solid ${stageData.border}`,
+                                  width: "fit-content",
+                                }}
+                              >
+                                {stageData.stageId}
+                              </span>
+                            </td>
                             <td>
                               <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
@@ -1453,6 +1877,34 @@ export default function Approvals({ defaultTab = "all" }) {
                             <td>
                               <span style={{ fontWeight: 600, color: "#1e293b" }}>
                                 {order.companyName || order.clientName || "-"}
+                              </span>
+                            </td>
+                            <td>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                  padding: "2px 8px",
+                                  borderRadius: "12px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  backgroundColor: payInfo.bg,
+                                  color: payInfo.color,
+                                  border: `1px solid ${payInfo.border}`,
+                                  width: "fit-content",
+                                }}
+                                title={payInfo.detail}
+                              >
+                                <span
+                                  style={{
+                                    width: "6px",
+                                    height: "6px",
+                                    borderRadius: "50%",
+                                    backgroundColor: payInfo.color,
+                                  }}
+                                />
+                                {payInfo.label}
                               </span>
                             </td>
                             <td>
@@ -1470,44 +1922,12 @@ export default function Approvals({ defaultTab = "all" }) {
                               </div>
                             </td>
                             <td>
-                              <span style={{ color: isAvail ? "#059669" : "#dc2626", fontWeight: 600, fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                {isAvail ? <CheckCircle size={13} /> : <AlertCircle size={13} />}
-                                {isAvail ? "In Stock (Yes)" : `Deficit (${order.stockTaskData?.notInStockCount || "0"} pcs)`}
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
-                                {sampleDeduction} pcs
-                              </span>
-                            </td>
-                            <td>
                               <span className={`status-pill ${isReadyToPickSubmitted ? "approved" : st.toLowerCase().replace(/\s+/g, "-")}`}>
                                 <span className="status-dot"></span>
                                 {isReadyToPickSubmitted ? "Submitted" : st}
                               </span>
                             </td>
                             {renderExtraCells(order)}
-                            <td style={{ textAlign: "right" }}>
-                              <div className="task-action-btn-group">
-                                <button
-                                  type="button"
-                                  className="action-btn submit-btn"
-                                  style={
-                                    isReadyToPickSubmitted
-                                      ? { background: "#059669", opacity: 0.9 }
-                                      : undefined
-                                  }
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Pick & Attach Sample"
-                                >
-                                  {isReadyToPickSubmitted ? <CheckCircle size={13} /> : <Package size={13} />}
-                                  {isReadyToPickSubmitted ? "Submitted" : "Pick"}
-                                </button>
-                              </div>
-                            </td>
                           </tr>
                         );
                       }
@@ -1516,9 +1936,22 @@ export default function Approvals({ defaultTab = "all" }) {
                          3. STAGING ROOM (Stock Room Manager Task)
                          ========================================================================= */
                       if (currentTaskTab === "staging-room") {
-                        const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
+                        const isPartialOrComplete = order.orderStage === "partial" || order.orderStage === "complete";
+                        const targetBatch = order.stockTaskData?.batchQuantity ||
+                          (order.orderStage === "partial"
+                            ? (Number(order.customerApprovalData?.partialQuantity) || Math.floor((order.totalQuantity || 100) / 2))
+                            : order.orderStage === "complete"
+                            ? Math.max(0, (order.totalQuantity || 100) - (Number(order.customerApprovalData?.partialQuantity) || 0))
+                            : (order.stockTaskData?.sampleDeduction || 5));
+                        const sampleDeduction = isPartialOrComplete ? targetBatch : (order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0);
                         const sampleReceived = order.stockTaskData?.readyToPickReceived !== false;
-                        const attCount = order.stockTaskData?.readyToPickAttachments?.length || 0;
+                        const isOrderPartial = order.orderStage === "partial" || String(order.currentStageId || order.stageId || "").startsWith("PRT");
+                        const isOrderComplete = order.orderStage === "complete" || String(order.currentStageId || order.stageId || "").startsWith("CMP");
+                        const attCount = isOrderPartial
+                          ? (order.stockTaskData?.partialReadyToPickAttachments?.length || 0)
+                          : isOrderComplete
+                          ? (order.stockTaskData?.completeReadyToPickAttachments?.length || 0)
+                          : (order.stockTaskData?.readyToPickAttachments?.length || 0);
                         const isStagingSubmitted = order.stockTaskStage === "completed" || order.stockTaskData?.stagingSubmitted || order.stockApproval?.status === "Approved";
 
                         return (
@@ -1529,6 +1962,25 @@ export default function Approvals({ defaultTab = "all" }) {
                             title="Click to view staging details"
                           >
                             <td>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "2px 7px",
+                                  borderRadius: "5px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  fontFamily: "monospace",
+                                  backgroundColor: stageData.bg,
+                                  color: stageData.color,
+                                  border: `1px solid ${stageData.border}`,
+                                  width: "fit-content",
+                                }}
+                              >
+                                {stageData.stageId}
+                              </span>
+                            </td>
+                            <td>
                               <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
                               </span>
@@ -1539,6 +1991,34 @@ export default function Approvals({ defaultTab = "all" }) {
                             <td>
                               <span style={{ fontWeight: 600, color: "#1e293b" }}>
                                 {order.companyName || order.clientName || "-"}
+                              </span>
+                            </td>
+                            <td>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                  padding: "2px 8px",
+                                  borderRadius: "12px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  backgroundColor: payInfo.bg,
+                                  color: payInfo.color,
+                                  border: `1px solid ${payInfo.border}`,
+                                  width: "fit-content",
+                                }}
+                                title={payInfo.detail}
+                              >
+                                <span
+                                  style={{
+                                    width: "6px",
+                                    height: "6px",
+                                    borderRadius: "50%",
+                                    backgroundColor: payInfo.color,
+                                  }}
+                                />
+                                {payInfo.label}
                               </span>
                             </td>
                             <td>
@@ -1556,48 +2036,12 @@ export default function Approvals({ defaultTab = "all" }) {
                               </div>
                             </td>
                             <td>
-                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
-                                {sampleDeduction} pcs
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: sampleReceived ? "#059669" : "#dc2626", fontSize: "13px", fontWeight: 600 }}>
-                                {sampleReceived ? "Yes, Received" : "Not Received"}
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#2563eb", fontSize: "12.5px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                <Paperclip size={12} /> {attCount} file{attCount === 1 ? "" : "s"}
-                              </span>
-                            </td>
-                            <td>
                               <span className={`status-pill ${isStagingSubmitted ? "approved" : st.toLowerCase().replace(/\s+/g, "-")}`}>
                                 <span className="status-dot"></span>
                                 {isStagingSubmitted ? "Submitted" : st}
                               </span>
                             </td>
                             {renderExtraCells(order)}
-                            <td style={{ textAlign: "right" }}>
-                              <div className="task-action-btn-group">
-                                <button
-                                  type="button"
-                                  className="action-btn submit-btn"
-                                  style={
-                                    isStagingSubmitted
-                                      ? { background: "#059669", opacity: 0.9 }
-                                      : undefined
-                                  }
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Check & Verify Sample"
-                                >
-                                  {isStagingSubmitted ? <CheckCircle size={13} /> : <Boxes size={13} />}
-                                  {isStagingSubmitted ? "Submitted" : "Check"}
-                                </button>
-                              </div>
-                            </td>
                           </tr>
                         );
                       }
@@ -1606,18 +2050,6 @@ export default function Approvals({ defaultTab = "all" }) {
                          3. LOGO PRINTING (Production Lead Task)
                          ========================================================================= */
                       if (currentTaskTab === "logo-printing") {
-                        const hasPrinted = order.productionTaskData?.logosPrinted !== undefined && order.productionTaskData?.logosPrinted !== "" && order.productionTaskData?.logosPrinted !== null;
-                        const logosPrinted = hasPrinted ? `${order.productionTaskData.logosPrinted} pcs` : "-";
-
-                        const hasCutting = (order.productionTaskData?.logosGivenForCutting !== undefined && order.productionTaskData?.logosGivenForCutting !== "" && order.productionTaskData?.logosGivenForCutting !== null)
-                          || (order.productionTaskData?.logosCutGiven !== undefined && order.productionTaskData?.logosCutGiven !== "" && order.productionTaskData?.logosCutGiven !== null);
-                        const cuttingVal = order.productionTaskData?.logosGivenForCutting ?? order.productionTaskData?.logosCutGiven;
-                        const logosGivenForCutting = hasCutting ? `${cuttingVal} pcs` : "-";
-                        const logoDesignFile = order.logoDesign || order.attachment;
-                        const logoDesignName = order.logoDesignName || order.attachmentName || "";
-                        const digitalDesignFile = order.digitalDesign;
-                        const digitalDesignName = order.digitalDesignName || "";
-
                         return (
                           <tr
                             key={order._id || order.id}
@@ -1625,6 +2057,25 @@ export default function Approvals({ defaultTab = "all" }) {
                             style={{ cursor: "pointer" }}
                             title="Click to review and print logos"
                           >
+                            <td>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "2px 7px",
+                                  borderRadius: "5px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  fontFamily: "monospace",
+                                  backgroundColor: stageData.bg,
+                                  color: stageData.color,
+                                  border: `1px solid ${stageData.border}`,
+                                  width: "fit-content",
+                                }}
+                              >
+                                {stageData.stageId}
+                              </span>
+                            </td>
                             <td>
                               <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
@@ -1639,121 +2090,31 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
-                            </td>
-                            <td>
-                              <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                                {logoDesignFile ? (
-                                  <a
-                                    href={logoDesignFile}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    download={logoDesignName || "Logo Design"}
-                                    onClick={(e) => e.stopPropagation()}
-                                    title={logoDesignName || "Logo Design"}
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "4px",
-                                      color: "#2563eb",
-                                      fontSize: "12px",
-                                      textDecoration: "underline",
-                                      maxWidth: "140px",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap"
-                                    }}
-                                  >
-                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{logoDesignName || "Logo Design"}</span>
-                                  </a>
-                                ) : logoDesignName ? (
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "4px",
-                                      color: "#2563eb",
-                                      fontSize: "12px",
-                                      maxWidth: "140px",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap"
-                                    }}
-                                    title={logoDesignName}
-                                  >
-                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{logoDesignName}</span>
-                                  </span>
-                                ) : (
-                                  <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>No file</span>
-                                )}
-
-                                {digitalDesignFile ? (
-                                  <a
-                                    href={digitalDesignFile}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    download={digitalDesignName || "Digital Design"}
-                                    onClick={(e) => e.stopPropagation()}
-                                    title={digitalDesignName || "Digital Design"}
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "4px",
-                                      color: "#2563eb",
-                                      fontSize: "12px",
-                                      textDecoration: "underline",
-                                      maxWidth: "140px",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap"
-                                    }}
-                                  >
-                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{digitalDesignName || "Digital Design"}</span>
-                                  </a>
-                                ) : digitalDesignName ? (
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "4px",
-                                      color: "#2563eb",
-                                      fontSize: "12px",
-                                      maxWidth: "140px",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap"
-                                    }}
-                                    title={digitalDesignName}
-                                  >
-                                    <Paperclip size={11} style={{ flexShrink: 0 }} />
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{digitalDesignName}</span>
-                                  </span>
-                                ) : (
-                                  <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>No file</span>
-                                )}
-                              </div>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>
-                                {order.logoName || "Plain / No Logo"}
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>
-                                {totalStockQty} pcs
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
-                                {logosPrinted}
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
-                                {logosGivenForCutting}
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                  padding: "2px 8px",
+                                  borderRadius: "12px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  backgroundColor: payInfo.bg,
+                                  color: payInfo.color,
+                                  border: `1px solid ${payInfo.border}`,
+                                  width: "fit-content",
+                                }}
+                                title={payInfo.detail}
+                              >
+                                <span
+                                  style={{
+                                    width: "6px",
+                                    height: "6px",
+                                    borderRadius: "50%",
+                                    backgroundColor: payInfo.color,
+                                  }}
+                                />
+                                {payInfo.label}
                               </span>
                             </td>
                             <td>
@@ -1763,22 +2124,6 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             {renderExtraCells(order)}
-                            <td style={{ textAlign: "right" }}>
-                              <div className="task-action-btn-group">
-                                <button
-                                  type="button"
-                                  className="action-btn submit-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Review & Print Logos"
-                                >
-                                  <Printer size={13} />
-                                  Review
-                                </button>
-                              </div>
-                            </td>
                           </tr>
                         );
                       }
@@ -1787,18 +2132,6 @@ export default function Approvals({ defaultTab = "all" }) {
                          4. LOGO CUTTING (Production Lead Task)
                          ========================================================================= */
                       if (currentTaskTab === "logo-cutting") {
-                        const hasPrinted = order.productionTaskData?.logosPrinted !== undefined && order.productionTaskData?.logosPrinted !== "" && order.productionTaskData?.logosPrinted !== null;
-                        const logosPrinted = hasPrinted ? `${order.productionTaskData.logosPrinted} pcs` : "-";
-
-                        const hasCutting = (order.productionTaskData?.logosGivenForCutting !== undefined && order.productionTaskData?.logosGivenForCutting !== "" && order.productionTaskData?.logosGivenForCutting !== null)
-                          || (order.productionTaskData?.logosCutGiven !== undefined && order.productionTaskData?.logosCutGiven !== "" && order.productionTaskData?.logosCutGiven !== null);
-                        const cuttingVal = order.productionTaskData?.logosGivenForCutting ?? order.productionTaskData?.logosCutGiven;
-                        const logosGivenForCutting = hasCutting ? `${cuttingVal} pcs` : "-";
-
-                        const hasReceived = order.productionTaskData?.logosReceivedForCutting !== undefined && order.productionTaskData?.logosReceivedForCutting !== "";
-                        const logosReceivedForCutting = hasReceived ? `${order.productionTaskData.logosReceivedForCutting} pcs` : logosGivenForCutting;
-                        const forPrintingLogo = order.productionTaskData?.logosForPrinting || 0;
-                        const sampleLogos = order.productionTaskData?.sampleLogosCount !== undefined ? order.productionTaskData.sampleLogosCount : 0;
                         const logoDesignFile = order.logoDesign || order.attachment;
                         const logoDesignName = order.logoDesignName || order.attachmentName || "";
                         const digitalDesignFile = order.digitalDesign;
@@ -1812,6 +2145,25 @@ export default function Approvals({ defaultTab = "all" }) {
                             title="Click to review and cut logos"
                           >
                             <td>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "2px 7px",
+                                  borderRadius: "5px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  fontFamily: "monospace",
+                                  backgroundColor: stageData.bg,
+                                  color: stageData.color,
+                                  border: `1px solid ${stageData.border}`,
+                                  width: "fit-content",
+                                }}
+                              >
+                                {stageData.stageId}
+                              </span>
+                            </td>
+                            <td>
                               <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
                               </span>
@@ -1822,6 +2174,34 @@ export default function Approvals({ defaultTab = "all" }) {
                             <td>
                               <span style={{ fontWeight: 600, color: "#1e293b" }}>
                                 {order.companyName || order.clientName || "-"}
+                              </span>
+                            </td>
+                            <td>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                  padding: "2px 8px",
+                                  borderRadius: "12px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  backgroundColor: payInfo.bg,
+                                  color: payInfo.color,
+                                  border: `1px solid ${payInfo.border}`,
+                                  width: "fit-content",
+                                }}
+                                title={payInfo.detail}
+                              >
+                                <span
+                                  style={{
+                                    width: "6px",
+                                    height: "6px",
+                                    borderRadius: "50%",
+                                    backgroundColor: payInfo.color,
+                                  }}
+                                />
+                                {payInfo.label}
                               </span>
                             </td>
                             <td>
@@ -1923,58 +2303,12 @@ export default function Approvals({ defaultTab = "all" }) {
                               </div>
                             </td>
                             <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>
-                                {order.logoName || "Plain / No Logo"}
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
-                                {logosPrinted}
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
-                                {logosGivenForCutting}
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px", fontWeight: 600 }}>
-                                {logosReceivedForCutting}
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>
-                                {forPrintingLogo} pcs
-                              </span>
-                            </td>
-                            <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>
-                                {sampleLogos} pcs
-                              </span>
-                            </td>
-                            <td>
                               <span className={`status-pill ${st.toLowerCase().replace(/\s+/g, "-")}`}>
                                 <span className="status-dot"></span>
                                 {st}
                               </span>
                             </td>
                             {renderExtraCells(order)}
-                            <td style={{ textAlign: "right" }}>
-                              <div className="task-action-btn-group">
-                                <button
-                                  type="button"
-                                  className="action-btn submit-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectOrder(order);
-                                  }}
-                                  title="Review & Cut Logos"
-                                >
-                                  <Scissors size={13} />
-                                  Review
-                                </button>
-                              </div>
-                            </td>
                           </tr>
                         );
                       }
@@ -1991,11 +2325,6 @@ export default function Approvals({ defaultTab = "all" }) {
                             onClick={() => handleSelectOrder(order)}
                             style={{ cursor: "pointer" }}
                           >
-                            <td>
-                              <span style={{ fontFamily: "monospace", fontSize: "12.5px", color: "#64748b" }} title="Auto-generated, non-editable Task ID">
-                                {taskIdDisplay}
-                              </span>
-                            </td>
                             <td>
                               <span style={{ fontWeight: 600, color: "#0f172a", fontFamily: "monospace", fontSize: "13px" }}>
                                 {order.orderId || "Pending ID"}
@@ -2014,7 +2343,32 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span className="date-value">{dateStr}</span>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                  padding: "2px 8px",
+                                  borderRadius: "12px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  backgroundColor: payInfo.bg,
+                                  color: payInfo.color,
+                                  border: `1px solid ${payInfo.border}`,
+                                  width: "fit-content",
+                                }}
+                                title={payInfo.detail}
+                              >
+                                <span
+                                  style={{
+                                    width: "6px",
+                                    height: "6px",
+                                    borderRadius: "50%",
+                                    backgroundColor: payInfo.color,
+                                  }}
+                                />
+                                {payInfo.label}
+                              </span>
                             </td>
                             <td>
                               <span
@@ -2034,24 +2388,6 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <div className="items-summary-cell">
-                                <span className="items-count-pill">
-                                  <Package size={13} /> {totalItemsCount} Item
-                                  {totalItemsCount !== 1 ? "s" : ""}
-                                </span>
-                                {totalItemsCount > 0 && (
-                                  <span className="items-preview-text">
-                                    {itemsList
-                                      .map(
-                                        (it) =>
-                                          `${it.item || it.enterItem || it.itemType || "Apparel"} (${it.quantity || 0} pcs)`
-                                      )
-                                      .join(", ")}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td>
                               <span
                                 className={`status-pill ${
                                   stockStatus === "Approved"
@@ -2066,20 +2402,6 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             {renderExtraCells(order)}
-                            <td style={{ textAlign: "right" }}>
-                              <button
-                                type="button"
-                                className="action-btn view-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSelectOrder(order);
-                                }}
-                                title="View order details (read-only in ALL)"
-                              >
-                                <Eye size={13} />
-                                View
-                              </button>
-                            </td>
                           </tr>
                         );
                       }
@@ -2092,10 +2414,25 @@ export default function Approvals({ defaultTab = "all" }) {
                             key={order._id || order.id}
                             onClick={() => handleSelectOrder(order)}
                             style={{ cursor: "pointer" }}
+                            title="Click to view order details"
                           >
                             <td>
-                              <span style={{ fontFamily: "monospace", fontSize: "12.5px", color: "#64748b" }}>
-                                {taskIdDisplay}
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "2px 7px",
+                                  borderRadius: "5px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  fontFamily: "monospace",
+                                  backgroundColor: stageData.bg,
+                                  color: stageData.color,
+                                  border: `1px solid ${stageData.border}`,
+                                  width: "fit-content",
+                                }}
+                              >
+                                {stageData.stageId}
                               </span>
                             </td>
                             <td>
@@ -2116,7 +2453,32 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span style={{ color: "#64748b", fontSize: "13px" }}>{dateStr}</span>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                  padding: "2px 8px",
+                                  borderRadius: "12px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  backgroundColor: payInfo.bg,
+                                  color: payInfo.color,
+                                  border: `1px solid ${payInfo.border}`,
+                                  width: "fit-content",
+                                }}
+                                title={payInfo.detail}
+                              >
+                                <span
+                                  style={{
+                                    width: "6px",
+                                    height: "6px",
+                                    borderRadius: "50%",
+                                    backgroundColor: payInfo.color,
+                                  }}
+                                />
+                                {payInfo.label}
+                              </span>
                             </td>
                             <td>
                               <span
@@ -2136,11 +2498,6 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             <td>
-                              <span style={{ color: "#334155", fontSize: "13px" }}>
-                                {order.logoName || "Plain / No Logo"}
-                              </span>
-                            </td>
-                            <td>
                               <span
                                 className={`status-pill ${
                                   prodStatus === "Approved"
@@ -2155,20 +2512,6 @@ export default function Approvals({ defaultTab = "all" }) {
                               </span>
                             </td>
                             {renderExtraCells(order)}
-                            <td style={{ textAlign: "right" }}>
-                              <button
-                                type="button"
-                                className="action-btn view-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSelectOrder(order);
-                                }}
-                                title="View order details (read-only in ALL)"
-                              >
-                                <Eye size={13} />
-                                View
-                              </button>
-                            </td>
                           </tr>
                         );
                       }
@@ -2182,6 +2525,25 @@ export default function Approvals({ defaultTab = "all" }) {
                           <td>
                             <span style={{ fontFamily: "monospace", fontSize: "12.5px", color: "#64748b" }} title="Auto-generated, non-editable Task ID">
                               {taskIdDisplay}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                padding: "2px 7px",
+                                borderRadius: "5px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                fontFamily: "monospace",
+                                backgroundColor: stageData.bg,
+                                color: stageData.color,
+                                border: `1px solid ${stageData.border}`,
+                                width: "fit-content",
+                              }}
+                            >
+                              {stageData.stageId}
                             </span>
                           </td>
                           <td>
@@ -2202,6 +2564,34 @@ export default function Approvals({ defaultTab = "all" }) {
                           <td>
                             <span className="rep-name">
                               {order.employeeName || "Sales Executive"}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px",
+                                padding: "2px 8px",
+                                borderRadius: "12px",
+                                fontSize: "11.5px",
+                                fontWeight: 600,
+                                backgroundColor: payInfo.bg,
+                                color: payInfo.color,
+                                border: `1px solid ${payInfo.border}`,
+                                width: "fit-content",
+                              }}
+                              title={payInfo.detail}
+                            >
+                              <span
+                                style={{
+                                  width: "6px",
+                                  height: "6px",
+                                  borderRadius: "50%",
+                                  backgroundColor: payInfo.color,
+                                }}
+                              />
+                              {payInfo.label}
                             </span>
                           </td>
                           <td>
@@ -2343,33 +2733,123 @@ export default function Approvals({ defaultTab = "all" }) {
                         <Save size={15} />
                         <span>{submittingAction ? "Saving..." : "Save"}</span>
                       </button>
-                      {!(roleView === "production" && (currentTaskTab === "logo-cutting" || getProductionStage(selectedOrder) === "logo_cutting") && prodForm.receivedNoOfLogos === "no") && (
-                        <button
-                          type="button"
-                          className="btn-approve"
-                          onClick={() => handleExecutePageAction("submit")}
-                          disabled={submittingAction}
-                        >
-                          <CheckCircle size={15} />
-                          <span>
-                            {roleView === "stock"
-                              ? (currentTaskTab === "verification"
-                                ? "Submit to Ready to Pick"
-                                : currentTaskTab === "ready-to-pick"
-                                ? "Submit to Staging Room"
-                                : currentTaskTab === "staging-room"
-                                ? "Submit Clearance"
-                                : "Submit")
-                              : (currentTaskTab === "logo-printing"
-                                ? "Submit to Logo Cutting"
-                                : currentTaskTab === "logo-cutting"
-                                ? "Submit Clearance"
-                                : (selectedOrder.productionApproval?.status === "Approved" || selectedOrder.productionTaskStage === "completed")
-                                ? "Update & Submit"
-                                : "Submit")}
-                          </span>
-                        </button>
-                      )}
+                      {(() => {
+                        const isReadyToPickNotReceived =
+                          (currentTaskTab === "ready-to-pick" || getStockStage(selectedOrder) === "ready_to_pick") &&
+                          readyToPickReceived === "no";
+                        const isStagingNotCorrect =
+                          (currentTaskTab === "staging-room" || getStockStage(selectedOrder) === "staging_room") &&
+                          stagingSampleCorrect === "no";
+                        const isLogoCuttingNotReceived =
+                          (currentTaskTab === "logo-cutting" || getProductionStage(selectedOrder) === "logo_cutting") &&
+                          prodForm.receivedNoOfLogos === "no";
+
+                        const isPartialStage = selectedOrder?.orderStage === "partial" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("PRT");
+                        const isCompleteStage = selectedOrder?.orderStage === "complete" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("CMP");
+                        const totalStockQty = selectedOrder?.totalQuantity || selectedOrder?.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
+                        const partialBatchQty = Number(selectedOrder?.customerApprovalData?.partialQuantity) || Math.floor(totalStockQty / 2);
+                        const remainingCompleteQty = Math.max(0, totalStockQty - partialBatchQty);
+
+                        const targetBatchLimit = isCompleteStage
+                          ? (Number(selectedOrder?.productionTaskData?.batchQuantity) || remainingCompleteQty || totalStockQty)
+                          : isPartialStage
+                          ? (Number(selectedOrder?.productionTaskData?.batchQuantity) || partialBatchQty || Math.floor(totalStockQty / 2))
+                          : (Number(selectedOrder?.productionTaskData?.batchQuantity) || totalStockQty);
+
+                        const isPrintedExceeded =
+                          (currentTaskTab === "logo-printing" || getProductionStage(selectedOrder) === "logo_printing") &&
+                          prodForm.logosPrinted !== "" &&
+                          Number(prodForm.logosPrinted) > targetBatchLimit;
+
+                        const isForCuttingExceeded =
+                          (currentTaskTab === "logo-printing" || getProductionStage(selectedOrder) === "logo_printing") &&
+                          prodForm.logosGivenForCutting !== "" &&
+                          Number(prodForm.logosGivenForCutting) > targetBatchLimit;
+
+                        const isCuttingGreaterThanPrinted =
+                          (currentTaskTab === "logo-printing" || getProductionStage(selectedOrder) === "logo_printing") &&
+                          prodForm.logosGivenForCutting !== "" &&
+                          prodForm.logosPrinted !== "" &&
+                          Number(prodForm.logosGivenForCutting) > Number(prodForm.logosPrinted);
+
+                        const isCuttingReceivedExceeded =
+                          (currentTaskTab === "logo-cutting" || getProductionStage(selectedOrder) === "logo_cutting") &&
+                          prodForm.logosReceivedForCutting !== "" &&
+                          Number(prodForm.logosReceivedForCutting) > targetBatchLimit;
+
+                        const isCuttingSampleExceeded =
+                          (currentTaskTab === "logo-cutting" || getProductionStage(selectedOrder) === "logo_cutting") &&
+                          prodForm.sampleLogosCount !== "" &&
+                          Number(prodForm.sampleLogosCount) > targetBatchLimit;
+
+                        const isSubmitBlocked =
+                          Boolean(
+                            (roleView === "stock" && (isReadyToPickNotReceived || isStagingNotCorrect)) ||
+                            (roleView === "production" && (
+                              isLogoCuttingNotReceived ||
+                              isPrintedExceeded ||
+                              isForCuttingExceeded ||
+                              isCuttingGreaterThanPrinted ||
+                              isCuttingReceivedExceeded ||
+                              isCuttingSampleExceeded
+                            ))
+                          );
+
+                        return (
+                          <button
+                            type="button"
+                            className="btn-approve"
+                            onClick={isSubmitBlocked ? undefined : () => handleExecutePageAction("submit")}
+                            disabled={submittingAction || isSubmitBlocked}
+                            style={
+                              isSubmitBlocked
+                                ? {
+                                    background: "#94a3b8",
+                                    borderColor: "#94a3b8",
+                                    cursor: "not-allowed",
+                                    opacity: 0.55,
+                                    boxShadow: "none",
+                                    pointerEvents: "none",
+                                  }
+                                : undefined
+                            }
+                            title={
+                              isSubmitBlocked
+                                ? isPrintedExceeded
+                                  ? `Printed logos (${prodForm.logosPrinted} pcs) cannot exceed the needed limit of ${targetBatchLimit} pcs. Submit is disabled.`
+                                  : isForCuttingExceeded
+                                  ? `Logos for cutting (${prodForm.logosGivenForCutting} pcs) cannot exceed the needed limit of ${targetBatchLimit} pcs. Submit is disabled.`
+                                  : isCuttingGreaterThanPrinted
+                                  ? `Logos for cutting (${prodForm.logosGivenForCutting} pcs) cannot exceed printed logos (${prodForm.logosPrinted} pcs). Submit is disabled.`
+                                  : isCuttingReceivedExceeded || isCuttingSampleExceeded
+                                  ? `Logos count cannot exceed the batch limit of ${targetBatchLimit} pcs. Submit is disabled.`
+                                  : isReadyToPickNotReceived || isStagingNotCorrect || isLogoCuttingNotReceived
+                                  ? "Sample/Logos marked as not received or incorrect. Submit is not clickable; only Save and Refer Back are available."
+                                  : "Cannot submit with current entries."
+                                : undefined
+                            }
+                          >
+                            <CheckCircle size={15} />
+                            <span>
+                              {roleView === "stock"
+                                ? (currentTaskTab === "verification"
+                                  ? "Submit to Ready to Pick"
+                                  : currentTaskTab === "ready-to-pick"
+                                  ? "Submit to Staging Room"
+                                  : currentTaskTab === "staging-room"
+                                  ? "Submit Clearance"
+                                  : "Submit")
+                                : (currentTaskTab === "logo-printing"
+                                  ? "Submit to Logo Cutting"
+                                  : currentTaskTab === "logo-cutting"
+                                  ? "Submit Clearance"
+                                  : (selectedOrder.productionApproval?.status === "Approved" || selectedOrder.productionTaskStage === "completed")
+                                  ? "Update & Submit"
+                                  : "Submit")}
+                            </span>
+                          </button>
+                        );
+                      })()}
                     </>
                   )}
                 </div>
@@ -2427,6 +2907,8 @@ export default function Approvals({ defaultTab = "all" }) {
             )}
           </div>
 
+
+
           {/* =========================================================================
               CASE 1: STOCK ROOM MANAGER VIEW
               Fields:
@@ -2444,6 +2926,17 @@ export default function Approvals({ defaultTab = "all" }) {
                   : (currentTaskTab === "verification" ? "verification" : currentTaskTab === "ready-to-pick" ? "ready_to_pick" : "staging_room");
                 const isViewOnlyStock = currentTaskTab === "all" || getStockStage(selectedOrder) === "completed";
                 const stageBadge = getStageBadgeInfo(selectedOrder);
+                const isPartial = selectedOrder?.orderStage === "partial" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("PRT");
+                const isComplete = selectedOrder?.orderStage === "complete" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("CMP");
+                const totalStockQty = selectedOrder?.totalQuantity || selectedOrder?.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
+                const explicitBatchQty = Number(selectedOrder?.stockTaskData?.batchQuantity) || Number(selectedOrder?.customerApprovalData?.partialQuantity);
+                const targetBatchQty = explicitBatchQty > 0
+                  ? explicitBatchQty
+                  : isPartial
+                  ? Math.floor(totalStockQty / 2)
+                  : isComplete
+                  ? Math.max(0, totalStockQty - (Number(selectedOrder?.customerApprovalData?.partialQuantity) || 0))
+                  : totalStockQty;
                 const itemsToRender = itemsStockData.length > 0
                   ? itemsStockData
                   : (Array.isArray(selectedOrder.items) && selectedOrder.items.length > 0
@@ -2475,6 +2968,9 @@ export default function Approvals({ defaultTab = "all" }) {
                         sampleDeduction: 0,
                         stockDepreciation: `${selectedOrder.totalQuantity || 100} pcs`,
                       }]);
+
+                const totalAllocatedBatch = itemsToRender.reduce((sum, it) => sum + (Number(it.sampleDeduction) || 0), 0);
+                const allocationDiff = targetBatchQty - totalAllocatedBatch;
 
                 const hasSublimation = itemsToRender.some(
                   (it) =>
@@ -2517,15 +3013,26 @@ export default function Approvals({ defaultTab = "all" }) {
                     </div>
 
                     {/* 1. ORDER & LEAD DETAILS */}
-                    <div className="form-grid-4" style={{ marginBottom: "20px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "20px" }}>
                       <div className="form-field">
-                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Order ID</label>
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Stage ID</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={getStageId(selectedOrder) || "Pending Stage ID"}
+                          className="read-only-input bold"
+                          style={{ fontSize: "14px", fontFamily: "monospace" }}
+                        />
+                      </div>
+
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Base Order ID</label>
                         <input
                           type="text"
                           readOnly
                           value={selectedOrder.orderId || "Pending Order ID"}
                           className="read-only-input bold"
-                          style={{ fontSize: "14px" }}
+                          style={{ fontSize: "14px", fontFamily: "monospace" }}
                         />
                       </div>
 
@@ -2563,6 +3070,57 @@ export default function Approvals({ defaultTab = "all" }) {
                       </div>
                     </div>
 
+                    {/* BATCH ALLOCATION SUMMARY BANNER (For Partial & Complete Runs) */}
+                    {(isPartial || isComplete) && (
+                      <div
+                        style={{
+                          marginBottom: "16px",
+                          padding: "12px 16px",
+                          borderRadius: "8px",
+                          backgroundColor: allocationDiff === 0 ? "#f0fdf4" : allocationDiff > 0 ? "#fffbeb" : "#fef2f2",
+                          border: `1px solid ${allocationDiff === 0 ? "#bbf7d0" : allocationDiff > 0 ? "#fde68a" : "#fecaca"}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: "10px",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <Package size={17} color={allocationDiff === 0 ? "#15803d" : allocationDiff > 0 ? "#b45309" : "#dc2626"} />
+                          <div>
+                            <span style={{ fontSize: "13.5px", fontWeight: 700, color: "#1e293b" }}>
+                              {isPartial ? "Partial Batch Garment Allocation:" : "Remaining Complete Batch Garment Allocation:"}
+                            </span>
+                            <span style={{ fontSize: "13px", marginLeft: "8px", color: "#334155" }}>
+                              Target: <strong>{targetBatchQty} pcs</strong> (matching Logo Printing &amp; Cutting) &nbsp;|&nbsp;
+                              Currently Allocated: <strong style={{ color: allocationDiff === 0 ? "#15803d" : allocationDiff > 0 ? "#b45309" : "#dc2626" }}>{totalAllocatedBatch} pcs</strong>
+                            </span>
+                          </div>
+                        </div>
+
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            padding: "4px 12px",
+                            borderRadius: "6px",
+                            backgroundColor: allocationDiff === 0 ? "#dcfce7" : allocationDiff > 0 ? "#fef3c7" : "#fee2e2",
+                            color: allocationDiff === 0 ? "#15803d" : allocationDiff > 0 ? "#b45309" : "#dc2626",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                          }}
+                        >
+                          {allocationDiff === 0
+                            ? "✓ Fully Allocated (Ready to Pick)"
+                            : allocationDiff > 0
+                            ? `⚠ ${allocationDiff} pcs remaining to allocate across items`
+                            : `⚠ ${Math.abs(allocationDiff)} pcs over target`}
+                        </span>
+                      </div>
+                    )}
+
                     {/* 2. ITEMS ATTACHED TABLE (Stage-Specific Columns) */}
                     <div className="table-responsive" style={activeStockStage === "ready_to_pick" ? { overflowX: "hidden", width: "100%" } : {}}>
                       <table className="items-review-table stock-review-table" style={activeStockStage === "ready_to_pick" ? { width: "100%", tableLayout: "fixed" } : {}}>
@@ -2581,7 +3139,7 @@ export default function Approvals({ defaultTab = "all" }) {
                               <th style={{ minWidth: "55px", padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
                               <th style={{ minWidth: "120px", padding: "10px 8px", fontSize: "12.5px" }}>Stock Available</th>
                               <th style={{ minWidth: "100px", padding: "10px 8px", fontSize: "12.5px" }}>Deficit</th>
-                              <th style={{ minWidth: "110px", padding: "10px 8px", fontSize: "12.5px" }}>For Sample (pcs)</th>
+                              <th style={{ minWidth: "110px", padding: "10px 8px", fontSize: "12.5px" }}>{isPartial ? "For Partial (pcs)" : isComplete ? "For Remaining (pcs)" : "For Sample (pcs)"}</th>
                               <th style={{ minWidth: "160px", padding: "10px 8px", fontSize: "12.5px" }}>Depreciation Note</th>
                             </tr>
                           ) : activeStockStage === "ready_to_pick" ? (
@@ -2597,7 +3155,7 @@ export default function Approvals({ defaultTab = "all" }) {
                               <th style={{ width: "6%", padding: "7px 4px", fontSize: "11.5px" }}>Size</th>
                               <th style={{ width: "7%", padding: "7px 5px", fontSize: "11.5px" }}>Color</th>
                               <th style={{ width: "12%", padding: "7px 5px", fontSize: "11.5px" }}>Stock Status</th>
-                              <th style={{ width: "10%", padding: "7px 5px", fontSize: "11.5px" }}>For Sample</th>
+                              <th style={{ width: "10%", padding: "7px 5px", fontSize: "11.5px" }}>{isPartial ? "For Partial" : isComplete ? "For Remaining" : "For Sample"}</th>
                               <th style={{ width: "12%", padding: "7px 5px", fontSize: "11.5px" }}>Depreciation</th>
                             </tr>
                           ) : (
@@ -2613,7 +3171,7 @@ export default function Approvals({ defaultTab = "all" }) {
                               <th style={{ minWidth: "40px", padding: "10px 8px", fontSize: "12.5px" }}>Size</th>
                               <th style={{ minWidth: "55px", padding: "10px 8px", fontSize: "12.5px" }}>Color</th>
                               <th style={{ minWidth: "120px", padding: "10px 8px", fontSize: "12.5px" }}>Stock Status</th>
-                              <th style={{ minWidth: "100px", padding: "10px 8px", fontSize: "12.5px" }}>For Sample</th>
+                              <th style={{ minWidth: "100px", padding: "10px 8px", fontSize: "12.5px" }}>{isPartial ? "For Partial" : isComplete ? "For Remaining" : "For Sample"}</th>
                               <th style={{ minWidth: "130px", padding: "10px 8px", fontSize: "12.5px" }}>Pickup Status</th>
                             </tr>
                           )}
@@ -2624,6 +3182,21 @@ export default function Approvals({ defaultTab = "all" }) {
                             const samplePcs = Number(it.sampleDeduction) || 0;
                             const deficitPcs = it.notInStockCount || "";
                             const deficitNum = Number(deficitPcs) || 0;
+
+                            const partialDed = it.partialDeduction !== undefined
+                              ? Number(it.partialDeduction)
+                              : (isComplete ? (selectedOrder.customerApprovalData?.partialQuantity ? (idx === 0 ? Number(selectedOrder.customerApprovalData.partialQuantity) : 0) : 0) : 0);
+
+                            const remainingToComplete = it.remainingToComplete !== undefined
+                              ? Number(it.remainingToComplete)
+                              : (isComplete ? Math.max(0, (Number(it.quantity) || 0) - partialDed) : (Number(it.quantity) || 0));
+
+                            const isYetToBeCompleted = isComplete
+                              ? (remainingToComplete > 0 || samplePcs > 0)
+                              : isPartial
+                              ? (samplePcs > 0)
+                              : true;
+
                             const rem = isAvail ? Math.max(0, (Number(it.quantity) || 0) - samplePcs) : Math.max(0, (Number(it.quantity) || 0) - deficitNum - samplePcs);
                             const rawDeprec = it.stockDepreciation;
                             const deprecNote = (!rawDeprec || /full\s*stock|deficit|giving|available/i.test(rawDeprec))
@@ -2631,25 +3204,62 @@ export default function Approvals({ defaultTab = "all" }) {
                               : rawDeprec;
 
                             return (
-                              <tr key={it.id || idx}>
-                                <td style={{ textAlign: "center", padding: "9px 6px", fontSize: "13.5px" }}>{idx + 1}</td>
-                                <td className="item-name-cell" style={{ padding: "9px 8px", fontSize: "13.5px" }}>
-                                  {it.item || it.enterItem || it.itemType || "Apparel Item"}
+                              <tr
+                                key={it.id || idx}
+                                style={{
+                                  borderBottom: "1px solid #e2e8f0",
+                                  backgroundColor: isYetToBeCompleted ? "#f0fdf4" : "#f8fafc",
+                                  borderLeft: isYetToBeCompleted ? "4px solid #10b981" : "4px solid #cbd5e1",
+                                  opacity: isYetToBeCompleted ? 1 : 0.65,
+                                  transition: "all 0.15s ease",
+                                }}
+                              >
+                                <td style={{ textAlign: "center", padding: "10px 6px", fontSize: "13.5px", color: isYetToBeCompleted ? "#0f172a" : "#94a3b8", fontWeight: isYetToBeCompleted ? 700 : 500 }}>
+                                  {idx + 1}
                                 </td>
-                                <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{formatPrintingType(it.printingType)}</td>
+                                <td className="item-name-cell" style={{ padding: "10px 8px", fontSize: "13.5px", color: isYetToBeCompleted ? "#0f172a" : "#64748b", fontWeight: isYetToBeCompleted ? 700 : 500 }}>
+                                  <span>{it.item || it.enterItem || it.itemType || "Apparel Item"}</span>
+                                  {isComplete && (
+                                    isYetToBeCompleted ? (
+                                      <span style={{ marginLeft: "8px", display: "inline-block", padding: "2px 7px", borderRadius: "4px", background: "#dcfce7", border: "1px solid #86efac", color: "#15803d", fontSize: "11px", fontWeight: 700 }}>
+                                        ● To Verify ({remainingToComplete} pcs)
+                                      </span>
+                                    ) : (
+                                      <span style={{ marginLeft: "8px", display: "inline-block", padding: "2px 7px", borderRadius: "4px", background: "#f1f5f9", border: "1px solid #cbd5e1", color: "#64748b", fontSize: "11px", fontWeight: 600 }}>
+                                        ✓ Completed in Partial ({partialDed} pcs)
+                                      </span>
+                                    )
+                                  )}
+                                  {isPartial && (
+                                    isYetToBeCompleted ? (
+                                      <span style={{ marginLeft: "8px", display: "inline-block", padding: "2px 7px", borderRadius: "4px", background: "#dcfce7", border: "1px solid #86efac", color: "#15803d", fontSize: "11px", fontWeight: 700 }}>
+                                        ● For Partial ({samplePcs} pcs)
+                                      </span>
+                                    ) : (
+                                      <span style={{ marginLeft: "8px", display: "inline-block", padding: "2px 7px", borderRadius: "4px", background: "#f1f5f9", border: "1px solid #cbd5e1", color: "#94a3b8", fontSize: "11px", fontWeight: 500 }}>
+                                        0 pcs (In Complete Stage)
+                                      </span>
+                                    )
+                                  )}
+                                </td>
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px", color: isYetToBeCompleted ? "#334155" : "#94a3b8" }}>{formatPrintingType(it.printingType)}</td>
                                 {hasSublimation && (
-                                  <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.sublimationOption || it.sublimation || "-"}</td>
+                                  <td style={{ padding: "9px 8px", fontSize: "13.5px", color: isYetToBeCompleted ? "#334155" : "#94a3b8" }}>{it.sublimationOption || it.sublimation || "-"}</td>
                                 )}
-                                <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.fabric || "-"}</td>
-                                <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.quantity ? `${it.quantity} pcs` : "0 pcs"}</td>
-                                <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.size || "M"}</td>
-                                <td style={{ padding: "9px 8px", fontSize: "13.5px" }}>{it.color || "-"}</td>
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px", color: isYetToBeCompleted ? "#334155" : "#94a3b8" }}>{it.fabric || "-"}</td>
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px", fontWeight: isYetToBeCompleted ? 700 : 500, color: isYetToBeCompleted ? "#0f172a" : "#94a3b8" }}>{it.quantity ? `${it.quantity} pcs` : "0 pcs"}</td>
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px", color: isYetToBeCompleted ? "#334155" : "#94a3b8" }}>{it.size || "M"}</td>
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px", color: isYetToBeCompleted ? "#334155" : "#94a3b8" }}>{it.color || "-"}</td>
 
                                 {activeStockStage === "verification" ? (
                                   <>
                                     {/* Stock Available */}
                                     <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                      {isViewOnlyStock ? (
+                                      {!isYetToBeCompleted ? (
+                                        <span style={{ display: "inline-block", padding: "4px 8px", borderRadius: "5px", background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#64748b", fontSize: "12px", fontWeight: 600 }}>
+                                          {isComplete ? "Already Fulfilled" : "In Complete Stage"}
+                                        </span>
+                                      ) : isViewOnlyStock ? (
                                         <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "13px" }}>
                                           {isAvail ? "In Stock" : "Deficit"}
                                         </span>
@@ -2679,9 +3289,11 @@ export default function Approvals({ defaultTab = "all" }) {
 
                                     {/* Depreciation / Deficit */}
                                     <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                      {isAvail ? (
+                                      {!isYetToBeCompleted ? (
+                                        <span style={{ color: "#94a3b8", fontSize: "13px" }}>-</span>
+                                      ) : isAvail ? (
                                         <span style={{ color: "#475569", fontSize: "13px", fontWeight: 500 }}>
-                                          Full ({it.quantity || 0} pcs)
+                                          Full ({isComplete ? remainingToComplete : (it.quantity || 0)} pcs)
                                         </span>
                                       ) : (
                                         isViewOnlyStock ? (
@@ -2712,9 +3324,13 @@ export default function Approvals({ defaultTab = "all" }) {
                                       )}
                                     </td>
 
-                                    {/* How many given for sample */}
+                                    {/* How many given for sample / batch */}
                                     <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                      {isViewOnlyStock ? (
+                                      {!isYetToBeCompleted ? (
+                                        <span style={{ fontWeight: 600, fontSize: "13px", color: "#94a3b8" }}>
+                                          0 pcs
+                                        </span>
+                                      ) : isViewOnlyStock ? (
                                         <span style={{ fontWeight: 600, fontSize: "13.5px", color: "#1e293b" }}>
                                           {samplePcs} pcs
                                         </span>
@@ -2722,6 +3338,7 @@ export default function Approvals({ defaultTab = "all" }) {
                                         <input
                                           type="number"
                                           min="0"
+                                          max={isComplete ? remainingToComplete : (Number(it.quantity) || 0)}
                                           value={it.sampleDeduction ?? 0}
                                           onChange={(e) => handleItemStockChange(idx, "sampleDeduction", e.target.value)}
                                           style={{
@@ -2729,10 +3346,10 @@ export default function Approvals({ defaultTab = "all" }) {
                                             maxWidth: "80px",
                                             padding: "7px 8px",
                                             borderRadius: "6px",
-                                            border: "1px solid #cbd5e1",
+                                            border: "1px solid #86efac",
                                             fontSize: "13.5px",
-                                            fontWeight: 500,
-                                            color: "#1e293b",
+                                            fontWeight: 700,
+                                            color: "#15803d",
                                             backgroundColor: "#ffffff",
                                             outline: "none",
                                             textAlign: "center",
@@ -2744,7 +3361,11 @@ export default function Approvals({ defaultTab = "all" }) {
 
                                     {/* Stock Depreciation Note */}
                                     <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                      {isViewOnlyStock ? (
+                                      {!isYetToBeCompleted ? (
+                                        <span style={{ fontSize: "12.5px", color: "#94a3b8" }}>
+                                          {isComplete ? "0 pcs (Fulfilled in Partial)" : `${it.quantity || 0} pcs (In Complete Stage)`}
+                                        </span>
+                                      ) : isViewOnlyStock ? (
                                         <span style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>
                                           {deprecNote}
                                         </span>
@@ -2775,48 +3396,72 @@ export default function Approvals({ defaultTab = "all" }) {
                                   <>
                                     {/* Stock Status from Verification */}
                                     <td style={{ verticalAlign: "middle", padding: "7px 5px", fontSize: "12px" }}>
-                                      <span style={{ color: "#1e293b", fontWeight: 600 }}>
-                                        {isAvail ? "In Stock" : `Deficit (${deficitPcs || "0"})`}
-                                      </span>
+                                      {!isYetToBeCompleted ? (
+                                        <span style={{ color: "#94a3b8", fontSize: "11.5px" }}>Fulfilled in Partial</span>
+                                      ) : (
+                                        <span style={{ color: "#1e293b", fontWeight: 600 }}>
+                                          {isAvail ? "In Stock" : `Deficit (${deficitPcs || "0"})`}
+                                        </span>
+                                      )}
                                     </td>
 
-                                    {/* Given for Sample */}
+                                    {/* Given for Sample / Batch */}
                                     <td style={{ verticalAlign: "middle", padding: "7px 5px", fontSize: "12px" }}>
-                                      <span style={{ color: "#1e293b", fontWeight: 600 }}>
-                                        {samplePcs} pcs
-                                      </span>
+                                      {!isYetToBeCompleted ? (
+                                        <span style={{ color: "#94a3b8" }}>0 pcs</span>
+                                      ) : (
+                                        <span style={{ display: "inline-block", padding: "2px 6px", borderRadius: "4px", background: "#dcfce7", color: "#15803d", fontWeight: 700 }}>
+                                          {samplePcs} pcs
+                                        </span>
+                                      )}
                                     </td>
 
                                     {/* Depreciation Note */}
                                     <td style={{ verticalAlign: "middle", padding: "7px 5px", fontSize: "12px", wordBreak: "break-word" }}>
-                                      <span style={{ color: "#1e293b", fontWeight: 500 }}>
-                                        {deprecNote}
-                                      </span>
+                                      {!isYetToBeCompleted ? (
+                                        <span style={{ color: "#94a3b8" }}>-</span>
+                                      ) : (
+                                        <span style={{ color: "#1e293b", fontWeight: 500 }}>
+                                          {deprecNote}
+                                        </span>
+                                      )}
                                     </td>
                                   </>
                                 ) : (
                                   <>
                                     {/* Stock Status */}
                                     <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
-                                        {isAvail ? "In Stock" : `Deficit (${deficitPcs || 0} pcs)`}
-                                      </span>
+                                      {!isYetToBeCompleted ? (
+                                        <span style={{ color: "#94a3b8", fontSize: "12px" }}>Fulfilled in Partial</span>
+                                      ) : (
+                                        <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
+                                          {isAvail ? "In Stock" : `Deficit (${deficitPcs || 0} pcs)`}
+                                        </span>
+                                      )}
                                     </td>
 
-                                    {/* Given for Sample */}
+                                    {/* Given for Sample / Batch */}
                                     <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13.5px" }}>
-                                        {samplePcs} pcs
-                                      </span>
+                                      {!isYetToBeCompleted ? (
+                                        <span style={{ color: "#94a3b8" }}>0 pcs</span>
+                                      ) : (
+                                        <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: "4px", background: "#dcfce7", color: "#15803d", fontWeight: 700, fontSize: "13px" }}>
+                                          {samplePcs} pcs
+                                        </span>
+                                      )}
                                     </td>
 
                                     {/* Ready to Pick Status */}
                                     <td style={{ verticalAlign: "middle", padding: "9px 8px" }}>
-                                      <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
-                                        {selectedOrder.stockTaskData?.readyToPickReceived !== false
-                                          ? "Received"
-                                          : `Deficit (${selectedOrder.stockTaskData?.readyToPickNotReceivedCount || 0} pcs)`}
-                                      </span>
+                                      {!isYetToBeCompleted ? (
+                                        <span style={{ color: "#94a3b8" }}>-</span>
+                                      ) : (
+                                        <span style={{ color: "#1e293b", fontWeight: 600, fontSize: "13px" }}>
+                                          {selectedOrder.stockTaskData?.readyToPickReceived !== false
+                                            ? "Received"
+                                            : `Deficit (${selectedOrder.stockTaskData?.readyToPickNotReceivedCount || 0} pcs)`}
+                                        </span>
+                                      )}
                                     </td>
                                   </>
                                 )}
@@ -2840,7 +3485,7 @@ export default function Approvals({ defaultTab = "all" }) {
                         {/* Question: Sample Received? */}
                         <div style={{ marginBottom: "16px" }}>
                           <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "8px" }}>
-                            Sample Received?
+                            {isPartial ? `Partial Batch Received? (${targetBatchQty} pcs)` : isComplete ? `Remaining Batch Received? (${targetBatchQty} pcs)` : "Sample Received?"}
                           </label>
                           {isViewOnlyStock ? (
                             <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "13.5px" }}>
@@ -2897,7 +3542,7 @@ export default function Approvals({ defaultTab = "all" }) {
                         {readyToPickReceived === "yes" && (
                           <div style={{ marginTop: "16px" }}>
                             <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "8px" }}>
-                              Sample Attachments:
+                              {isPartial ? "Partial Batch Attachments:" : isComplete ? "Complete Batch Attachments:" : "Sample Attachments:"}
                             </label>
                             {!isViewOnlyStock && (
                               <div style={{ marginBottom: "12px" }}>
@@ -3038,10 +3683,10 @@ export default function Approvals({ defaultTab = "all" }) {
                           gap: "18px"
                         }}
                       >
-                        {/* Sample Attachments */}
+                        {/* Attachments */}
                         <div>
                           <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "8px" }}>
-                            Sample Attachments:
+                            {isPartial ? "Partial Batch Attachments:" : isComplete ? "Complete Batch Attachments:" : "Sample Attachments:"}
                           </label>
                           {readyToPickAttachments.length > 0 ? (
                             <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
@@ -3102,7 +3747,7 @@ export default function Approvals({ defaultTab = "all" }) {
                           {/* Question: Sample Received Correct? */}
                           <div style={{ marginBottom: "16px" }}>
                             <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "8px" }}>
-                              Sample Received Correct?
+                              {isPartial ? `Partial Batch Received Correct? (${targetBatchQty} pcs)` : isComplete ? `Remaining Batch Received Correct? (${targetBatchQty} pcs)` : "Sample Received Correct?"}
                             </label>
                             {isViewOnlyStock ? (
                               <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "13.5px" }}>
@@ -3290,7 +3935,17 @@ export default function Approvals({ defaultTab = "all" }) {
                   : (currentTaskTab === "logo-printing" ? "logo_printing" : "logo_cutting");
                 const isViewOnlyProd = currentTaskTab === "all" || getProductionStage(selectedOrder) === "completed";
                 const stageBadge = getProductionStageBadgeInfo(selectedOrder);
-                const totalStockQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
+                const isPartial = selectedOrder?.orderStage === "partial" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("PRT");
+                const isComplete = selectedOrder?.orderStage === "complete" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("CMP");
+                const totalStockQty = selectedOrder?.totalQuantity || selectedOrder?.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
+                const explicitBatchQty = Number(selectedOrder?.productionTaskData?.batchQuantity) || Number(selectedOrder?.customerApprovalData?.partialQuantity);
+                const targetBatchQty = explicitBatchQty > 0
+                  ? explicitBatchQty
+                  : isPartial
+                  ? Math.floor(totalStockQty / 2)
+                  : isComplete
+                  ? Math.max(0, totalStockQty - (Number(selectedOrder?.customerApprovalData?.partialQuantity) || 0))
+                  : totalStockQty;
 
                 const logoDesignFile = selectedOrder.logoDesign || selectedOrder.attachment;
                 const logoDesignName = selectedOrder.logoDesignName || selectedOrder.attachmentName || "Logo Design";
@@ -3327,17 +3982,29 @@ export default function Approvals({ defaultTab = "all" }) {
                     </div>
 
                     {/* 1. ORDER & LEAD DETAILS */}
-                    <div className="form-grid-4" style={{ marginBottom: "20px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "20px" }}>
                       <div className="form-field">
-                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Order ID</label>
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Stage ID</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={getStageId(selectedOrder) || "Pending Stage ID"}
+                          className="read-only-input bold"
+                          style={{ fontSize: "14px", fontFamily: "monospace" }}
+                        />
+                      </div>
+
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Base Order ID</label>
                         <input
                           type="text"
                           readOnly
                           value={selectedOrder.orderId || "Pending Order ID"}
                           className="read-only-input bold"
-                          style={{ fontSize: "14px" }}
+                          style={{ fontSize: "14px", fontFamily: "monospace" }}
                         />
                       </div>
+
                       <div className="form-field">
                         <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Employee Name</label>
                         <input
@@ -3348,6 +4015,7 @@ export default function Approvals({ defaultTab = "all" }) {
                           style={{ fontSize: "14px" }}
                         />
                       </div>
+
                       <div className="form-field">
                         <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Company Name</label>
                         <input
@@ -3358,6 +4026,7 @@ export default function Approvals({ defaultTab = "all" }) {
                           style={{ fontSize: "14px" }}
                         />
                       </div>
+
                       <div className="form-field">
                         <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Date</label>
                         <input
@@ -3489,12 +4158,12 @@ export default function Approvals({ defaultTab = "all" }) {
                         {/* Logo Needs by Client */}
                         <div className="form-field">
                           <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                            Logos Needed
+                            {isPartial ? "Logos Needed (Partial Batch)" : isComplete ? "Logos Needed (Remaining Batch)" : "Logos Needed"}
                           </label>
                           <input
                             type="text"
                             readOnly
-                            value={`${totalStockQty} pcs`}
+                            value={`${targetBatchQty} pcs`}
                             className="read-only-input bold"
                             style={{ fontSize: "14px" }}
                           />
@@ -3514,25 +4183,39 @@ export default function Approvals({ defaultTab = "all" }) {
                               style={{ fontSize: "14px" }}
                             />
                           ) : (
-                            <input
-                              type="number"
-                              min="0"
-                              placeholder="Enter printed..."
-                              value={prodForm.logosPrinted}
-                              onChange={(e) => setProdForm({ ...prodForm, logosPrinted: e.target.value })}
-                              style={{
-                                width: "100%",
-                                padding: "8px 12px",
-                                borderRadius: "8px",
-                                border: "1px solid #cbd5e1",
-                                fontSize: "14px",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                backgroundColor: "#ffffff",
-                                outline: "none",
-                                boxSizing: "border-box"
-                              }}
-                            />
+                            <div>
+                              <input
+                                type="number"
+                                min="0"
+                                max={targetBatchQty}
+                                placeholder={`Enter printed... (max ${targetBatchQty})`}
+                                value={prodForm.logosPrinted}
+                                onChange={(e) => setProdForm({ ...prodForm, logosPrinted: e.target.value })}
+                                onBlur={(e) => {
+                                  const val = Number(e.target.value);
+                                  if (e.target.value !== "" && val > targetBatchQty) {
+                                    setProdForm((prev) => ({ ...prev, logosPrinted: targetBatchQty }));
+                                  }
+                                }}
+                                style={{
+                                  width: "100%",
+                                  padding: "8px 12px",
+                                  borderRadius: "8px",
+                                  border: (prodForm.logosPrinted !== "" && Number(prodForm.logosPrinted) > targetBatchQty) ? "1.5px solid #ef4444" : "1px solid #cbd5e1",
+                                  fontSize: "14px",
+                                  fontWeight: 600,
+                                  color: "#1e293b",
+                                  backgroundColor: (prodForm.logosPrinted !== "" && Number(prodForm.logosPrinted) > targetBatchQty) ? "#fef2f2" : "#ffffff",
+                                  outline: "none",
+                                  boxSizing: "border-box"
+                                }}
+                              />
+                              {prodForm.logosPrinted !== "" && Number(prodForm.logosPrinted) > targetBatchQty && (
+                                <p style={{ margin: "4px 0 0", fontSize: "11.5px", color: "#dc2626", fontWeight: 600 }}>
+                                  ⚠️ Cannot exceed needed limit ({targetBatchQty} pcs)
+                                </p>
+                              )}
+                            </div>
                           )}
                         </div>
 
@@ -3550,25 +4233,43 @@ export default function Approvals({ defaultTab = "all" }) {
                               style={{ fontSize: "14px" }}
                             />
                           ) : (
-                            <input
-                              type="number"
-                              min="0"
-                              placeholder="Enter for cutting..."
-                              value={prodForm.logosGivenForCutting}
-                              onChange={(e) => setProdForm({ ...prodForm, logosGivenForCutting: e.target.value })}
-                              style={{
-                                width: "100%",
-                                padding: "8px 12px",
-                                borderRadius: "8px",
-                                border: "1px solid #cbd5e1",
-                                fontSize: "14px",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                backgroundColor: "#ffffff",
-                                outline: "none",
-                                boxSizing: "border-box"
-                              }}
-                            />
+                            <div>
+                              <input
+                                type="number"
+                                min="0"
+                                max={targetBatchQty}
+                                placeholder={`Enter for cutting... (max ${targetBatchQty})`}
+                                value={prodForm.logosGivenForCutting}
+                                onChange={(e) => setProdForm({ ...prodForm, logosGivenForCutting: e.target.value })}
+                                onBlur={(e) => {
+                                  const val = Number(e.target.value);
+                                  if (e.target.value !== "" && val > targetBatchQty) {
+                                    setProdForm((prev) => ({ ...prev, logosGivenForCutting: targetBatchQty }));
+                                  }
+                                }}
+                                style={{
+                                  width: "100%",
+                                  padding: "8px 12px",
+                                  borderRadius: "8px",
+                                  border: ((prodForm.logosGivenForCutting !== "" && Number(prodForm.logosGivenForCutting) > targetBatchQty) || (prodForm.logosGivenForCutting !== "" && prodForm.logosPrinted !== "" && Number(prodForm.logosGivenForCutting) > Number(prodForm.logosPrinted))) ? "1.5px solid #ef4444" : "1px solid #cbd5e1",
+                                  fontSize: "14px",
+                                  fontWeight: 600,
+                                  color: "#1e293b",
+                                  backgroundColor: ((prodForm.logosGivenForCutting !== "" && Number(prodForm.logosGivenForCutting) > targetBatchQty) || (prodForm.logosGivenForCutting !== "" && prodForm.logosPrinted !== "" && Number(prodForm.logosGivenForCutting) > Number(prodForm.logosPrinted))) ? "#fef2f2" : "#ffffff",
+                                  outline: "none",
+                                  boxSizing: "border-box"
+                                }}
+                              />
+                              {prodForm.logosGivenForCutting !== "" && Number(prodForm.logosGivenForCutting) > targetBatchQty ? (
+                                <p style={{ margin: "4px 0 0", fontSize: "11.5px", color: "#dc2626", fontWeight: 600 }}>
+                                  ⚠️ Cannot exceed needed limit ({targetBatchQty} pcs)
+                                </p>
+                              ) : prodForm.logosGivenForCutting !== "" && prodForm.logosPrinted !== "" && Number(prodForm.logosGivenForCutting) > Number(prodForm.logosPrinted) ? (
+                                <p style={{ margin: "4px 0 0", fontSize: "11.5px", color: "#dc2626", fontWeight: 600 }}>
+                                  ⚠️ Cannot exceed printed logos ({prodForm.logosPrinted} pcs)
+                                </p>
+                              ) : null}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -3626,110 +4327,103 @@ export default function Approvals({ defaultTab = "all" }) {
                           )}
                         </div>
 
-                        {/* Cutting Fields: Received for Cutting, For Printing Logo, Giving for Sample */}
-                        <div className="form-grid-3">
+                        {/* Cutting Fields: Received for Cutting, Giving for Sample */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
                           {/* How many logo received for cutting */}
                           <div className="form-field">
                             <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                              Received for Cutting (pcs)
+                              {isPartial ? "Received for Cutting (Partial Batch)" : isComplete ? "Received for Cutting (Remaining Batch)" : "Received for Cutting (pcs)"}
                             </label>
                             {isViewOnlyProd || activeProdStage !== "logo_cutting" ? (
                               <input
                                 type="text"
                                 readOnly
-                                value={`${prodForm.logosReceivedForCutting || prodForm.logosGivenForCutting || totalStockQty} pcs`}
+                                value={`${prodForm.logosReceivedForCutting || prodForm.logosGivenForCutting || targetBatchQty} pcs`}
                                 className="read-only-input bold"
                                 style={{ fontSize: "14px" }}
                               />
                             ) : (
-                              <input
-                                type="number"
-                                min="0"
-                                value={prodForm.logosReceivedForCutting}
-                                onChange={(e) => setProdForm({ ...prodForm, logosReceivedForCutting: e.target.value })}
-                                style={{
-                                  width: "100%",
-                                  padding: "8px 12px",
-                                  borderRadius: "8px",
-                                  border: "1px solid #cbd5e1",
-                                  fontSize: "14px",
-                                  fontWeight: 600,
-                                  color: "#1e293b",
-                                  backgroundColor: "#ffffff",
-                                  outline: "none",
-                                  boxSizing: "border-box"
-                                }}
-                              />
+                              <div>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={targetBatchQty}
+                                  value={prodForm.logosReceivedForCutting}
+                                  onChange={(e) => setProdForm({ ...prodForm, logosReceivedForCutting: e.target.value })}
+                                  onBlur={(e) => {
+                                    const val = Number(e.target.value);
+                                    if (e.target.value !== "" && val > targetBatchQty) {
+                                      setProdForm((prev) => ({ ...prev, logosReceivedForCutting: targetBatchQty }));
+                                    }
+                                  }}
+                                  style={{
+                                    width: "100%",
+                                    padding: "8px 12px",
+                                    borderRadius: "8px",
+                                    border: (prodForm.logosReceivedForCutting !== "" && Number(prodForm.logosReceivedForCutting) > targetBatchQty) ? "1.5px solid #ef4444" : "1px solid #cbd5e1",
+                                    fontSize: "14px",
+                                    fontWeight: 600,
+                                    color: "#1e293b",
+                                    backgroundColor: (prodForm.logosReceivedForCutting !== "" && Number(prodForm.logosReceivedForCutting) > targetBatchQty) ? "#fef2f2" : "#ffffff",
+                                    outline: "none",
+                                    boxSizing: "border-box"
+                                  }}
+                                />
+                                {prodForm.logosReceivedForCutting !== "" && Number(prodForm.logosReceivedForCutting) > targetBatchQty && (
+                                  <p style={{ margin: "4px 0 0", fontSize: "11.5px", color: "#dc2626", fontWeight: 600 }}>
+                                    ⚠️ Cannot exceed needed limit ({targetBatchQty} pcs)
+                                  </p>
+                                )}
+                              </div>
                             )}
                           </div>
 
-                          {/* How many for printing logo */}
+                          {/* How many giving for sample / batch */}
                           <div className="form-field">
                             <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                              For Printing (pcs)
+                              {isPartial ? "For Partial Batch (pcs)" : isComplete ? "For Complete Batch (pcs)" : "For Sample (pcs)"}
                             </label>
                             {isViewOnlyProd || activeProdStage !== "logo_cutting" ? (
                               <input
                                 type="text"
                                 readOnly
-                                value={`${prodForm.logosForPrinting || 0} pcs`}
+                                value={`${prodForm.sampleLogosCount !== "" && prodForm.sampleLogosCount !== undefined ? prodForm.sampleLogosCount : targetBatchQty} pcs`}
                                 className="read-only-input bold"
                                 style={{ fontSize: "14px" }}
                               />
                             ) : (
-                              <input
-                                type="number"
-                                min="0"
-                                value={prodForm.logosForPrinting}
-                                onChange={(e) => setProdForm({ ...prodForm, logosForPrinting: e.target.value })}
-                                style={{
-                                  width: "100%",
-                                  padding: "8px 12px",
-                                  borderRadius: "8px",
-                                  border: "1px solid #cbd5e1",
-                                  fontSize: "14px",
-                                  fontWeight: 600,
-                                  color: "#1e293b",
-                                  backgroundColor: "#ffffff",
-                                  outline: "none",
-                                  boxSizing: "border-box"
-                                }}
-                              />
-                            )}
-                          </div>
-
-                          {/* How many giving for sample */}
-                          <div className="form-field">
-                            <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                              For Sample (pcs)
-                            </label>
-                            {isViewOnlyProd || activeProdStage !== "logo_cutting" ? (
-                              <input
-                                type="text"
-                                readOnly
-                                value={`${prodForm.sampleLogosCount || 0} pcs`}
-                                className="read-only-input bold"
-                                style={{ fontSize: "14px" }}
-                              />
-                            ) : (
-                              <input
-                                type="number"
-                                min="0"
-                                value={prodForm.sampleLogosCount}
-                                onChange={(e) => setProdForm({ ...prodForm, sampleLogosCount: e.target.value })}
-                                style={{
-                                  width: "100%",
-                                  padding: "8px 12px",
-                                  borderRadius: "8px",
-                                  border: "1px solid #cbd5e1",
-                                  fontSize: "14px",
-                                  fontWeight: 600,
-                                  color: "#1e293b",
-                                  backgroundColor: "#ffffff",
-                                  outline: "none",
-                                  boxSizing: "border-box"
-                                }}
-                              />
+                              <div>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={targetBatchQty}
+                                  value={prodForm.sampleLogosCount}
+                                  onChange={(e) => setProdForm({ ...prodForm, sampleLogosCount: e.target.value })}
+                                  onBlur={(e) => {
+                                    const val = Number(e.target.value);
+                                    if (e.target.value !== "" && val > targetBatchQty) {
+                                      setProdForm((prev) => ({ ...prev, sampleLogosCount: targetBatchQty }));
+                                    }
+                                  }}
+                                  style={{
+                                    width: "100%",
+                                    padding: "8px 12px",
+                                    borderRadius: "8px",
+                                    border: (prodForm.sampleLogosCount !== "" && Number(prodForm.sampleLogosCount) > targetBatchQty) ? "1.5px solid #ef4444" : "1px solid #cbd5e1",
+                                    fontSize: "14px",
+                                    fontWeight: 600,
+                                    color: "#1e293b",
+                                    backgroundColor: (prodForm.sampleLogosCount !== "" && Number(prodForm.sampleLogosCount) > targetBatchQty) ? "#fef2f2" : "#ffffff",
+                                    outline: "none",
+                                    boxSizing: "border-box"
+                                  }}
+                                />
+                                {prodForm.sampleLogosCount !== "" && Number(prodForm.sampleLogosCount) > targetBatchQty && (
+                                  <p style={{ margin: "4px 0 0", fontSize: "11.5px", color: "#dc2626", fontWeight: 600 }}>
+                                    ⚠️ Cannot exceed needed limit ({targetBatchQty} pcs)
+                                  </p>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -4843,54 +5537,71 @@ export default function Approvals({ defaultTab = "all" }) {
               )}
 
               {/* LOGO CUTTING SUBMIT FIELDS */}
-              {taskActionModal.taskType === "logo_cutting" && taskActionModal.actionType === "submit" && (
-                <>
-                  <div className="task-modal-field">
-                    <label>How many logos printed? (pcs)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={taskActionModal.logosPrinted}
-                      onChange={(e) =>
-                        setTaskActionModal({
-                          ...taskActionModal,
-                          logosPrinted: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
+              {taskActionModal.taskType === "logo_cutting" && taskActionModal.actionType === "submit" && (() => {
+                const modalOrder = taskActionModal.order;
+                const mIsPartial = modalOrder?.orderStage === "partial" || String(modalOrder?.currentStageId || modalOrder?.stageId || "").startsWith("PRT");
+                const mIsComplete = modalOrder?.orderStage === "complete" || String(modalOrder?.currentStageId || modalOrder?.stageId || "").startsWith("CMP");
+                const mTotalQty = modalOrder?.totalQuantity || modalOrder?.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
+                const mPartialQty = Number(modalOrder?.customerApprovalData?.partialQuantity) || Math.floor(mTotalQty / 2);
+                const mRemainingQty = Math.max(0, mTotalQty - mPartialQty);
+                const mTargetQty = mIsComplete
+                  ? (Number(modalOrder?.productionTaskData?.batchQuantity) || mRemainingQty || mTotalQty)
+                  : mIsPartial
+                  ? (Number(modalOrder?.productionTaskData?.batchQuantity) || mPartialQty || Math.floor(mTotalQty / 2))
+                  : (Number(modalOrder?.productionTaskData?.batchQuantity) || mTotalQty);
 
-                  <div className="task-modal-field">
-                    <label>How many cut or given? (pcs)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={taskActionModal.logosCutGiven}
-                      onChange={(e) =>
-                        setTaskActionModal({
-                          ...taskActionModal,
-                          logosCutGiven: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
+                return (
+                  <>
+                    <div className="task-modal-field">
+                      <label>How many logos printed? (pcs) {mTargetQty ? `(max ${mTargetQty})` : ""}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max={mTargetQty}
+                        value={taskActionModal.logosPrinted}
+                        onChange={(e) =>
+                          setTaskActionModal({
+                            ...taskActionModal,
+                            logosPrinted: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
 
-                  <div className="task-modal-field">
-                    <label>How many giving for sample? (pcs)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={taskActionModal.sampleLogosCount}
-                      onChange={(e) =>
-                        setTaskActionModal({
-                          ...taskActionModal,
-                          sampleLogosCount: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                </>
-              )}
+                    <div className="task-modal-field">
+                      <label>How many cut or given? (pcs) {mTargetQty ? `(max ${mTargetQty})` : ""}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max={mTargetQty}
+                        value={taskActionModal.logosCutGiven}
+                        onChange={(e) =>
+                          setTaskActionModal({
+                            ...taskActionModal,
+                            logosCutGiven: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div className="task-modal-field">
+                      <label>How many giving for sample / batch? (pcs) {mTargetQty ? `(max ${mTargetQty})` : ""}</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max={mTargetQty}
+                        value={taskActionModal.sampleLogosCount}
+                        onChange={(e) =>
+                          setTaskActionModal({
+                            ...taskActionModal,
+                            sampleLogosCount: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* REFER BACK NOTES (Required for all refer-backs) */}
               {taskActionModal.actionType === "refer_back" && (

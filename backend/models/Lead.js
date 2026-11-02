@@ -92,6 +92,22 @@ const leadSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    sampleId: {
+      type: String,
+      default: "",
+    },
+    partialId: {
+      type: String,
+      default: "",
+    },
+    completeId: {
+      type: String,
+      default: "",
+    },
+    currentStageId: {
+      type: String,
+      default: "",
+    },
     attachment: {
       type: String,
       default: "",
@@ -318,5 +334,36 @@ const leadSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+leadSchema.pre("save", function () {
+  // Deduplicate identical base64 strings between legacy attachment/logoDesign and logoDesignFiles
+  if (this.logoDesignFiles && this.logoDesignFiles[0] && this.logoDesignFiles[0].data) {
+    if (this.attachment === this.logoDesignFiles[0].data) {
+      this.attachment = "";
+    }
+    if (this.logoDesign === this.logoDesignFiles[0].data) {
+      this.logoDesign = "";
+    }
+  } else if (this.attachment && this.logoDesign && this.attachment === this.logoDesign) {
+    this.attachment = "";
+  }
+  if (this.digitalDesignFiles && this.digitalDesignFiles[0] && this.digitalDesignFiles[0].data) {
+    if (this.digitalDesign === this.digitalDesignFiles[0].data) {
+      this.digitalDesign = "";
+    }
+  }
+
+  // Keep historical attachments metadata lightweight (drop stale multi-megabyte base64 from prior stages)
+  if (this.stockTaskData) {
+    if (Array.isArray(this.stockTaskData.sampleReadyToPickAttachments)) {
+      this.stockTaskData.sampleReadyToPickAttachments = this.stockTaskData.sampleReadyToPickAttachments.map(a => ({
+        name: a?.name || "",
+        size: a?.size || "",
+        type: a?.type || "",
+        stage: "sample"
+      }));
+    }
+  }
+});
 
 module.exports = mongoose.model("Lead", leadSchema);

@@ -65,9 +65,12 @@ router.get("/", async (req, res) => {
             logoDesignFiles: 0,
             digitalDesignFiles: 0,
             "stockTaskData.readyToPickAttachments.url": 0,
+            "stockTaskData.sampleReadyToPickAttachments.url": 0,
+            "stockTaskData.partialReadyToPickAttachments.url": 0,
+            "stockTaskData.completeReadyToPickAttachments.url": 0,
           }
     )
-      .sort({ createdAt: -1 })
+      .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
 
     // Clean up contaminated approvals and ensure starting stage (batched in bulkWrite)
@@ -75,6 +78,37 @@ router.get("/", async (req, res) => {
     for (const l of leads) {
       let needsUpdate = false;
       const updates = {};
+
+      // Ensure Stage IDs (sampleId, partialId, completeId, currentStageId)
+      if (l.orderId || l.query === "order" || l.orderStage) {
+        const rawNum = (l.orderId || l._id.toString().slice(-5)).replace(/^ORD-?/i, "");
+        if (!l.sampleId) {
+          l.sampleId = `SMP-${rawNum}`;
+          updates.sampleId = l.sampleId;
+          needsUpdate = true;
+        }
+        if (!l.partialId) {
+          l.partialId = `PRT-${rawNum}`;
+          updates.partialId = l.partialId;
+          needsUpdate = true;
+        }
+        if (!l.completeId) {
+          l.completeId = `CMP-${rawNum}`;
+          updates.completeId = l.completeId;
+          needsUpdate = true;
+        }
+        const expectedStageId =
+          (l.orderStage === "complete")
+            ? l.completeId
+            : (l.orderStage === "partial")
+            ? l.partialId
+            : l.sampleId;
+        if (l.currentStageId !== expectedStageId) {
+          l.currentStageId = expectedStageId;
+          updates.currentStageId = expectedStageId;
+          needsUpdate = true;
+        }
+      }
 
       if (
         l.productionApproval &&
@@ -235,6 +269,18 @@ const getItemDisplayName = (it) => {
   if (!raw) return "Item";
   if (raw.toLowerCase() === "t-shirt" || raw.toLowerCase() === "tshirt") return "T-Shirt";
   return raw;
+};
+
+const deduplicateAndSanitizeAttachments = (docData) => {
+  if (!docData) return docData;
+  if (Array.isArray(docData.logoDesignFiles) && docData.logoDesignFiles.length > 0 && docData.logoDesignFiles[0]?.data) {
+    docData.logoDesign = "";
+    docData.attachment = "";
+  }
+  if (Array.isArray(docData.digitalDesignFiles) && docData.digitalDesignFiles.length > 0 && docData.digitalDesignFiles[0]?.data) {
+    docData.digitalDesign = "";
+  }
+  return docData;
 };
 
 const computeLeadChanges = (existing, incoming) => {
@@ -476,10 +522,44 @@ router.get("/:id", async (req, res) => {
       lead.approvalStatus = "Approved";
       modified = true;
     }
+
+    // Clean up sample attachments for partial orders so Elena Rostova can upload clean partial pictures
+    const isPartialLead = lead.orderStage === "partial" || String(lead.currentStageId || lead.stageId || "").startsWith("PRT");
+    if (isPartialLead && lead.stockTaskData) {
+      const isSampleAttachment = (name) => /(^|[\s_-])bestseller/i.test(name || "");
+      const sampleFiles = (lead.stockTaskData.readyToPickAttachments || []).filter(a => isSampleAttachment(a?.name));
+      if (sampleFiles.length > 0 && (!lead.stockTaskData.sampleReadyToPickAttachments || lead.stockTaskData.sampleReadyToPickAttachments.length === 0)) {
+        lead.stockTaskData.sampleReadyToPickAttachments = sampleFiles;
+        modified = true;
+      }
+      if ((lead.stockTaskData.readyToPickAttachments || []).some(a => isSampleAttachment(a?.name))) {
+        lead.stockTaskData.readyToPickAttachments = (lead.stockTaskData.readyToPickAttachments || []).filter(a => !isSampleAttachment(a?.name));
+        modified = true;
+      }
+      if ((lead.stockTaskData.partialReadyToPickAttachments || []).some(a => isSampleAttachment(a?.name))) {
+        lead.stockTaskData.partialReadyToPickAttachments = (lead.stockTaskData.partialReadyToPickAttachments || []).filter(a => !isSampleAttachment(a?.name));
+        modified = true;
+      }
+      if (modified) {
+        lead.markModified("stockTaskData");
+      }
+    }
     if (modified) {
       await lead.save();
     }
-    res.json({ success: true, data: lead });
+
+    const leadObj = lead.toObject ? lead.toObject() : lead;
+    if (!leadObj.logoDesign && leadObj.logoDesignFiles?.[0]?.data) {
+      leadObj.logoDesign = leadObj.logoDesignFiles[0].data;
+    }
+    if (!leadObj.digitalDesign && leadObj.digitalDesignFiles?.[0]?.data) {
+      leadObj.digitalDesign = leadObj.digitalDesignFiles[0].data;
+    }
+    if (!leadObj.attachment && leadObj.logoDesign) {
+      leadObj.attachment = leadObj.logoDesign;
+    }
+
+    res.json({ success: true, data: leadObj });
   } catch (error) {
     console.error("Error fetching lead:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -516,6 +596,19 @@ router.post("/", async (req, res) => {
     const actorName = performedBy || leadData.employeeName || "Sales Executive";
     const actorRole = performedByRole || "Sales Executive";
     const actorLogin = performedById || leadData.createdBy || "sales";
+
+    if (leadData.orderId) {
+      const rawNum = leadData.orderId.replace(/^ORD-?/i, "");
+      if (!leadData.sampleId) leadData.sampleId = `SMP-${rawNum}`;
+      if (!leadData.partialId) leadData.partialId = `PRT-${rawNum}`;
+      if (!leadData.completeId) leadData.completeId = `CMP-${rawNum}`;
+      leadData.currentStageId =
+        (leadData.orderStage === "complete")
+          ? leadData.completeId
+          : (leadData.orderStage === "partial")
+          ? leadData.partialId
+          : leadData.sampleId;
+    }
 
     if (_id) {
       const existing = await Lead.findById(_id);
@@ -604,6 +697,7 @@ router.post("/", async (req, res) => {
         leadData.activityLogs = existingLogs;
       }
 
+      deduplicateAndSanitizeAttachments(leadData);
       const updated = await Lead.findByIdAndUpdate(_id, leadData, {
         new: true,
         runValidators: true,
@@ -634,6 +728,7 @@ router.post("/", async (req, res) => {
       },
     ];
 
+    deduplicateAndSanitizeAttachments(leadData);
     const newLead = new Lead(leadData);
     const saved = await newLead.save();
     res.status(201).json({ success: true, message: "Lead created successfully", data: saved });
@@ -672,6 +767,7 @@ router.put("/:id", async (req, res) => {
     });
     updateData.activityLogs = logs;
 
+    deduplicateAndSanitizeAttachments(updateData);
     const updated = await Lead.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true,
@@ -1046,6 +1142,23 @@ router.patch("/:id/stock-task", async (req, res) => {
     });
 
     await lead.save();
+
+    try {
+      const Task = require("../models/Task");
+      const orderIdStr = lead.orderId || lead._id.toString().slice(-6).toUpperCase();
+      const taskIdStr = `TSK-${orderIdStr}`;
+      await Task.findOneAndUpdate(
+        { $or: [{ leadId: lead._id }, { taskId: taskIdStr }] },
+        {
+          orderStage: lead.orderStage || "sample",
+          subStage: lead.subStage || "",
+          notes: lead.stockTaskData?.batchNote || lead.productionTaskData?.batchNote || "",
+        }
+      );
+    } catch (e) {
+      console.warn("Could not sync Task model on stage-transition:", e.message);
+    }
+
     res.json({ success: true, data: lead });
   } catch (err) {
     console.error("Error in stock-task:", err);
@@ -1070,6 +1183,38 @@ router.patch("/:id/production-task", async (req, res) => {
     let movedToPrinting = false;
 
     if (action === "submit") {
+      const isPartial = lead.orderStage === "partial" || String(lead.currentStageId || lead.stageId || "").startsWith("PRT");
+      const isComplete = lead.orderStage === "complete" || String(lead.currentStageId || lead.stageId || "").startsWith("CMP");
+      const totalStockQty = lead.totalQuantity || lead.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
+      const partialBatchQty = Number(lead.customerApprovalData?.partialQuantity) || Math.floor(totalStockQty / 2);
+      const remainingCompleteQty = Math.max(0, totalStockQty - partialBatchQty);
+
+      const targetBatchQty = isComplete
+        ? (Number(lead.productionTaskData?.batchQuantity) || remainingCompleteQty || totalStockQty)
+        : isPartial
+        ? (Number(lead.productionTaskData?.batchQuantity) || partialBatchQty || Math.floor(totalStockQty / 2))
+        : (Number(lead.productionTaskData?.batchQuantity) || totalStockQty);
+
+      if (stage === "logo_printing" && productionTaskData) {
+        if (productionTaskData.logosPrinted !== undefined && productionTaskData.logosPrinted !== "" && Number(productionTaskData.logosPrinted) > targetBatchQty) {
+          return res.status(400).json({ success: false, message: `Logos printed (${productionTaskData.logosPrinted} pcs) cannot exceed the limit of ${targetBatchQty} pcs.` });
+        }
+        if (productionTaskData.logosGivenForCutting !== undefined && productionTaskData.logosGivenForCutting !== "" && Number(productionTaskData.logosGivenForCutting) > targetBatchQty) {
+          return res.status(400).json({ success: false, message: `Logos for cutting (${productionTaskData.logosGivenForCutting} pcs) cannot exceed the limit of ${targetBatchQty} pcs.` });
+        }
+        if (productionTaskData.logosGivenForCutting !== undefined && productionTaskData.logosPrinted !== undefined &&
+            productionTaskData.logosGivenForCutting !== "" && productionTaskData.logosPrinted !== "" &&
+            Number(productionTaskData.logosGivenForCutting) > Number(productionTaskData.logosPrinted)) {
+          return res.status(400).json({ success: false, message: `Logos for cutting (${productionTaskData.logosGivenForCutting} pcs) cannot exceed the printed logos count (${productionTaskData.logosPrinted} pcs).` });
+        }
+      }
+
+      if (stage === "logo_cutting" && productionTaskData) {
+        if (productionTaskData.sampleLogosCount !== undefined && productionTaskData.sampleLogosCount !== "" && Number(productionTaskData.sampleLogosCount) > targetBatchQty) {
+          return res.status(400).json({ success: false, message: `Logos cut (${productionTaskData.sampleLogosCount} pcs) cannot exceed the limit of ${targetBatchQty} pcs.` });
+        }
+      }
+
       if (stage === "logo_printing") {
         lead.productionTaskStage = "logo_cutting";
         lead.productionApproval = {
@@ -1187,6 +1332,23 @@ router.patch("/:id/production-task", async (req, res) => {
     });
 
     await lead.save();
+
+    try {
+      const Task = require("../models/Task");
+      const orderIdStr = lead.orderId || lead._id.toString().slice(-6).toUpperCase();
+      const taskIdStr = `TSK-${orderIdStr}`;
+      await Task.findOneAndUpdate(
+        { $or: [{ leadId: lead._id }, { taskId: taskIdStr }] },
+        {
+          orderStage: lead.orderStage || "sample",
+          subStage: lead.subStage || "",
+          notes: lead.stockTaskData?.batchNote || lead.productionTaskData?.batchNote || "",
+        }
+      );
+    } catch (e) {
+      console.warn("Could not sync Task model on stage-transition:", e.message);
+    }
+
     res.json({ success: true, data: lead });
   } catch (err) {
     console.error("Error in production-task:", err);
@@ -1302,27 +1464,128 @@ router.patch("/:id/stage-transition", async (req, res) => {
       lead.query = "order";
     }
 
-    // Transition 1: Customer Approval in Sample -> Move to Partial if approved, otherwise back to Sample -> Order!
+    // Transition 1: Customer Approval in Sample -> Move to Partial if partially paid, Move to Complete if complete paid, otherwise back to Sample -> Order!
     if (action === "submit" && activeStage === "sample" && fromSubStage === "customer-approval-awaiting") {
       const isApproved = stageData?.customerApproved === "yes" || stageData?.customerApproved === true;
       if (isApproved) {
-        lead.orderStage = "partial";
-        lead.subStage = "order";
-        lead.approvalStatus = "Pending";
-        lead.stockApproval = {
-          status: "Pending",
-          note: comment || "Partial stage stock allocation required",
-          author: "Stock Room",
-          updatedAt: null,
-        };
-        lead.stockTaskStage = "verification";
-        lead.productionApproval = {
-          status: "Pending",
-          note: comment || "Partial stage logo printing required",
-          author: "Production Lead",
-          updatedAt: null,
-        };
-        lead.productionTaskStage = "logo_printing";
+        const paymentStatus = stageData?.paymentStatus;
+        if (paymentStatus === "fully_received") {
+          // Direct to COMPLETE stage! Skip Partial!
+          lead.orderStage = "complete";
+          lead.subStage = "order";
+          lead.approvalStatus = "Pending";
+          const rawNum = (lead.orderId || lead._id.toString().slice(-5)).replace(/^ORD-?/i, "");
+          lead.sampleId = lead.sampleId || `SMP-${rawNum}`;
+          lead.partialId = lead.partialId || `PRT-${rawNum}`;
+          lead.completeId = lead.completeId || `CMP-${rawNum}`;
+          lead.currentStageId = lead.completeId;
+
+          const fullQty = lead.totalQuantity || 100;
+          const recAmount = Number(stageData?.amountReceived) || Number(lead.netAmount || lead.totalAmount) || 0;
+
+          lead.stockApproval = {
+            status: "Pending",
+            note: comment || `Full payment received (₹${recAmount}). Complete stage bulk allocation: ${fullQty} pcs.`,
+            author: "Elena Rostova",
+            updatedAt: null,
+          };
+          lead.stockTaskStage = "verification";
+          lead.stockTaskData = {
+            ...(lead.stockTaskData || {}),
+            verificationSubmitted: false,
+            readyToPickSubmitted: false,
+            stagingSubmitted: false,
+            readyToPickReceived: "yes",
+            stagingSampleCorrect: "yes",
+            batchQuantity: fullQty,
+            paymentStatus: "fully_received",
+            amountReceived: recAmount,
+            balanceRemaining: 0,
+            batchNote: `Full payment received (₹${recAmount}). Allocate & verify full order of ${fullQty} pcs.`
+          };
+
+          lead.productionApproval = {
+            status: "Pending",
+            note: comment || `Full payment received (₹${recAmount}). Complete stage logo printing: ${fullQty} pcs.`,
+            author: "Marcus Vance",
+            updatedAt: null,
+          };
+          lead.productionTaskStage = "logo_printing";
+          lead.productionTaskData = {
+            ...(lead.productionTaskData || {}),
+            printingSubmitted: false,
+            submittedToLogoCutting: false,
+            receivedNoOfLogos: "yes",
+            logosPrinted: "",
+            logosGivenForCutting: "",
+            logosReceivedForCutting: "",
+            batchQuantity: fullQty,
+            paymentStatus: "fully_received",
+            amountReceived: recAmount,
+            balanceRemaining: 0,
+            batchNote: `Full payment received (₹${recAmount}). Print & cut logos for full order of ${fullQty} pcs.`
+          };
+        } else {
+          // Partially paid -> Move to Partial stage!
+          lead.orderStage = "partial";
+          lead.subStage = "order";
+          lead.approvalStatus = "Pending";
+          const rawNum = (lead.orderId || lead._id.toString().slice(-5)).replace(/^ORD-?/i, "");
+          lead.sampleId = lead.sampleId || `SMP-${rawNum}`;
+          lead.partialId = lead.partialId || `PRT-${rawNum}`;
+          lead.completeId = lead.completeId || `CMP-${rawNum}`;
+          lead.currentStageId = lead.partialId;
+
+          const partialQty = Number(stageData?.partialQuantity) || Math.floor((lead.totalQuantity || 100) / 2) || 50;
+          const recAmount = Number(stageData?.amountReceived) || 0;
+          const balAmount = Number(stageData?.balanceRemaining) || Math.max(0, (lead.netAmount || lead.totalAmount || 0) - recAmount);
+
+          lead.stockApproval = {
+            status: "Pending",
+            note: comment || `Partial payment received (₹${recAmount}). Partial stage allocation: ${partialQty} pcs.`,
+            author: "Elena Rostova",
+            updatedAt: null,
+          };
+          lead.stockTaskStage = "verification";
+          lead.stockTaskData = {
+            ...(lead.stockTaskData || {}),
+            sampleReadyToPickAttachments: lead.stockTaskData?.readyToPickAttachments || [],
+            readyToPickAttachments: [],
+            partialReadyToPickAttachments: [],
+            verificationSubmitted: false,
+            readyToPickSubmitted: false,
+            stagingSubmitted: false,
+            readyToPickReceived: "yes",
+            stagingSampleCorrect: "yes",
+            batchQuantity: partialQty,
+            paymentStatus: "partial_received",
+            amountReceived: recAmount,
+            balanceRemaining: balAmount,
+            batchNote: `Partial payment received (₹${recAmount}). Allocate & verify partial batch of ${partialQty} pcs.`
+          };
+
+          lead.productionApproval = {
+            status: "Pending",
+            note: comment || `Partial payment received (₹${recAmount}). Partial stage logo printing: ${partialQty} pcs.`,
+            author: "Marcus Vance",
+            updatedAt: null,
+          };
+          lead.productionTaskStage = "logo_printing";
+          lead.productionTaskData = {
+            ...(lead.productionTaskData || {}),
+            printingSubmitted: false,
+            submittedToLogoCutting: false,
+            receivedNoOfLogos: "yes",
+            logosPrinted: "",
+            logosGivenForCutting: "",
+            logosReceivedForCutting: "",
+            batchQuantity: partialQty,
+            paymentStatus: "partial_received",
+            amountReceived: recAmount,
+            balanceRemaining: balAmount,
+            batchNote: `Partial payment received (₹${recAmount}). Print & cut logos for partial batch of ${partialQty} pcs.`
+          };
+        }
       } else {
         // Customer not approved -> move back to sample -> order
         lead.orderStage = "sample";
@@ -1340,20 +1603,63 @@ router.patch("/:id/stage-transition", async (req, res) => {
       lead.orderStage = "complete";
       lead.subStage = "order";
       lead.approvalStatus = "Pending";
+      const rawNum = (lead.orderId || lead._id.toString().slice(-5)).replace(/^ORD-?/i, "");
+      lead.sampleId = lead.sampleId || `SMP-${rawNum}`;
+      lead.partialId = lead.partialId || `PRT-${rawNum}`;
+      lead.completeId = lead.completeId || `CMP-${rawNum}`;
+      lead.currentStageId = lead.completeId;
+
+      const totalQty = lead.totalQuantity || 100;
+      const partialQty = Number(lead.customerApprovalData?.partialQuantity) || Number(lead.stockTaskData?.batchQuantity) || Math.floor(totalQty / 2);
+      const remainingQty = Math.max(0, totalQty - partialQty);
+      const remAmount = Number(stageData?.remainingAmountReceived) || Number(stageData?.partialAmountReceived) || Number(lead.customerApprovalData?.balanceRemaining) || 0;
+
       lead.stockApproval = {
         status: "Pending",
-        note: comment || "Complete stage bulk stock allocation required",
-        author: "Stock Room",
+        note: comment || `Remaining payment confirmed (₹${remAmount}). Complete stage bulk allocation: ${remainingQty} pcs.`,
+        author: "Elena Rostova",
         updatedAt: null,
       };
       lead.stockTaskStage = "verification";
+      lead.stockTaskData = {
+        ...(lead.stockTaskData || {}),
+        partialItemsStockData: lead.stockTaskData?.itemsStockData || [],
+        partialReadyToPickAttachments: lead.stockTaskData?.readyToPickAttachments || [],
+        readyToPickAttachments: [],
+        completeReadyToPickAttachments: [],
+        verificationSubmitted: false,
+        readyToPickSubmitted: false,
+        stagingSubmitted: false,
+        readyToPickReceived: "yes",
+        stagingSampleCorrect: "yes",
+        batchQuantity: remainingQty,
+        paymentStatus: "fully_received",
+        amountReceived: remAmount,
+        balanceRemaining: 0,
+        batchNote: `Remaining payment received (₹${remAmount}). This is remaining to give for order to complete: ${remainingQty} pcs (Partial delivered: ${partialQty} pcs).`
+      };
+
       lead.productionApproval = {
         status: "Pending",
-        note: comment || "Complete stage final logo cutting required",
-        author: "Production Lead",
+        note: comment || `Remaining payment confirmed (₹${remAmount}). Complete stage logo printing: ${remainingQty} pcs.`,
+        author: "Marcus Vance",
         updatedAt: null,
       };
       lead.productionTaskStage = "logo_printing";
+      lead.productionTaskData = {
+        ...(lead.productionTaskData || {}),
+        printingSubmitted: false,
+        submittedToLogoCutting: false,
+        receivedNoOfLogos: "yes",
+        logosPrinted: "",
+        logosGivenForCutting: "",
+        logosReceivedForCutting: "",
+        batchQuantity: remainingQty,
+        paymentStatus: "fully_received",
+        amountReceived: remAmount,
+        balanceRemaining: 0,
+        batchNote: `Remaining payment received (₹${remAmount}). Print & cut logos for remaining ${remainingQty} pcs (Partial delivered: ${partialQty} pcs).`
+      };
     }
 
     // Transition 3: Final step of Complete (Customer Support) completed -> Mark order as Completed!
@@ -1451,6 +1757,23 @@ router.patch("/:id/stage-transition", async (req, res) => {
     });
 
     await lead.save();
+
+    try {
+      const Task = require("../models/Task");
+      const orderIdStr = lead.orderId || lead._id.toString().slice(-6).toUpperCase();
+      const taskIdStr = `TSK-${orderIdStr}`;
+      await Task.findOneAndUpdate(
+        { $or: [{ leadId: lead._id }, { taskId: taskIdStr }] },
+        {
+          orderStage: lead.orderStage || "sample",
+          subStage: lead.subStage || "",
+          notes: lead.stockTaskData?.batchNote || lead.productionTaskData?.batchNote || "",
+        }
+      );
+    } catch (e) {
+      console.warn("Could not sync Task model on stage-transition:", e.message);
+    }
+
     res.json({ success: true, data: lead });
   } catch (err) {
     console.error("Error in stage-transition:", err);

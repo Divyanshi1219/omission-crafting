@@ -9,7 +9,6 @@ import AllEmployees from "./pages/AllEmployees";
 import OrderManagement from "./pages/OrderManagement";
 import InvoicesList from "./pages/Invoices/InvoicesList";
 import CreateInvoice from "./pages/Invoices/CreateInvoice";
-import TasksPage from "./pages/Tasks/TasksPage";
 import Approvals from "./pages/Approvals";
 import LeadApprovals from "./pages/LeadApprovals";
 import Login from "./pages/Login";

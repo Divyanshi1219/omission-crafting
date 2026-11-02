@@ -106,7 +106,7 @@ router.get("/", async (req, res) => {
       ];
     }
 
-    const tasks = await Task.find(filter).sort({ createdAt: -1 });
+    const tasks = await Task.find(filter).sort({ updatedAt: -1, createdAt: -1 });
 
     // Also calculate count by status
     const allTasks = await Task.find({});
