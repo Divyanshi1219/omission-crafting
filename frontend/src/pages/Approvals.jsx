@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useSearchParams, useNavigate, useParams } from "react-router-dom";
+import { useSearchParams, useNavigate, useParams, useLocation } from "react-router-dom";
 import {
   ClipboardCheck,
   CheckCircle,
@@ -45,8 +45,20 @@ export default function Approvals({ defaultTab = "all" }) {
   const { currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { status } = useParams();
-  const currentTaskTab = (status || "all").toLowerCase();
+  let currentTaskTab = (status || "all").toLowerCase();
+  if (location.pathname.includes("/tasks/embroidery/")) {
+    const sub = location.pathname.split("/").pop();
+    currentTaskTab = `embroidery-${sub}`;
+  }
+
+  const isOrderEmbroidery = (order) => {
+    if (!order) return false;
+    if (String(order.printingType || "").toLowerCase().trim() === "embroidery") return true;
+    if (Array.isArray(order.items) && order.items.some((it) => String(it?.printingType || "").toLowerCase().trim() === "embroidery")) return true;
+    return false;
+  };
 
   // Helper to map route status param to internal statusTab
   const getTabFromParam = (paramVal) => {
@@ -550,11 +562,12 @@ export default function Approvals({ defaultTab = "all" }) {
         return;
       }
 
-      const activeStage = currentTaskTab === "verification"
-        ? "verification"
-        : currentTaskTab === "ready-to-pick"
-        ? "ready_to_pick"
-        : "staging_room";
+      const activeStage =
+        currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
+          ? "verification"
+          : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
+          ? "ready_to_pick"
+          : "staging_room";
 
       setSubmittingAction(true);
       try {
@@ -649,6 +662,7 @@ export default function Approvals({ defaultTab = "all" }) {
             fetchOrders();
             return;
           }
+          const isEmb = isOrderEmbroidery(selectedOrder) || currentTaskTab.startsWith("embroidery-");
           if (activeStage === "verification") {
             showToast(
               actionType === "submit"
@@ -657,7 +671,7 @@ export default function Approvals({ defaultTab = "all" }) {
             );
             setSelectedOrder(null);
             setSearchParams({});
-            navigate(actionType === "submit" ? "/tasks/ready-to-pick" : "/tasks/all");
+            navigate(actionType === "submit" ? (isEmb ? "/tasks/embroidery-ready-to-pick" : "/tasks/ready-to-pick") : "/tasks/all");
             fetchOrders();
           } else if (activeStage === "ready_to_pick") {
             showToast(
@@ -667,7 +681,11 @@ export default function Approvals({ defaultTab = "all" }) {
             );
             setSelectedOrder(null);
             setSearchParams({});
-            if (actionType !== "submit") navigate("/tasks/verification");
+            if (actionType !== "submit") {
+              navigate(isEmb ? "/tasks/embroidery-verification" : "/tasks/verification");
+            } else {
+              navigate(isEmb ? "/tasks/embroidery-ready-to-pick" : "/tasks/ready-to-pick");
+            }
             fetchOrders();
           } else {
             showToast(
@@ -677,7 +695,11 @@ export default function Approvals({ defaultTab = "all" }) {
             );
             setSelectedOrder(null);
             setSearchParams({});
-            if (actionType !== "submit") navigate("/tasks/ready-to-pick");
+            if (actionType !== "submit") {
+              navigate(isEmb ? "/tasks/embroidery-ready-to-pick" : "/tasks/ready-to-pick");
+            } else {
+              navigate(isEmb ? "/tasks/embroidery-staging-room" : "/tasks/staging-room");
+            }
             fetchOrders();
           }
         }
@@ -975,7 +997,21 @@ export default function Approvals({ defaultTab = "all" }) {
 
   // Visible orders for current role (Stock Room and Production only see leads approved by Lead Manager)
   const visibleOrders = useMemo(() => {
-    if (isStockProfile || isProdProfile) {
+    if (isProdProfile) {
+      // Production Lead only handles DTF tasks - NO Embroidery tasks!
+      return orders.filter(
+        (o) =>
+          !isOrderEmbroidery(o) &&
+          (o.orderStage === "partial" ||
+            o.orderStage === "complete" ||
+            o.leadApproval?.status === "Approved" ||
+            (!o.leadApproval && o.approvalStatus === "Approved") ||
+            o.subStage === "dtf-pending" ||
+            o.subStage === "printing" ||
+            o.approvalComments?.some((c) => c.role === "Lead Manager" && c.status === "Approved"))
+      );
+    }
+    if (isStockProfile) {
       return orders.filter(
         (o) =>
           o.orderStage === "partial" ||
@@ -984,6 +1020,7 @@ export default function Approvals({ defaultTab = "all" }) {
           (!o.leadApproval && o.approvalStatus === "Approved") ||
           o.subStage === "dtf-pending" ||
           o.subStage === "printing" ||
+          isOrderEmbroidery(o) ||
           o.approvalComments?.some((c) => c.role === "Lead Manager" && c.status === "Approved")
       );
     }
@@ -995,19 +1032,35 @@ export default function Approvals({ defaultTab = "all" }) {
     return visibleOrders.filter((order) => {
       // Direct tab-specific matching
       if (currentTaskTab === "logo-printing") {
-        if (getProductionStage(order) !== "logo_printing") return false;
+        if (isOrderEmbroidery(order) || getProductionStage(order) !== "logo_printing") return false;
       } else if (currentTaskTab === "logo-cutting") {
-        if (getProductionStage(order) !== "logo_cutting") return false;
+        if (isOrderEmbroidery(order) || getProductionStage(order) !== "logo_cutting") return false;
       } else if (currentTaskTab === "verification") {
-        if (getStockStage(order) !== "verification") return false;
+        // DTF Verification
+        if (isOrderEmbroidery(order) || getStockStage(order) !== "verification") return false;
       } else if (currentTaskTab === "ready-to-pick") {
-        if (getStockStage(order) === "verification") return false;
+        // DTF Ready to Pick
+        if (isOrderEmbroidery(order) || getStockStage(order) === "verification") return false;
       } else if (currentTaskTab === "staging-room") {
+        // DTF Staging Room
+        if (isOrderEmbroidery(order)) return false;
+        const stg = getStockStage(order);
+        if (stg !== "staging_room" && stg !== "completed") return false;
+      } else if (currentTaskTab === "embroidery-verification") {
+        // Embroidery Verification
+        if (!isOrderEmbroidery(order) || getStockStage(order) !== "verification") return false;
+      } else if (currentTaskTab === "embroidery-ready-to-pick") {
+        // Embroidery Ready to Pick
+        if (!isOrderEmbroidery(order) || getStockStage(order) === "verification") return false;
+      } else if (currentTaskTab === "embroidery-staging-room") {
+        // Embroidery Staging Room
+        if (!isOrderEmbroidery(order)) return false;
         const stg = getStockStage(order);
         if (stg !== "staging_room" && stg !== "completed") return false;
       } else if (currentTaskTab === "all") {
         const orderStatus = getOrderTaskStatus(order).toLowerCase();
         if (isProdProfile || roleView === "production") {
+          if (isOrderEmbroidery(order)) return false;
           const prodStage = getProductionStage(order);
           if (statusTab === "pending" && (prodStage === "completed" || orderStatus !== "pending")) return false;
           if (statusTab === "referred-back" && orderStatus !== "referred back") return false;
@@ -1096,17 +1149,17 @@ export default function Approvals({ defaultTab = "all" }) {
               <input
                 type="text"
                 placeholder={
-                  currentTaskTab === "verification"
+                  currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
                     ? "Search verification..."
-                    : currentTaskTab === "ready-to-pick"
+                    : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
                     ? "Search ready to pick..."
-                    : currentTaskTab === "staging-room"
-                      ? "Search staging room..."
-                      : currentTaskTab === "logo-printing"
-                        ? "Search logo printing..."
-                        : currentTaskTab === "logo-cutting"
-                          ? "Search logo cutting..."
-                          : "Search tasks..."
+                    : currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room"
+                    ? (currentTaskTab === "embroidery-staging-room" ? "Search embroidery staging room..." : "Search staging room...")
+                    : currentTaskTab === "logo-printing"
+                    ? "Search logo printing..."
+                    : currentTaskTab === "logo-cutting"
+                    ? "Search logo cutting..."
+                    : "Search tasks..."
                 }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -1191,7 +1244,7 @@ export default function Approvals({ defaultTab = "all" }) {
               <table className="approvals-table">
                 <thead>
                   {/* VERIFICATION TABLE HEADERS */}
-                  {currentTaskTab === "verification" && (
+                  {(currentTaskTab === "verification" || currentTaskTab === "embroidery-verification") && (
                     <tr>
                       <th>Order ID</th>
                       <th>Employee Name</th>
@@ -1205,7 +1258,7 @@ export default function Approvals({ defaultTab = "all" }) {
                   )}
 
                   {/* READY TO PICK TABLE HEADERS */}
-                  {currentTaskTab === "ready-to-pick" && (
+                  {(currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick") && (
                     <tr>
                       <th>Order ID</th>
                       <th>Employee Name</th>
@@ -1221,7 +1274,7 @@ export default function Approvals({ defaultTab = "all" }) {
                   )}
 
                   {/* STAGING ROOM TABLE HEADERS */}
-                  {currentTaskTab === "staging-room" && (
+                  {(currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room") && (
                     <tr>
                       <th>Order ID</th>
                       <th>Employee Name</th>
@@ -1365,7 +1418,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       /* =========================================================================
                          1. VERIFICATION (Stock Room Manager Task)
                          ========================================================================= */
-                      if (currentTaskTab === "verification") {
+                      if (currentTaskTab === "verification" || currentTaskTab === "embroidery-verification") {
                         return (
                           <tr
                             key={order._id || order.id}
@@ -1430,7 +1483,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       /* =========================================================================
                          2. READY TO PICK (Stock Room Manager Task)
                          ========================================================================= */
-                      if (currentTaskTab === "ready-to-pick") {
+                      if (currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick") {
                         const isAvail = order.stockTaskData?.isStockAvailable !== false;
                         const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
                         const isReadyToPickSubmitted = order.stockTaskStage === "staging_room" || order.stockTaskStage === "completed" || order.stockTaskData?.readyToPickSubmitted || order.stockApproval?.status === "Approved";
@@ -1515,7 +1568,7 @@ export default function Approvals({ defaultTab = "all" }) {
                       /* =========================================================================
                          3. STAGING ROOM (Stock Room Manager Task)
                          ========================================================================= */
-                      if (currentTaskTab === "staging-room") {
+                      if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room") {
                         const sampleDeduction = order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0;
                         const sampleReceived = order.stockTaskData?.readyToPickReceived !== false;
                         const attCount = order.stockTaskData?.readyToPickAttachments?.length || 0;
@@ -2282,7 +2335,7 @@ export default function Approvals({ defaultTab = "all" }) {
                     </span>
                   )}
                   {roleView === "stock" && (
-                    currentTaskTab === "ready-to-pick"
+                    (currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick")
                       ? (selectedOrder.stockTaskStage === "staging_room" || selectedOrder.stockTaskStage === "completed" || selectedOrder.stockApproval?.status === "Approved")
                       : (selectedOrder.stockApproval?.status === "Approved" || selectedOrder.stockTaskStage === "completed")
                   ) && (
@@ -2353,11 +2406,11 @@ export default function Approvals({ defaultTab = "all" }) {
                           <CheckCircle size={15} />
                           <span>
                             {roleView === "stock"
-                              ? (currentTaskTab === "verification"
+                              ? (currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
                                 ? "Submit to Ready to Pick"
-                                : currentTaskTab === "ready-to-pick"
-                                ? "Submit to Staging Room"
-                                : currentTaskTab === "staging-room"
+                                : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
+                                ? (isOrderEmbroidery(selectedOrder) || currentTaskTab === "embroidery-ready-to-pick" ? "Submit to Embroidery Staging Room" : "Submit to Staging Room")
+                                : (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room")
                                 ? "Submit Clearance"
                                 : "Submit")
                               : (currentTaskTab === "logo-printing"
@@ -2441,7 +2494,11 @@ export default function Approvals({ defaultTab = "all" }) {
               {(() => {
                 const activeStockStage = currentTaskTab === "all"
                   ? getStockStage(selectedOrder)
-                  : (currentTaskTab === "verification" ? "verification" : currentTaskTab === "ready-to-pick" ? "ready_to_pick" : "staging_room");
+                  : (currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
+                    ? "verification"
+                    : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
+                    ? "ready_to_pick"
+                    : "staging_room");
                 const isViewOnlyStock = currentTaskTab === "all" || getStockStage(selectedOrder) === "completed";
                 const stageBadge = getStageBadgeInfo(selectedOrder);
                 const itemsToRender = itemsStockData.length > 0
@@ -2490,12 +2547,12 @@ export default function Approvals({ defaultTab = "all" }) {
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                         <Package size={18} />
                         <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
-                          {currentTaskTab === "verification"
+                          {currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
                             ? "Verification"
-                            : currentTaskTab === "ready-to-pick"
+                            : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
                             ? "Ready to Pick"
-                            : currentTaskTab === "staging-room"
-                            ? "Staging Room"
+                            : currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room"
+                            ? (isOrderEmbroidery(selectedOrder) || currentTaskTab === "embroidery-staging-room" ? "Embroidery Staging Room" : "Staging Room")
                             : `Overview (${stageBadge.label})`}
                         </h3>
                       </div>
@@ -4148,14 +4205,18 @@ export default function Approvals({ defaultTab = "all" }) {
                         note: stockAppr.note,
                         defaultNote: stockAppr.status === "Approved" ? "Approved by Stock Room" : "Awaiting Review",
                       },
-                      {
-                        title: "Task 2 - Production Room",
-                        sub: "Marcus Vance (Production Lead)",
-                        status: prodAppr.status || "Pending",
-                        noteLabel: "Production Notes",
-                        note: prodAppr.note,
-                        defaultNote: prodAppr.status === "Approved" ? "Approved by Production" : "Awaiting Review",
-                      },
+                      ...(!isOrderEmbroidery(selectedOrder)
+                        ? [
+                            {
+                              title: "Task 2 - Production Room",
+                              sub: "Marcus Vance (Production Lead)",
+                              status: prodAppr.status || "Pending",
+                              noteLabel: "Production Notes",
+                              note: prodAppr.note,
+                              defaultNote: prodAppr.status === "Approved" ? "Approved by Production" : "Awaiting Review",
+                            },
+                          ]
+                        : []),
                     ].map((t, tIdx) => {
                       const pillBg = t.status === "Approved" ? "#d1fae5" : t.status === "Referred Back" ? "#fee2e2" : "#fef3c7";
                       const pillColor = t.status === "Approved" ? "#065f46" : t.status === "Referred Back" ? "#b91c1c" : "#b45309";
