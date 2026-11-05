@@ -9,6 +9,9 @@ const employeeRoutes = require("./routes/employeeRoutes");
 const invoiceRoutes = require("./routes/invoiceRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const taskRoutes = require("./routes/taskRoutes");
+const itemRoutes = require("./routes/itemRoutes");
+const fabricRoutes = require("./routes/fabricRoutes");
+const stockRoomRoutes = require("./routes/stockRoomRoutes");
 
 const app = express();
 
@@ -25,6 +28,9 @@ app.use("/api/employees", employeeRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/items", itemRoutes);
+app.use("/api/fabrics", fabricRoutes);
+app.use("/api/stock-room", stockRoomRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({
@@ -35,7 +41,7 @@ app.get("/api/health", (req, res) => {
 app.get("/", (req, res) => {
   res.json({
     message: "OMMISIONIT API Server is running 🚀",
-    endpoints: ["/api/health", "/api/leads"],
+    endpoints: ["/api/health", "/api/leads", "/api/items", "/api/fabrics"],
   });
 });
 

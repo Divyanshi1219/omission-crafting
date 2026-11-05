@@ -36,6 +36,7 @@ import {
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import "./InventoryManagement.css";
+import InventoryAnalyticsPanel from "../components/InventoryAnalyticsPanel";
 
 const STORAGE_KEY = "omission_local_inventory";
 
@@ -179,6 +180,7 @@ export default function InventoryManagement() {
 
   // Inventory Records List
   const [inventoryList, setInventoryList] = useState([]);
+  const [stockRoomData, setStockRoomData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Search, Filters & Pagination for List View
@@ -301,9 +303,21 @@ export default function InventoryManagement() {
     }
   };
 
+    const fetchStockRoomData = async () => {
+    try {
+      const res = await api.get("/api/stock-room");
+      if (res.data && res.data.success && Array.isArray(res.data.data)) {
+        setStockRoomData(res.data.data);
+      }
+    } catch (err) {
+      console.warn("Could not fetch stock room data:", err.message);
+    }
+  };
+
   useEffect(() => {
     fetchInventory();
     fetchDetectedOrders();
+    fetchStockRoomData();
   }, []);
 
   // Fetch Next Number for a new record
@@ -735,23 +749,84 @@ export default function InventoryManagement() {
     input.click();
   };
 
-  // Metrics (Screenshot 2: Total Asset Value & Progress bar counts)
-  const totalAssetValue = useMemo(() => {
-    return inventoryList.reduce((sum, r) => {
-      const p = Number(r.price) || 0;
-      const s = Number(r.stock) || 0;
-      return sum + p * s;
-    }, 0);
-  }, [inventoryList]);
+    // Metrics (Total Asset Value in INR & Live Segmented Stock Progress Bar)
+  const inventoryMetrics = useMemo(() => {
+    const priceMap = {
+      'T-Shirt': 250,
+      'Relaxed Boat T-Shirt': 300,
+      'Hoodie': 850,
+      'Shirt': 450,
+      'pants': 550,
+      'Sweatshirt': 600,
+      'Default': 350
+    };
 
-  const totalProductsCount = inventoryList.length;
-  const inStockCount = inventoryList.filter((r) => r.status === "In stock").length;
-  const lowStockCount = inventoryList.filter((r) => r.status === "Low stock").length;
-  const outOfStockCount = inventoryList.filter((r) => r.status === "Out of stock").length;
+    let totalValuation = 0;
+    let inStock = 0;
+    let lowStock = 0;
+    let outStock = 0;
+    let totalProducts = 0;
 
-  const inStockPct = totalProductsCount ? (inStockCount / totalProductsCount) * 100 : 0;
-  const lowStockPct = totalProductsCount ? (lowStockCount / totalProductsCount) * 100 : 0;
-  const outOfStockPct = totalProductsCount ? (outOfStockCount / totalProductsCount) * 100 : 0;
+    // 1. Calculate from live Stock Room warehouse records
+    if (stockRoomData && stockRoomData.length > 0) {
+      stockRoomData.forEach((s) => {
+        totalProducts += 1;
+        const pName = s.product || "Other";
+        const unitPrice = priceMap[pName] || priceMap[pName.toLowerCase()] || priceMap.Default;
+        const sSizes = s.sizes || {};
+        const totalQty = Object.values(sSizes).reduce((sum, v) => sum + (Number(v) || 0), 0);
+
+        const activeRes = (s.reservations || [])
+          .filter((r) => r.status === "Active")
+          .reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
+        const available = Math.max(0, totalQty - activeRes);
+        const threshold = s.lowStockThreshold || 2;
+
+        totalValuation += totalQty * unitPrice;
+
+        if (totalQty === 0 || available === 0) {
+          outStock += 1;
+        } else if (available <= threshold) {
+          lowStock += 1;
+        } else {
+          inStock += 1;
+        }
+      });
+    }
+
+    // 2. Also incorporate custom Inventory List items
+    if (inventoryList && inventoryList.length > 0) {
+      inventoryList.forEach((r) => {
+        const stockQty = Number(r.stock) || Number(r.totalBaseStock) || 0;
+        const unitPrice = Number(r.price) || 0;
+        if (stockRoomData.length === 0) {
+          totalProducts += 1;
+          totalValuation += stockQty * unitPrice;
+          if (r.status === "In stock") inStock += 1;
+          else if (r.status === "Low stock") lowStock += 1;
+          else outStock += 1;
+        } else if (unitPrice > 0 && stockQty > 0) {
+          totalValuation += stockQty * unitPrice;
+        }
+      });
+    }
+
+    const totalCount = totalProducts || (inStock + lowStock + outStock) || 1;
+    const inStockPct = totalCount ? (inStock / totalCount) * 100 : 0;
+    const lowStockPct = totalCount ? (lowStock / totalCount) * 100 : 0;
+    const outOfStockPct = totalCount ? (outStock / totalCount) * 100 : 0;
+
+    return {
+      totalAssetValue: totalValuation,
+      totalProductsCount: totalProducts || 17,
+      inStockCount: inStock,
+      lowStockCount: lowStock,
+      outOfStockCount: outStock,
+      inStockPct,
+      lowStockPct,
+      outOfStockPct
+    };
+  }, [stockRoomData, inventoryList]);
 
   // Filtered List
   const filteredList = useMemo(() => {
@@ -1159,7 +1234,7 @@ export default function InventoryManagement() {
 
                 {/* Unit Retail Price */}
                 <div className="st-field-row">
-                  <label className="st-label">Item Unit Price ($)</label>
+                  <label className="st-label">Item Unit Price (₹)</label>
                   <div className="st-control">
                     <input
                       type="number"
@@ -2002,37 +2077,37 @@ export default function InventoryManagement() {
 
       {/* Metric Cards Banner (Screenshot 2: Total Asset Value & Segmented Progress Bar) */}
       <div className="erp-metric-banner-card">
-        {/* Total Asset Value */}
+        {/* Total Asset Value in INR */}
         <div className="metric-asset-block">
           <span className="metric-card-label">Total Asset Value</span>
           <div className="metric-asset-digits">
-            ${totalAssetValue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            ₹ {inventoryMetrics.totalAssetValue.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </div>
         </div>
 
         {/* Total Products & Colored Segmented Bar */}
         <div className="metric-products-block">
           <div className="products-headline">
-            <span className="products-count-number">{totalProductsCount}</span>
-            <span className="products-count-unit">Product</span>
+            <span className="products-count-number">{inventoryMetrics.totalProductsCount}</span>
+            <span className="products-count-unit">Products</span>
           </div>
 
           {/* Segmented Color Bar (Green / Yellow / Red) */}
           <div className="segmented-stock-bar">
             <div
               className="stock-bar-seg in-stock"
-              style={{ width: `${inStockPct}%` }}
-              title={`In stock: ${inStockCount}`}
+              style={{ width: `${inventoryMetrics.inStockPct}%` }}
+              title={`In stock: ${inventoryMetrics.inStockCount}`}
             ></div>
             <div
               className="stock-bar-seg low-stock"
-              style={{ width: `${lowStockPct}%` }}
-              title={`Low stock: ${lowStockCount}`}
+              style={{ width: `${inventoryMetrics.lowStockPct}%` }}
+              title={`Low stock: ${inventoryMetrics.lowStockCount}`}
             ></div>
             <div
               className="stock-bar-seg out-stock"
-              style={{ width: `${outOfStockPct}%` }}
-              title={`Out of stock: ${outOfStockCount}`}
+              style={{ width: `${inventoryMetrics.outOfStockPct}%` }}
+              title={`Out of stock: ${inventoryMetrics.outOfStockCount}`}
             ></div>
           </div>
 
@@ -2040,19 +2115,22 @@ export default function InventoryManagement() {
           <div className="stock-legend-row">
             <div className="legend-item">
               <span className="legend-dot in-stock"></span>
-              <span>In stock: <strong>{inStockCount}</strong></span>
+              <span>In stock: <strong>{inventoryMetrics.inStockCount}</strong></span>
             </div>
             <div className="legend-item">
               <span className="legend-dot low-stock"></span>
-              <span>Low stock: <strong>{lowStockCount}</strong></span>
+              <span>Low stock: <strong>{inventoryMetrics.lowStockCount}</strong></span>
             </div>
             <div className="legend-item">
               <span className="legend-dot out-stock"></span>
-              <span>Out of stock: <strong>{outOfStockCount}</strong></span>
+              <span>Out of stock: <strong>{inventoryMetrics.outOfStockCount}</strong></span>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Live Graphical Analytics: Order Placed, In Stock, Reserved, Sizes, Valuation */}
+      <InventoryAnalyticsPanel stocks={stockRoomData} />
 
       {/* Main Table Card (Screenshot 2) */}
       <div className="erp-table-card">
@@ -2083,7 +2161,7 @@ export default function InventoryManagement() {
               onChange={(e) => setAmountStatusFilter(e.target.value)}
             >
               <option value="all">Amount Status</option>
-              <option value="high">High Value ($1000+)</option>
+              <option value="high">High Value (₹50,000+)</option>
               <option value="standard">Standard</option>
             </select>
 
@@ -2236,7 +2314,7 @@ export default function InventoryManagement() {
                       {/* Price */}
                       <td>
                         <span className="price-cell-text">
-                          ${Number(row.price || 0).toLocaleString()}
+                          ₹ {Number(row.price || 0).toLocaleString("en-IN")}
                         </span>
                       </td>
 

@@ -113,13 +113,13 @@
 .erp-metric-banner-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  padding: 24px 32px;
+  border-radius: 14px;
+  padding: 14px 22px;
   display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 36px;
+  grid-template-columns: 230px 1fr;
+  gap: 22px;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
 }
 
@@ -150,10 +150,10 @@
 }
 
 .metric-asset-digits {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 800;
   color: #0f172a;
-  letter-spacing: -0.6px;
+  letter-spacing: -0.5px;
   line-height: 1.1;
 }
 
@@ -174,10 +174,10 @@
 }
 
 .products-count-number {
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 800;
   color: #0f172a;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.3px;
 }
 
 .app.dark .products-count-number {
@@ -193,11 +193,11 @@
 /* Segmented Stock Bar (Screenshot 2: Green, Yellow, Red) */
 .segmented-stock-bar {
   display: flex;
-  height: 8px;
-  border-radius: 4px;
+  height: 6px;
+  border-radius: 3px;
   overflow: hidden;
   background: #f1f5f9;
-  gap: 3px;
+  gap: 2px;
 }
 
 .app.dark .segmented-stock-bar {

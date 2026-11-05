@@ -168,6 +168,51 @@
 }
 
 /* --- 3 Pipeline Stage Chart Cards --- */
+.order-charts-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 14px;
+  margin-bottom: 16px;
+  padding: 14px 20px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.app.dark .order-charts-section-header {
+  background: rgba(20, 24, 32, 0.6);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.order-charts-title-group h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app.dark .order-charts-title-group h3 {
+  color: #f8fafc;
+}
+
+.order-charts-title-group p {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+}
+
+.app.dark .order-charts-title-group p {
+  color: #94a3b8;
+}
+
+
 .order-charts-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -521,4 +566,368 @@
 
 .spin-animation {
   animation: spin 1s linear infinite;
+}
+
+
+/* =========================================================
+   SALES EXECUTIVE DASHBOARD STYLES
+   ========================================================= */
+
+.sales-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 18px 24px;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.app.dark .sales-header-bar {
+  background: rgba(20, 24, 32, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sales-header-left h2 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app.dark .sales-header-left h2 {
+  color: #f8fafc;
+}
+
+.sales-header-left p {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
+.sales-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-sales-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  transition: all 0.2s ease;
+}
+
+.btn-sales-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+}
+
+.btn-sales-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-sales-secondary:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-2px);
+}
+
+.app.dark .btn-sales-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f1f5f9;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Sales Commercial 4-Grid */
+.sales-commercial-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+@media (max-width: 1024px) {
+  .sales-commercial-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .sales-commercial-tiles {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sales-comm-tile {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 20px;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.sales-comm-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.05);
+}
+
+.app.dark .sales-comm-tile {
+  background: rgba(20, 24, 32, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sales-comm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sales-comm-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+}
+
+.sales-icon-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sales-icon-badge.emerald {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.sales-icon-badge.amber {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.sales-icon-badge.blue {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.sales-icon-badge.purple {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
+.sales-comm-value {
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+  margin: 4px 0 2px 0;
+}
+
+.app.dark .sales-comm-value {
+  color: #f8fafc;
+}
+
+.sales-comm-sub {
+  font-size: 12px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Sales Mid Focus Row (2 Columns) */
+.sales-focus-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .sales-focus-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sales-focus-card {
+  background: #ffffff;
+  border-radius: 20px;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.app.dark .sales-focus-card {
+  background: rgba(20, 24, 32, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sales-focus-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sales-focus-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app.dark .sales-focus-header h3 {
+  color: #f8fafc;
+}
+
+.sales-focus-header p {
+  font-size: 12px;
+  color: #64748b;
+  margin: 2px 0 0 0;
+}
+
+.sales-focus-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sales-focus-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sales-focus-item:hover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  transform: translateX(3px);
+}
+
+.app.dark .sales-focus-item {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.app.dark .sales-focus-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sales-focus-item-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sales-focus-item-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.app.dark .sales-focus-item-title {
+  color: #f1f5f9;
+}
+
+.sales-focus-item-meta {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sales-focus-item-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.badge-urgent-tag {
+  background: #fee2e2;
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.badge-lead-tag {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* Tabs toggle on Recent Orders table */
+.table-tab-btn {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.table-tab-btn.active {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.app.dark .table-tab-btn.active {
+  background: rgba(37, 99, 235, 0.2);
+  color: #60a5fa;
 }

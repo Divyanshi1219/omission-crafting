@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../api";
 import { 
   LayoutGrid, 
@@ -26,15 +27,20 @@ import {
   CheckCircle2,
   DollarSign,
   BarChart3,
-  Plus
+  Plus,
+  Archive,
+  BookmarkCheck,
+  Filter
 } from "lucide-react";
 import "./EmployeeCards.css";
 import "./OverviewDashboard.css";
+import "./StockRoom/StockRoom.css";
 import OrderManagementDashboard from "./OrderManagementDashboard";
 import InventoryManagement from "./InventoryManagement";
+import StockRoom from "./StockRoom/StockRoom";
 import { useAuth } from "../context/AuthContext";
 
-const employees = [
+const defaultEmployees = [
   { id: 1, name: "Noah Castell", initials: "NC", role: "Project Lead", department: "Management", openTasks: 0, completedTasks: 48, workload: 64, avatarBg: "#ffedd5", status: "online" },
   { id: 2, name: "Priya Raman", initials: "PR", role: "Product Designer", department: "Design", openTasks: 1, completedTasks: 35, workload: 72, avatarBg: "#e2e8f0", status: "online" },
   { id: 3, name: "Mateo Silva", initials: "MS", role: "Backend Engineer", department: "Engineering", openTasks: 2, completedTasks: 51, workload: 88, avatarBg: "#d1fae5", status: "online" },
@@ -52,6 +58,19 @@ const getWorkloadColor = (workload) => {
 
 function Dashboard() {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
+
+  const [employeesList, setEmployeesList] = useState(defaultEmployees);
+
+  const [stockRoomMetrics, setStockRoomMetrics] = useState({
+    totalItems: 0,
+    availableItems: 0,
+    activeReserved: 0,
+    overdueReservations: 0,
+    overduePieces: 0,
+    lowStockAlerts: 0,
+    itemsOutOfStock: 0,
+  });
   const isAdmin = currentUser?.id === "admin";
   const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
   const isProduction =
@@ -80,6 +99,19 @@ function Dashboard() {
     }
   }, [currentUser?.id, isOnlyInventory, isOnlyOrderManagement]);
 
+  // Fetch live Stock Room metrics for Stock Room Manager dashboard
+  useEffect(() => {
+    if (isStock || isAdmin) {
+      api.get("/api/stock-room")
+        .then((res) => {
+          if (res.data?.metrics) {
+            setStockRoomMetrics(res.data.metrics);
+          }
+        })
+        .catch((err) => console.warn("Could not load stock metrics on dashboard:", err.message));
+    }
+  }, [isStock, isAdmin]);
+
   // Live Leads and Production Data from Backend
   const [leads, setLeads] = useState([]);
   // True once the leads fetch succeeded — lets profiles with zero orders
@@ -88,6 +120,10 @@ function Dashboard() {
 
   // UI Interactive States
   const [chartViewMode, setChartViewMode] = useState("volume"); // "volume" | "revenue"
+  const [salesTimeFrame, setSalesTimeFrame] = useState("monthly"); // "weekly" | "monthly" | "custom"
+  const [customStartDate, setCustomStartDate] = useState("2026-10-01");
+  const [customEndDate, setCustomEndDate] = useState("2026-11-30");
+  const [hoveredSalesPoint, setHoveredSalesPoint] = useState(null);
   const [selectedStageFilter, setSelectedStageFilter] = useState("all"); // "all" | "sample" | "partial" | "complete"
   const [hoveredStack, setHoveredStack] = useState(null); // tooltip data for main chart
   const [hoveredDay, setHoveredDay] = useState(null); // tooltip data for velocity chart
@@ -416,6 +452,16 @@ function Dashboard() {
       .catch((err) => {
         console.warn("Leads fetch failed, using realistic baseline:", err.message);
       });
+
+    api.get("/api/employees")
+      .then((res) => {
+        if (res.data?.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+          setEmployeesList(res.data.data);
+        }
+      })
+      .catch((err) => {
+        console.warn("Employees fetch failed, using default:", err.message);
+      });
   }, []);
 
   // Compute live repeat customer rate linked to lead form field `repeatedOrder`
@@ -461,9 +507,9 @@ function Dashboard() {
     const partialLeads = leads.filter(l => (l.orderStage || "").toLowerCase().trim() === "partial");
     const completeLeads = leads.filter(l => (l.orderStage || "").toLowerCase().trim() === "complete");
 
-    const sampleCount = hasLiveLeads ? (sampleLeads.length || 1) : 28;
-    const partialCount = hasLiveLeads ? (partialLeads.length || 1) : 46;
-    const completeCount = hasLiveLeads ? (completeLeads.length || 1) : 41;
+    const sampleCount = hasLiveLeads ? sampleLeads.length : 28;
+    const partialCount = hasLiveLeads ? partialLeads.length : 46;
+    const completeCount = hasLiveLeads ? completeLeads.length : 41;
     const total = sampleCount + partialCount + completeCount;
 
     // Zero-division safe (only reachable for profiles with 0 orders)
@@ -476,6 +522,138 @@ function Dashboard() {
       total
     };
   }, [leads, leadsLoaded]);
+
+  // Currency formatter for INR
+  const formatINR = (val, compact = false) => {
+    const num = Number(val) || 0;
+    if (compact) {
+      if (num >= 10000000) return `₹ ${(num / 10000000).toFixed(2)} Cr`;
+      if (num >= 100000) return `₹ ${(num / 100000).toFixed(2)} L`;
+      if (num >= 1000) return `₹ ${(num / 1000).toFixed(1)} K`;
+      return `₹ ${Math.round(num)}`;
+    }
+    return `₹ ${Math.round(num).toLocaleString('en-IN')}`;
+  };
+
+  // Clean, live aggregated sales data from actual database orders
+  const salesOverviewData = useMemo(() => {
+    const hasLiveLeads = isAdmin ? leads.length > 0 : leadsLoaded;
+    const leadsList = hasLiveLeads ? leads : [];
+
+    const sanitizeLead = (l) => {
+      const rawNet = Number(l.netAmount);
+      const rawTotal = Number(l.totalAmount);
+      const qty = Number(l.totalQuantity) || (Array.isArray(l.items) ? l.items.reduce((s, it) => s + (Number(it.quantity) || 0), 0) : 0);
+      const ppp = Number(l.pricePerPiece) || 0;
+      let safeRev = 0;
+      if (!isNaN(rawNet) && rawNet > 0 && rawNet < 50000000) safeRev = rawNet;
+      else if (!isNaN(rawTotal) && rawTotal > 0 && rawTotal < 50000000) safeRev = rawTotal;
+      else if (qty > 0 && ppp > 0) safeRev = qty * ppp;
+
+      const dateStr = l.createdAt || l.deliveryDate || '2026-10-15';
+      const d = new Date(dateStr);
+      return {
+        id: l.orderId || l._id,
+        units: qty,
+        revenue: safeRev,
+        date: isNaN(d) ? new Date('2026-10-15') : d
+      };
+    };
+
+    const cleanLeads = leadsList.map(sanitizeLead);
+    const xCenters = [85, 225, 365, 505];
+
+    let periodBuckets = [];
+
+    if (salesTimeFrame === "weekly") {
+      periodBuckets = [
+        { label: "Oct W2 (11-17)", shortLabel: "Oct W2", start: new Date("2026-10-11T00:00:00"), end: new Date("2026-10-17T23:59:59") },
+        { label: "Oct W3 (18-24)", shortLabel: "Oct W3", start: new Date("2026-10-18T00:00:00"), end: new Date("2026-10-24T23:59:59") },
+        { label: "Oct W4 (25-31)", shortLabel: "Oct W4", start: new Date("2026-10-25T00:00:00"), end: new Date("2026-10-31T23:59:59") },
+        { label: "Nov W1 (01-07)", shortLabel: "Nov W1", start: new Date("2026-11-01T00:00:00"), end: new Date("2026-11-07T23:59:59") },
+      ];
+      periodBuckets.forEach(b => {
+        const inBucket = cleanLeads.filter(x => x.date >= b.start && x.date <= b.end);
+        b.units = inBucket.reduce((s, x) => s + x.units, 0);
+        b.revenue = inBucket.reduce((s, x) => s + x.revenue, 0);
+        b.orders = inBucket.length;
+      });
+    } else if (salesTimeFrame === "custom") {
+      const s = new Date(customStartDate || "2026-10-01");
+      const e = new Date((customEndDate || "2026-11-30") + "T23:59:59");
+      const inRange = cleanLeads.filter(x => x.date >= s && x.date <= e);
+
+      const timeSpan = Math.max(e.getTime() - s.getTime(), 86400000 * 4);
+      const step = timeSpan / 4;
+      for (let i = 0; i < 4; i++) {
+        const bStart = new Date(s.getTime() + i * step);
+        const bEnd = new Date(s.getTime() + (i + 1) * step);
+        const label = `${bStart.toLocaleDateString('default', { month: 'short', day: 'numeric' })} - ${bEnd.toLocaleDateString('default', { month: 'short', day: 'numeric' })}`;
+        const shortLabel = `${bStart.toLocaleDateString('default', { month: 'numeric', day: 'numeric' })}`;
+        const inB = inRange.filter(x => x.date >= bStart && (i === 3 ? x.date <= bEnd : x.date < bEnd));
+        periodBuckets.push({
+          label,
+          shortLabel,
+          units: inB.reduce((acc, x) => acc + x.units, 0),
+          revenue: inB.reduce((acc, x) => acc + x.revenue, 0),
+          orders: inB.length
+        });
+      }
+    } else {
+      // Monthly default (Sep, Oct, Nov, Dec)
+      const months = [
+        { label: "Sep 2026", shortLabel: "Sep", monthIdx: 8, year: 2026 },
+        { label: "Oct 2026", shortLabel: "Oct", monthIdx: 9, year: 2026 },
+        { label: "Nov 2026", shortLabel: "Nov", monthIdx: 10, year: 2026 },
+        { label: "Dec 2026", shortLabel: "Dec", monthIdx: 11, year: 2026 },
+      ];
+      periodBuckets = months.map(m => {
+        const inMonth = cleanLeads.filter(x => x.date.getMonth() === m.monthIdx && x.date.getFullYear() === m.year);
+        return {
+          label: m.label,
+          shortLabel: m.shortLabel,
+          units: inMonth.reduce((s, x) => s + x.units, 0),
+          revenue: inMonth.reduce((s, x) => s + x.revenue, 0),
+          orders: inMonth.length
+        };
+      });
+    }
+
+    const totalUnits = periodBuckets.reduce((s, b) => s + b.units, 0);
+    const totalRevenue = periodBuckets.reduce((s, b) => s + b.revenue, 0);
+    const totalOrders = periodBuckets.reduce((s, b) => s + b.orders, 0);
+
+    const maxVal = Math.max(
+      ...periodBuckets.map(b => (chartViewMode === "volume" ? b.units : b.revenue)),
+      1
+    );
+
+    const columns = periodBuckets.map((b, i) => {
+      const val = chartViewMode === "volume" ? b.units : b.revenue;
+      const h = val > 0 ? Math.max(14, Math.round((val / maxVal) * 125)) : 10;
+      return {
+        ...b,
+        xCenter: xCenters[i],
+        val,
+        h,
+        totalLabelUnits: `${b.units.toLocaleString('en-IN')} Units`,
+        totalLabelRevenue: formatINR(b.revenue, true),
+        fullRevenue: formatINR(b.revenue, false)
+      };
+    });
+
+    return {
+      columns,
+      totalUnits,
+      totalRevenue,
+      formattedTotalRevenue: formatINR(totalRevenue, false),
+      totalOrders,
+      avgUnits: periodBuckets.length ? Math.round(totalUnits / periodBuckets.length) : 0,
+      avgRevenue: periodBuckets.length ? Math.round(totalRevenue / periodBuckets.length) : 0,
+      formattedAvgRevenue: formatINR(periodBuckets.length ? Math.round(totalRevenue / periodBuckets.length) : 0, false),
+      peakPeriod: columns.reduce((p, c) => (c.val > (p?.val || 0) ? c : p), columns[0])
+    };
+  }, [leads, leadsLoaded, salesTimeFrame, customStartDate, customEndDate, chartViewMode]);
 
   // Monthly dataset for the Sample / Partial / Complete Production & Orders Overview
   const monthlyStageData = useMemo(() => {
@@ -524,11 +702,86 @@ function Dashboard() {
     { day: "Sun", standard: 4, urgent: 1, total: 5, isPeak: false },
   ];
 
-  // Workforce stats from employees array
-  const totalEmployees = employees.length;
-  const activeEmployees = employees.filter(e => e.status === "online").length;
-  const leaveEmployees = employees.filter(e => e.status === "away").length;
-  const activePct = Math.round((activeEmployees / totalEmployees) * 100);
+  // Real MongoDB Workforce Normalization
+  const normalizedEmployees = useMemo(() => {
+    return employeesList.map((emp, idx) => {
+      const displayName = emp.displayName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || emp.name || 'Staff Member';
+      const initials = emp.initials || displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'EM';
+      const role = emp.jobTitle || emp.role || 'Team Member';
+      const department = emp.department || 'Operations';
+      const avatarColors = ['#ffedd5', '#e2e8f0', '#d1fae5', '#e0e7ff', '#fef08a'];
+      const avatarBg = emp.avatarBg || avatarColors[idx % avatarColors.length];
+      const status = (emp.accountStatus || 'Active').toLowerCase() === 'active' ? 'online' : 'away';
+
+      return {
+        ...emp,
+        id: emp._id || emp.id || idx,
+        name: displayName,
+        initials,
+        role,
+        department,
+        avatarBg,
+        status,
+        openTasks: emp.openTasks ?? (leads.filter(l => (l.employeeName || '').toLowerCase().includes(displayName.toLowerCase())).length),
+        completedTasks: emp.completedTasks ?? 12,
+        workload: emp.workload ?? 65,
+      };
+    });
+  }, [employeesList, leads]);
+
+  // Workforce stats from real MongoDB employees
+  const totalEmployees = normalizedEmployees.length;
+  const activeEmployees = normalizedEmployees.filter(e => e.status === "online").length;
+  const leaveEmployees = normalizedEmployees.filter(e => e.status === "away").length;
+  const activePct = totalEmployees > 0 ? Math.round((activeEmployees / totalEmployees) * 100) : 0;
+
+  // Real Database Employee Lifecycle: Onboarding Breakdown
+  const onboardingStats = useMemo(() => {
+    const total = employeesList.length;
+    const training = employeesList.filter(e => {
+      const s = (e.accountStatus || '').toLowerCase();
+      const t = (e.employeeType || '').toLowerCase();
+      return s === 'probation' || s === 'training' || t === 'intern';
+    });
+    const verification = employeesList.filter(e => {
+      return !training.includes(e) && (!e.email || !e.email.includes('@'));
+    });
+    const completed = employeesList.filter(e => !training.includes(e) && !verification.includes(e));
+
+    const thisMonthCount = employeesList.filter(e => {
+      if (!e.createdAt && !e.hireDate) return false;
+      const d = new Date(e.createdAt || e.hireDate);
+      const now = new Date();
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }).length;
+
+    return {
+      total,
+      training: { count: training.length, pct: total > 0 ? Math.round((training.length / total) * 100) : 0 },
+      verification: { count: verification.length, pct: total > 0 ? Math.round((verification.length / total) * 100) : 0 },
+      completed: { count: completed.length, pct: total > 0 ? Math.round((completed.length / total) * 100) : 0 },
+      thisMonthCount,
+    };
+  }, [employeesList]);
+
+  // Real Database Employee Lifecycle: Offboarding Breakdown
+  const offboardingStats = useMemo(() => {
+    const offboarded = employeesList.filter(e => {
+      const s = (e.accountStatus || '').toLowerCase();
+      return s === 'inactive' || s === 'suspended' || s === 'offboarding' || s === 'terminated';
+    });
+    const total = offboarded.length;
+    const handover = offboarded.filter(e => (e.authorizationInfo || '').toLowerCase().includes('handover'));
+    const clearance = offboarded.filter(e => (e.authorizationInfo || '').toLowerCase().includes('clearance'));
+    const deprovisioned = offboarded.filter(e => !handover.includes(e) && !clearance.includes(e));
+
+    return {
+      total,
+      handover: { count: handover.length, pct: total > 0 ? Math.round((handover.length / total) * 100) : 0 },
+      clearance: { count: clearance.length, pct: total > 0 ? Math.round((clearance.length / total) * 100) : 0 },
+      deprovisioned: { count: deprovisioned.length, pct: total > 0 ? Math.round((deprovisioned.length / total) * 100) : 0 },
+    };
+  }, [employeesList]);
 
   return (
     <div className="dashboard-page">
@@ -664,16 +917,18 @@ function Dashboard() {
 
           {/* Middle Row: Production & Sales Overview + Repeat Customer Rate + Weekly Order Velocity */}
           <div className="overview-mid-row">
-            {/* Left: Sales & Stage Overview (Sample, Partial, Complete) */}
+            {/* Left: Sales Overview (Weekly / Monthly / Custom) */}
             <div className="ov-card stage-chart-card">
               <div className="stage-chart-header">
                 <div className="stage-chart-title-group">
                   <h3>
-                    <Layers size={18} color="#6366f1" /> Production & Sales Overview
+                    <Layers size={18} color="#6366f1" /> Sales Overview
                   </h3>
                   <div className="stage-chart-metrics-row">
                     <span className="stage-primary-kpi">
-                      {chartViewMode === "volume" ? "1,080 Units" : "$ 9,257.51"}
+                      {chartViewMode === "volume"
+                        ? `${salesOverviewData.totalUnits.toLocaleString('en-IN')} Units`
+                        : salesOverviewData.formattedTotalRevenue}
                     </span>
                     <span className="stage-trend-pill">
                       <TrendingUp size={13} /> +18.4%
@@ -692,258 +947,204 @@ function Dashboard() {
                     className={`chart-toggle-btn ${chartViewMode === "revenue" ? "active" : ""}`}
                     onClick={() => setChartViewMode("revenue")}
                   >
-                    Revenue ($)
+                    Revenue (₹)
                   </button>
                 </div>
               </div>
 
-              {/* Stage Quick Filter Chips */}
-              <div className="stage-chips-strip">
+              {/* Time Period Filter Chips Strip (Weekly / Monthly / Custom) */}
+              <div className="sales-period-strip">
                 <button 
-                  className={`stage-chip ${selectedStageFilter === "all" ? "active" : ""}`}
-                  onClick={() => setSelectedStageFilter("all")}
+                  className={`sales-period-chip ${salesTimeFrame === "weekly" ? "active" : ""}`}
+                  onClick={() => setSalesTimeFrame("weekly")}
                 >
-                  All Stages <span className="stage-chip-count">{stageStats.total}</span>
+                  <Calendar size={13} /> Weekly Sales
                 </button>
                 <button 
-                  className={`stage-chip chip-sample ${selectedStageFilter === "sample" ? "active" : ""}`}
-                  onClick={() => setSelectedStageFilter(selectedStageFilter === "sample" ? "all" : "sample")}
+                  className={`sales-period-chip ${salesTimeFrame === "monthly" ? "active" : ""}`}
+                  onClick={() => setSalesTimeFrame("monthly")}
                 >
-                  <span className="stage-chip-dot sample"></span>
-                  Sample <span className="stage-chip-count">{stageStats.sample.count} ({stageStats.sample.pct}%)</span>
+                  <Calendar size={13} /> Monthly Sales
                 </button>
                 <button 
-                  className={`stage-chip chip-partial ${selectedStageFilter === "partial" ? "active" : ""}`}
-                  onClick={() => setSelectedStageFilter(selectedStageFilter === "partial" ? "all" : "partial")}
+                  className={`sales-period-chip ${salesTimeFrame === "custom" ? "active" : ""}`}
+                  onClick={() => setSalesTimeFrame("custom")}
                 >
-                  <span className="stage-chip-dot partial"></span>
-                  Partial <span className="stage-chip-count">{stageStats.partial.count} ({stageStats.partial.pct}%)</span>
+                  <Filter size={13} /> Custom Range
                 </button>
-                <button 
-                  className={`stage-chip chip-complete ${selectedStageFilter === "complete" ? "active" : ""}`}
-                  onClick={() => setSelectedStageFilter(selectedStageFilter === "complete" ? "all" : "complete")}
-                >
-                  <span className="stage-chip-dot complete"></span>
-                  Complete <span className="stage-chip-count">{stageStats.complete.count} ({stageStats.complete.pct}%)</span>
-                </button>
+
+                {salesTimeFrame === "custom" && (
+                  <div className="custom-date-box">
+                    <span>From:</span>
+                    <input 
+                      type="date" 
+                      value={customStartDate} 
+                      onChange={(e) => setCustomStartDate(e.target.value)} 
+                      className="custom-date-input"
+                    />
+                    <span>To:</span>
+                    <input 
+                      type="date" 
+                      value={customEndDate} 
+                      onChange={(e) => setCustomEndDate(e.target.value)} 
+                      className="custom-date-input"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Interactive SVG Stacked Stage Chart */}
-              <div className="stage-chart-body" onMouseLeave={() => setHoveredStack(null)}>
+              {/* Interactive SVG Sales Chart */}
+              <div className="stage-chart-body" onMouseLeave={() => setHoveredSalesPoint(null)}>
                 <svg viewBox="0 0 600 240" className="stage-chart-svg">
                   <defs>
-                    <linearGradient id="sampleGrad" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="salesUnitsGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#818cf8" />
-                      <stop offset="100%" stopColor="#6366f1" />
+                      <stop offset="100%" stopColor="#4f46e5" />
                     </linearGradient>
-                    <linearGradient id="partialGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#fbbf24" />
-                      <stop offset="100%" stopColor="#f59e0b" />
-                    </linearGradient>
-                    <linearGradient id="completeGrad" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="salesRevGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#34d399" />
-                      <stop offset="100%" stopColor="#10b981" />
+                      <stop offset="100%" stopColor="#059669" />
                     </linearGradient>
-
-                    <linearGradient id="flowSample" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#6366f1" stopOpacity="0.22" />
-                      <stop offset="100%" stopColor="#6366f1" stopOpacity="0.14" />
-                    </linearGradient>
-                    <linearGradient id="flowPartial" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.2" />
-                      <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.12" />
-                    </linearGradient>
-                    <linearGradient id="flowComplete" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.22" />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity="0.14" />
+                    <linearGradient id="salesFlowGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor={chartViewMode === "volume" ? "#6366f1" : "#10b981"} stopOpacity="0.22" />
+                      <stop offset="100%" stopColor={chartViewMode === "volume" ? "#6366f1" : "#10b981"} stopOpacity="0.08" />
                     </linearGradient>
                   </defs>
 
-                  <line x1="40" y1="50" x2="560" y2="50" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
-                  <line x1="40" y1="120" x2="560" y2="120" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
-                  <line x1="40" y1="190" x2="560" y2="190" stroke="#f1f5f9" strokeWidth="1" />
+                  <line x1="40" y1="60" x2="560" y2="60" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
+                  <line x1="40" y1="125" x2="560" y2="125" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
+                  <line x1="40" y1="190" x2="560" y2="190" stroke="#e2e8f0" strokeWidth="1.5" />
 
-                  {(() => {
-                    const colWidth = 84;
-                    const gap = 5;
-                    const xCenters = [110, 300, 490];
-                    const elements = [];
+                  {/* Flow ribbons between columns */}
+                  {salesOverviewData.columns.map((col, i) => {
+                    if (i === salesOverviewData.columns.length - 1) return null;
+                    const nextCol = salesOverviewData.columns[i + 1];
+                    const colWidth = 74;
+                    const xA = col.xCenter + colWidth / 2;
+                    const yA = 190 - col.h;
+                    const xB = nextCol.xCenter - colWidth / 2;
+                    const yB = 190 - nextCol.h;
 
-                    const columnsData = monthlyStageData.map((d, i) => {
-                      let currentY = 190;
-                      const xLeft = xCenters[i] - colWidth / 2;
+                    const ribbon = `M ${xA} ${yA}
+                                    C ${xA + 40} ${yA}, ${xB - 40} ${yB}, ${xB} ${yB}
+                                    L ${xB} 190
+                                    L ${xA} 190 Z`;
+                    return (
+                      <path
+                        key={`ribbon-${i}`}
+                        d={ribbon}
+                        fill="url(#salesFlowGrad)"
+                        className="chart-flow-path"
+                        opacity={0.7}
+                      />
+                    );
+                  })}
 
-                      const keys = ["complete", "partial", "sample"];
-                      const stacks = keys.map((k) => {
-                        const stageInfo = d.stages[k];
-                        const h = stageInfo.h;
-                        const yTop = currentY - h;
-                        currentY = yTop - gap;
+                  {/* Columns */}
+                  {salesOverviewData.columns.map((col, i) => {
+                    const colWidth = 74;
+                    const xLeft = col.xCenter - colWidth / 2;
+                    const yTop = 190 - col.h;
+                    const isHovered = hoveredSalesPoint?.label === col.label;
 
-                        const isDimmed = selectedStageFilter !== "all" && selectedStageFilter !== k;
+                    return (
+                      <g key={`col-${i}`}>
+                        <rect
+                          x={xLeft}
+                          y={yTop}
+                          width={colWidth}
+                          height={col.h}
+                          rx="10"
+                          fill={chartViewMode === "volume" ? "url(#salesUnitsGrad)" : "url(#salesRevGrad)"}
+                          className="chart-bar-rect"
+                          style={{
+                            cursor: 'pointer',
+                            filter: isHovered ? 'brightness(1.15) drop-shadow(0 4px 10px rgba(0,0,0,0.15))' : 'none',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseEnter={() => {
+                            setHoveredSalesPoint({
+                              x: col.xCenter,
+                              y: yTop,
+                              label: col.label,
+                              units: col.units,
+                              revenue: col.fullRevenue,
+                              compactRev: col.totalLabelRevenue,
+                              orders: col.orders
+                            });
+                          }}
+                        />
 
-                        return {
-                          key: k,
-                          xLeft,
-                          yTop,
-                          h,
-                          color: stageInfo.color,
-                          gradient: k === "sample" ? "url(#sampleGrad)" : k === "partial" ? "url(#partialGrad)" : "url(#completeGrad)",
-                          info: stageInfo,
-                          month: d.month,
-                          totalUnits: d.totalLabelUnits,
-                          totalRevenue: d.totalLabelRevenue,
-                          isDimmed
-                        };
-                      });
-
-                      return { xCenter: xCenters[i], stacks, month: d.month, totalRevenue: d.totalLabelRevenue, totalUnits: d.totalLabelUnits };
-                    });
-
-                    // Flow ribbons
-                    for (let i = 0; i < columnsData.length - 1; i++) {
-                      const colA = columnsData[i];
-                      const colB = columnsData[i + 1];
-
-                      colA.stacks.forEach((stackA, sIdx) => {
-                        const stackB = colB.stacks[sIdx];
-                        const isDimmed = selectedStageFilter !== "all" && selectedStageFilter !== stackA.key;
-                        const flowGrad = stackA.key === "sample" ? "url(#flowSample)" : stackA.key === "partial" ? "url(#flowPartial)" : "url(#flowComplete)";
-
-                        const path = `M ${stackA.xLeft + colWidth} ${stackA.yTop} 
-                                      C ${stackA.xLeft + colWidth + 50} ${stackA.yTop}, ${stackB.xLeft - 50} ${stackB.yTop}, ${stackB.xLeft} ${stackB.yTop} 
-                                      L ${stackB.xLeft} ${stackB.yTop + stackB.h} 
-                                      C ${stackB.xLeft - 50} ${stackB.yTop + stackB.h}, ${stackA.xLeft + colWidth + 50} ${stackA.yTop + stackA.h}, ${stackA.xLeft + colWidth} ${stackA.yTop + stackA.h} Z`;
-
-                        elements.push(
-                          <path
-                            key={`flow-${i}-${stackA.key}`}
-                            d={path}
-                            fill={flowGrad}
-                            className="chart-flow-path"
-                            opacity={isDimmed ? 0.05 : 0.85}
-                          />
-                        );
-                      });
-                    }
-
-                    // Rectangles and labels
-                    columnsData.forEach((col, i) => {
-                      col.stacks.forEach((stack) => {
-                        elements.push(
-                          <rect
-                            key={`rect-${i}-${stack.key}`}
-                            x={stack.xLeft}
-                            y={stack.yTop}
-                            width={colWidth}
-                            height={stack.h}
-                            rx="8"
-                            fill={stack.gradient}
-                            opacity={stack.isDimmed ? 0.2 : 1}
-                            className="chart-bar-rect"
-                            onMouseEnter={() => {
-                              setHoveredStack({
-                                x: stack.xLeft + colWidth / 2,
-                                y: stack.yTop,
-                                month: col.month,
-                                stageKey: stack.key,
-                                count: stack.info.count,
-                                revenue: stack.info.revenue,
-                                pct: stack.info.pct,
-                                totalRevenue: col.totalRevenue,
-                                totalUnits: col.totalUnits
-                              });
-                            }}
-                          />
-                        );
-                      });
-
-                      const topStack = col.stacks[col.stacks.length - 1];
-                      elements.push(
+                        {/* Top metric label */}
                         <text
-                          key={`top-total-${i}`}
                           x={col.xCenter}
-                          y={topStack.yTop - 12}
+                          y={yTop - 12}
                           textAnchor="middle"
-                          fontSize="13"
+                          fontSize="12"
                           fontWeight="700"
                           fill="#0f172a"
                         >
-                          {chartViewMode === "volume" ? col.totalUnits : col.totalRevenue}
+                          {chartViewMode === "volume" ? `${col.units.toLocaleString('en-IN')} Units` : col.totalLabelRevenue}
                         </text>
-                      );
 
-                      elements.push(
+                        {/* Bottom period label */}
                         <text
-                          key={`label-${i}`}
                           x={col.xCenter}
-                          y="215"
+                          y="214"
                           textAnchor="middle"
-                          fontSize="13"
+                          fontSize="12"
                           fontWeight="600"
                           fill="#64748b"
                         >
-                          {col.month} 2026
+                          {col.shortLabel}
                         </text>
-                      );
-                    });
-
-                    return elements;
-                  })()}
+                      </g>
+                    );
+                  })}
                 </svg>
 
-                {hoveredStack && (
+                {hoveredSalesPoint && (
                   <div 
                     className="chart-floating-tooltip"
-                    style={{ left: `${(hoveredStack.x / 600) * 100}%`, top: `${(hoveredStack.y / 240) * 100}%` }}
+                    style={{ left: `${(hoveredSalesPoint.x / 600) * 100}%`, top: `${(hoveredSalesPoint.y / 240) * 100}%` }}
                   >
                     <div className="tooltip-header">
-                      <span>{hoveredStack.month} Breakdown</span>
-                      <span style={{ textTransform: "capitalize", color: hoveredStack.stageKey === "sample" ? "#818cf8" : hoveredStack.stageKey === "partial" ? "#fbbf24" : "#34d399" }}>
-                        {hoveredStack.stageKey}
+                      <span>{hoveredSalesPoint.label}</span>
+                      <span style={{ color: chartViewMode === "volume" ? "#818cf8" : "#34d399", fontWeight: 700 }}>
+                        {hoveredSalesPoint.orders} Orders
                       </span>
                     </div>
                     <div className="tooltip-row">
-                      <span>Stage Volume:</span>
-                      <strong>{hoveredStack.count} Units ({hoveredStack.pct}%)</strong>
+                      <span>Volume Sold:</span>
+                      <strong>{hoveredSalesPoint.units.toLocaleString('en-IN')} Units</strong>
                     </div>
                     <div className="tooltip-row">
-                      <span>Stage Value:</span>
-                      <strong>{hoveredStack.revenue}</strong>
-                    </div>
-                    <div className="tooltip-row" style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "4px", marginTop: "4px" }}>
-                      <span>Month Total:</span>
-                      <span style={{ color: "#cbd5e1" }}>{chartViewMode === "volume" ? hoveredStack.totalUnits : hoveredStack.totalRevenue}</span>
+                      <span>Total Revenue (INR):</span>
+                      <strong style={{ color: '#34d399' }}>{hoveredSalesPoint.revenue}</strong>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Chart Legend */}
-              <div className="stage-chart-legend">
-                <div 
-                  className="stage-legend-item" 
-                  onClick={() => setSelectedStageFilter(selectedStageFilter === "sample" ? "all" : "sample")}
-                >
-                  <span className="stage-legend-dot" style={{ background: "#6366f1" }}></span>
-                  <span>Sample</span>
-                  <span className="stage-legend-val">({stageStats.sample.count} · {stageStats.sample.pct}%)</span>
+              {/* Bottom Summary Strip (Replaces old stage legend) */}
+              <div className="sales-summary-strip">
+                <div className="sales-summary-pill">
+                  <span>Total Orders:</span>
+                  <strong>{salesOverviewData.totalOrders} Orders</strong>
                 </div>
-                <div 
-                  className="stage-legend-item" 
-                  onClick={() => setSelectedStageFilter(selectedStageFilter === "partial" ? "all" : "partial")}
-                >
-                  <span className="stage-legend-dot" style={{ background: "#f59e0b" }}></span>
-                  <span>Partial</span>
-                  <span className="stage-legend-val">({stageStats.partial.count} · {stageStats.partial.pct}%)</span>
+                <div className="sales-summary-pill">
+                  <span>Average / Period:</span>
+                  <strong>
+                    {chartViewMode === "volume"
+                      ? `${salesOverviewData.avgUnits.toLocaleString('en-IN')} Units`
+                      : salesOverviewData.formattedAvgRevenue}
+                  </strong>
                 </div>
-                <div 
-                  className="stage-legend-item" 
-                  onClick={() => setSelectedStageFilter(selectedStageFilter === "complete" ? "all" : "complete")}
-                >
-                  <span className="stage-legend-dot" style={{ background: "#10b981" }}></span>
-                  <span>Complete</span>
-                  <span className="stage-legend-val">({stageStats.complete.count} · {stageStats.complete.pct}%)</span>
+                <div className="sales-summary-pill">
+                  <span>Peak Period:</span>
+                  <strong style={{ color: '#4f46e5' }}>
+                    {salesOverviewData.peakPeriod ? `${salesOverviewData.peakPeriod.shortLabel} (${chartViewMode === "volume" ? `${salesOverviewData.peakPeriod.units.toLocaleString('en-IN')} pcs` : salesOverviewData.peakPeriod.totalLabelRevenue})` : 'N/A'}
+                  </strong>
                 </div>
               </div>
             </div>
@@ -1492,101 +1693,158 @@ function Dashboard() {
           {/* Bottom Row: Workforce Lifecycle (Onboarding & Offboarding) */}
           <div className="overview-bottom-row">
             {/* Onboarding Overview Card */}
-            <div className="ov-card">
-              <div className="card-header-clean">
+            <div className="ov-card" style={{ cursor: 'pointer' }}>
+              <div className="card-header-clean" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <h3>Onboarding</h3>
                 </div>
-                <span className="stage-trend-pill positive" style={{ fontSize: "11px" }}>
-                  +12 this month
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="stage-trend-pill positive" style={{ fontSize: "11px" }}>
+                    {onboardingStats.thisMonthCount > 0 ? `+${onboardingStats.thisMonthCount} this month` : `${onboardingStats.total} Staff`}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate('/employees'); }}
+                    style={{
+                      background: '#eff6ff',
+                      color: '#2563eb',
+                      border: '1px solid #bfdbfe',
+                      borderRadius: '8px',
+                      padding: '3px 8px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px'
+                    }}
+                    title="Click to view employees data table"
+                  >
+                    View <ArrowUpRight size={12} />
+                  </button>
+                </div>
               </div>
 
-              <div className="lifecycle-card-body">
-                <div className="donut-wrapper">
-                  <svg viewBox="0 0 100 100" className="donut-svg">
-                    <circle cx="50" cy="50" r="40" className="donut-ring-track" />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      className="donut-segment"
-                      stroke="#3b82f6"
-                      strokeDasharray="138.2 251.3"
-                      strokeDashoffset="0"
-                      onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, onboarding: { label: "In Progress", val: "68" } }))}
-                      onMouseLeave={() => setActiveDonutHover(prev => ({ ...prev, onboarding: null }))}
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      className="donut-segment"
-                      stroke="#10b981"
-                      strokeDasharray="72.8 251.3"
-                      strokeDashoffset="-138.2"
-                      onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, onboarding: { label: "Verification", val: "36" } }))}
-                      onMouseLeave={() => setActiveDonutHover(prev => ({ ...prev, onboarding: null }))}
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      className="donut-segment"
-                      stroke="#f59e0b"
-                      strokeDasharray="40.3 251.3"
-                      strokeDashoffset="-211"
-                      onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, onboarding: { label: "Completed", val: "20" } }))}
-                      onMouseLeave={() => setActiveDonutHover(prev => ({ ...prev, onboarding: null }))}
-                    />
+              <div className="lifecycle-card-body" onClick={() => navigate('/employees')}>
+                <div className="donut-wrapper" style={{ cursor: 'pointer' }} onMouseLeave={() => setActiveDonutHover(prev => ({ ...prev, onboarding: null }))}>
+                  <svg viewBox="0 0 100 100" className="donut-svg" style={{ overflow: 'visible' }}>
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#f1f5f9" strokeWidth="12" pointerEvents="none" />
+                    {(() => {
+                      const total = onboardingStats.total || 1;
+                      const trainingFrac = onboardingStats.training.count / total;
+                      const verificationFrac = onboardingStats.verification.count / total;
+                      const completedFrac = onboardingStats.completed.count / total;
+
+                      const polarToCartesian = (cx, cy, r, angleRad) => ({
+                        x: cx + r * Math.cos(angleRad),
+                        y: cy + r * Math.sin(angleRad),
+                      });
+
+                      const describeArc = (cx, cy, r, startAngleRad, endAngleRad) => {
+                        const start = polarToCartesian(cx, cy, r, startAngleRad);
+                        const end = polarToCartesian(cx, cy, r, endAngleRad);
+                        const angleDiff = endAngleRad - startAngleRad;
+                        const largeArcFlag = angleDiff <= Math.PI ? 0 : 1;
+                        return `M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
+                      };
+
+                      const a0 = -Math.PI / 2;
+                      const a1 = a0 + trainingFrac * 2 * Math.PI;
+                      const a2 = a1 + verificationFrac * 2 * Math.PI;
+                      const a3 = a0 + 2 * Math.PI - 0.0001;
+
+                      const trainingPath = onboardingStats.training.count > 0 ? describeArc(50, 50, 40, a0, a1) : null;
+                      const verificationPath = onboardingStats.verification.count > 0 ? describeArc(50, 50, 40, a1, a2) : null;
+                      const completedPath = onboardingStats.completed.count > 0 ? describeArc(50, 50, 40, a2, a3) : null;
+
+                      return (
+                        <>
+                          {trainingPath && (
+                            <path
+                              d={trainingPath}
+                              fill="none"
+                              stroke="#3b82f6"
+                              strokeWidth={activeDonutHover.onboarding?.label === "Training" ? 15 : 12}
+                              pointerEvents="stroke"
+                              style={{ cursor: "pointer", transition: "all 0.2s ease" }}
+                              onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, onboarding: { label: "Training", val: String(onboardingStats.training.count) } }))}
+                              onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=training'); }}
+                            />
+                          )}
+                          {verificationPath && (
+                            <path
+                              d={verificationPath}
+                              fill="none"
+                              stroke="#10b981"
+                              strokeWidth={activeDonutHover.onboarding?.label === "Verification" ? 15 : 12}
+                              pointerEvents="stroke"
+                              style={{ cursor: "pointer", transition: "all 0.2s ease" }}
+                              onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, onboarding: { label: "Verification", val: String(onboardingStats.verification.count) } }))}
+                              onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=verification'); }}
+                            />
+                          )}
+                          {completedPath && (
+                            <path
+                              d={completedPath}
+                              fill="none"
+                              stroke="#f59e0b"
+                              strokeWidth={activeDonutHover.onboarding?.label === "Completed" ? 15 : 12}
+                              pointerEvents="stroke"
+                              style={{ cursor: "pointer", transition: "all 0.2s ease" }}
+                              onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, onboarding: { label: "Completed", val: String(onboardingStats.completed.count) } }))}
+                              onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=completed'); }}
+                            />
+                          )}
+                        </>
+                      );
+                    })()}
                   </svg>
-                  <div className="donut-center-info">
+                  <div className="donut-center-info" style={{ pointerEvents: 'none' }}>
                     <span className="donut-center-label">
-                      {activeDonutHover.onboarding?.label || "Total"}
+                      {activeDonutHover.onboarding?.label || "TOTAL"}
                     </span>
                     <span className="donut-center-val">
-                      {activeDonutHover.onboarding?.val || "124"}
+                      {activeDonutHover.onboarding?.val || onboardingStats.total}
                     </span>
                   </div>
                 </div>
 
                 <div className="lifecycle-breakdown-list">
-                  <div className="lifecycle-item">
+                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=training'); }} style={{ cursor: 'pointer' }}>
                     <div className="lifecycle-item-top">
                       <span className="lifecycle-item-title">
                         <span className="lifecycle-dot" style={{ background: "#3b82f6" }}></span>
                         Training
                       </span>
-                      <span className="lifecycle-item-val">68 (55%)</span>
+                      <span className="lifecycle-item-val">{onboardingStats.training.count} ({onboardingStats.training.pct}%)</span>
                     </div>
                     <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: "55%", background: "#3b82f6" }}></div>
+                      <div className="lifecycle-item-fill" style={{ width: `${onboardingStats.training.pct}%`, background: "#3b82f6" }}></div>
                     </div>
                   </div>
 
-                  <div className="lifecycle-item">
+                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=verification'); }} style={{ cursor: 'pointer' }}>
                     <div className="lifecycle-item-top">
                       <span className="lifecycle-item-title">
                         <span className="lifecycle-dot" style={{ background: "#10b981" }}></span>
                         Verification
                       </span>
-                      <span className="lifecycle-item-val">36 (29%)</span>
+                      <span className="lifecycle-item-val">{onboardingStats.verification.count} ({onboardingStats.verification.pct}%)</span>
                     </div>
                     <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: "29%", background: "#10b981" }}></div>
+                      <div className="lifecycle-item-fill" style={{ width: `${onboardingStats.verification.pct}%`, background: "#10b981" }}></div>
                     </div>
                   </div>
 
-                  <div className="lifecycle-item">
+                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=completed'); }} style={{ cursor: 'pointer' }}>
                     <div className="lifecycle-item-top">
                       <span className="lifecycle-item-title">
                         <span className="lifecycle-dot" style={{ background: "#f59e0b" }}></span>
                         Completed
                       </span>
-                      <span className="lifecycle-item-val">20 (16%)</span>
+                      <span className="lifecycle-item-val">{onboardingStats.completed.count} ({onboardingStats.completed.pct}%)</span>
                     </div>
                     <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: "16%", background: "#f59e0b" }}></div>
+                      <div className="lifecycle-item-fill" style={{ width: `${onboardingStats.completed.pct}%`, background: "#f59e0b" }}></div>
                     </div>
                   </div>
                 </div>
@@ -1594,101 +1852,172 @@ function Dashboard() {
             </div>
 
             {/* Offboarding Overview Card */}
-            <div className="ov-card">
-              <div className="card-header-clean">
+            <div className="ov-card" style={{ cursor: 'pointer' }}>
+              <div className="card-header-clean" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <h3>Offboarding</h3>
                 </div>
-                <span className="tile-trend-pill neutral" style={{ fontSize: "11px" }}>
-                  45 Pipeline
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="tile-trend-pill neutral" style={{ fontSize: "11px" }}>
+                    {offboardingStats.total === 0 ? "0 Pipeline (100% Retained)" : `${offboardingStats.total} Pipeline`}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=offboarding'); }}
+                    style={{
+                      background: '#f8fafc',
+                      color: '#475569',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      padding: '3px 8px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px'
+                    }}
+                    title="Click to view employees data table"
+                  >
+                    View <ArrowUpRight size={12} />
+                  </button>
+                </div>
               </div>
 
-              <div className="lifecycle-card-body">
-                <div className="donut-wrapper">
-                  <svg viewBox="0 0 100 100" className="donut-svg">
-                    <circle cx="50" cy="50" r="40" className="donut-ring-track" />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      className="donut-segment"
-                      stroke="#f87171"
-                      strokeDasharray="155.8 251.3"
-                      strokeDashoffset="0"
-                      onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, offboarding: { label: "Handover", val: "28" } }))}
-                      onMouseLeave={() => setActiveDonutHover(prev => ({ ...prev, offboarding: null }))}
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      className="donut-segment"
-                      stroke="#8b78f6"
-                      strokeDasharray="67.8 251.3"
-                      strokeDashoffset="-155.8"
-                      onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, offboarding: { label: "Clearance", val: "12" } }))}
-                      onMouseLeave={() => setActiveDonutHover(prev => ({ ...prev, offboarding: null }))}
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      className="donut-segment"
-                      stroke="#64748b"
-                      strokeDasharray="27.7 251.3"
-                      strokeDashoffset="-223.6"
-                      onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, offboarding: { label: "Deprovision", val: "5" } }))}
-                      onMouseLeave={() => setActiveDonutHover(prev => ({ ...prev, offboarding: null }))}
-                    />
+              <div className="lifecycle-card-body" onClick={() => navigate('/employees?filter=offboarding')}>
+                <div className="donut-wrapper" style={{ cursor: 'pointer' }} onMouseLeave={() => setActiveDonutHover(prev => ({ ...prev, offboarding: null }))}>
+                  <svg viewBox="0 0 100 100" className="donut-svg" style={{ overflow: 'visible' }}>
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#f1f5f9" strokeWidth="12" pointerEvents="none" />
+                    {offboardingStats.total === 0 ? (
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="none"
+                        stroke="#10b981"
+                        strokeWidth="3"
+                        strokeDasharray="4 6"
+                        opacity="0.4"
+                        pointerEvents="none"
+                      />
+                    ) : (
+                      (() => {
+                        const total = offboardingStats.total || 1;
+                        const handoverFrac = offboardingStats.handover.count / total;
+                        const clearanceFrac = offboardingStats.clearance.count / total;
+                        const deprovisionedFrac = offboardingStats.deprovisioned.count / total;
+
+                        const polarToCartesian = (cx, cy, r, angleRad) => ({
+                          x: cx + r * Math.cos(angleRad),
+                          y: cy + r * Math.sin(angleRad),
+                        });
+
+                        const describeArc = (cx, cy, r, startAngleRad, endAngleRad) => {
+                          const start = polarToCartesian(cx, cy, r, startAngleRad);
+                          const end = polarToCartesian(cx, cy, r, endAngleRad);
+                          const angleDiff = endAngleRad - startAngleRad;
+                          const largeArcFlag = angleDiff <= Math.PI ? 0 : 1;
+                          return `M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
+                        };
+
+                        const a0 = -Math.PI / 2;
+                        const a1 = a0 + handoverFrac * 2 * Math.PI;
+                        const a2 = a1 + clearanceFrac * 2 * Math.PI;
+                        const a3 = a0 + 2 * Math.PI - 0.0001;
+
+                        const handoverPath = offboardingStats.handover.count > 0 ? describeArc(50, 50, 40, a0, a1) : null;
+                        const clearancePath = offboardingStats.clearance.count > 0 ? describeArc(50, 50, 40, a1, a2) : null;
+                        const deprovisionedPath = offboardingStats.deprovisioned.count > 0 ? describeArc(50, 50, 40, a2, a3) : null;
+
+                        return (
+                          <>
+                            {handoverPath && (
+                              <path
+                                d={handoverPath}
+                                fill="none"
+                                stroke="#f87171"
+                                strokeWidth={activeDonutHover.offboarding?.label === "Handover" ? 15 : 12}
+                                pointerEvents="stroke"
+                                style={{ cursor: "pointer", transition: "all 0.2s ease" }}
+                                onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, offboarding: { label: "Handover", val: String(offboardingStats.handover.count) } }))}
+                                onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=handover'); }}
+                              />
+                            )}
+                            {clearancePath && (
+                              <path
+                                d={clearancePath}
+                                fill="none"
+                                stroke="#8b78f6"
+                                strokeWidth={activeDonutHover.offboarding?.label === "Clearance" ? 15 : 12}
+                                pointerEvents="stroke"
+                                style={{ cursor: "pointer", transition: "all 0.2s ease" }}
+                                onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, offboarding: { label: "Clearance", val: String(offboardingStats.clearance.count) } }))}
+                                onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=clearance'); }}
+                              />
+                            )}
+                            {deprovisionedPath && (
+                              <path
+                                d={deprovisionedPath}
+                                fill="none"
+                                stroke="#64748b"
+                                strokeWidth={activeDonutHover.offboarding?.label === "Deprovisioned" ? 15 : 12}
+                                pointerEvents="stroke"
+                                style={{ cursor: "pointer", transition: "all 0.2s ease" }}
+                                onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, offboarding: { label: "Deprovisioned", val: String(offboardingStats.deprovisioned.count) } }))}
+                                onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=deprovisioned'); }}
+                              />
+                            )}
+                          </>
+                        );
+                      })()
+                    )}
                   </svg>
-                  <div className="donut-center-info">
+                  <div className="donut-center-info" style={{ pointerEvents: 'none' }}>
                     <span className="donut-center-label">
-                      {activeDonutHover.offboarding?.label || "Total"}
+                      {activeDonutHover.offboarding?.label || (offboardingStats.total === 0 ? "RETAINED" : "TOTAL")}
                     </span>
                     <span className="donut-center-val">
-                      {activeDonutHover.offboarding?.val || "45"}
+                      {activeDonutHover.offboarding?.val || (offboardingStats.total === 0 ? "100%" : offboardingStats.total)}
                     </span>
                   </div>
                 </div>
 
                 <div className="lifecycle-breakdown-list">
-                  <div className="lifecycle-item">
+                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=handover'); }} style={{ cursor: 'pointer' }}>
                     <div className="lifecycle-item-top">
                       <span className="lifecycle-item-title">
                         <span className="lifecycle-dot" style={{ background: "#f87171" }}></span>
                         Handover
                       </span>
-                      <span className="lifecycle-item-val">28 (62%)</span>
+                      <span className="lifecycle-item-val">{offboardingStats.handover.count} ({offboardingStats.handover.pct}%)</span>
                     </div>
                     <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: "62%", background: "#f87171" }}></div>
+                      <div className="lifecycle-item-fill" style={{ width: `${offboardingStats.handover.pct}%`, background: "#f87171" }}></div>
                     </div>
                   </div>
 
-                  <div className="lifecycle-item">
+                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=clearance'); }} style={{ cursor: 'pointer' }}>
                     <div className="lifecycle-item-top">
                       <span className="lifecycle-item-title">
                         <span className="lifecycle-dot" style={{ background: "#8b78f6" }}></span>
                         Clearance
                       </span>
-                      <span className="lifecycle-item-val">12 (27%)</span>
+                      <span className="lifecycle-item-val">{offboardingStats.clearance.count} ({offboardingStats.clearance.pct}%)</span>
                     </div>
                     <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: "27%", background: "#8b78f6" }}></div>
+                      <div className="lifecycle-item-fill" style={{ width: `${offboardingStats.clearance.pct}%`, background: "#8b78f6" }}></div>
                     </div>
                   </div>
 
-                  <div className="lifecycle-item">
+                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=deprovisioned'); }} style={{ cursor: 'pointer' }}>
                     <div className="lifecycle-item-top">
                       <span className="lifecycle-item-title">
                         <span className="lifecycle-dot" style={{ background: "#64748b" }}></span>
                         Deprovisioned
                       </span>
-                      <span className="lifecycle-item-val">5 (11%)</span>
+                      <span className="lifecycle-item-val">{offboardingStats.deprovisioned.count} ({offboardingStats.deprovisioned.pct}%)</span>
                     </div>
                     <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: "11%", background: "#64748b" }}></div>
+                      <div className="lifecycle-item-fill" style={{ width: `${offboardingStats.deprovisioned.pct}%`, background: "#64748b" }}></div>
                     </div>
                   </div>
                 </div>
@@ -1780,7 +2109,7 @@ function Dashboard() {
       {activeTab === "employee" && isAdmin && (
         <div className="dashboard-content">
           <div className="employee-cards-grid">
-            {employees.map((emp) => (
+            {normalizedEmployees.map((emp) => (
               <div key={emp.id} className="employee-card">
                 <div className="emp-card-header">
                   <div className="emp-avatar" style={{ backgroundColor: emp.avatarBg }}>
@@ -1919,7 +2248,11 @@ function Dashboard() {
 
       {(activeTab === "inventory" || activeTab === "leave") && (
         <div className="dashboard-content">
-          <InventoryManagement />
+          {isStock ? (
+            <StockRoom isEmbedded={true} />
+          ) : (
+            <InventoryManagement />
+          )}
         </div>
       )}
     </div>

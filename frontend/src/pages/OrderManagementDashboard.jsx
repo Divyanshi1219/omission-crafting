@@ -16,7 +16,18 @@ import {
   HelpCircle,
   Sparkles,
   Radio,
-  X
+  X,
+  Plus,
+  ReceiptText,
+  DollarSign,
+  TrendingUp,
+  AlertTriangle,
+  Calendar,
+  Phone,
+  Building2,
+  User,
+  Users,
+  Filter
 } from "lucide-react";
 import "./OrderDashboard.css";
 import "./OverviewDashboard.css";
@@ -27,7 +38,9 @@ const SAMPLE_STAGES = [
   { key: 'dtf-pending', shortLabel: 'DTF', fullLabel: 'DTF Pending', path: '/order/sample/dtf-pending' },
   { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/sample/stock' },
   { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/sample/printing' },
-  { key: 'customer-approved', shortLabel: 'Approved', fullLabel: 'Customer Approved', path: '/order/sample/customer-approved' },
+  { key: 'ready-to-pick-up', shortLabel: 'Pickup', fullLabel: 'Ready to Pick Up', path: '/order/sample/ready-to-pick-up' },
+  { key: 'staging-ground', shortLabel: 'Staging', fullLabel: 'Staging Ground', path: '/order/sample/staging-ground' },
+  { key: 'customer-approval-awaiting', shortLabel: 'Approved', fullLabel: 'Customer Approval Awaiting', path: '/order/sample/customer-approval-awaiting' },
 ];
 
 const PARTIAL_STAGES = [
@@ -36,7 +49,9 @@ const PARTIAL_STAGES = [
   { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/partial/stock' },
   { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/partial/printing' },
   { key: 'quality-check', shortLabel: 'QC', fullLabel: 'Quality Check', path: '/order/partial/quality-check' },
-  { key: 'payment-status', shortLabel: 'Payment', fullLabel: 'Payment Status', path: '/order/partial/payment-status' },
+  { key: 'packaging', shortLabel: 'Package', fullLabel: 'Packaging', path: '/order/partial/packaging' },
+  { key: 'staging-room', shortLabel: 'Staging', fullLabel: 'Staging Room', path: '/order/partial/staging-room' },
+  { key: 'payment-confirmation', shortLabel: 'Payment', fullLabel: 'Payment Confirmation', path: '/order/partial/payment-confirmation' },
 ];
 
 const COMPLETE_STAGES = [
@@ -47,7 +62,8 @@ const COMPLETE_STAGES = [
   { key: 'quality-check', shortLabel: 'QC', fullLabel: 'Quality Check', path: '/order/complete/quality-check' },
   { key: 'packaging', shortLabel: 'Package', fullLabel: 'Packaging', path: '/order/complete/packaging' },
   { key: 'delivery-pending', shortLabel: 'Pending', fullLabel: 'Delivery Pending', path: '/order/complete/delivery-pending' },
-  { key: 'delivery', shortLabel: 'Delivery', fullLabel: 'Delivery', path: '/order/complete/delivery' },
+  { key: 'delivered', shortLabel: 'Delivered', fullLabel: 'Delivered', path: '/order/complete/delivered' },
+  { key: 'customer-support', shortLabel: 'Support', fullLabel: 'Customer Support', path: '/order/complete/customer-support' },
 ];
 
 // Helper to normalize stage and subStage from database records
@@ -60,6 +76,15 @@ const normalizeRecord = (lead) => {
   if (sub === 'new' || sub === 'leads' || !sub) {
     sub = 'order';
   }
+  if (stage === 'sample') {
+    if (sub === 'staging-room') sub = 'staging-ground';
+    if (sub === 'customer-approved' || sub === 'approved') sub = 'customer-approval-awaiting';
+  } else if (stage === 'partial') {
+    if (sub === 'payment-status') sub = 'payment-confirmation';
+  } else if (stage === 'complete') {
+    if (sub === 'delivery') sub = 'delivered';
+    if (sub === 'support' || sub === 'archived') sub = 'customer-support';
+  }
   return { ...lead, normStage: stage, normSub: sub };
 };
 
@@ -67,10 +92,24 @@ export default function OrderManagementDashboard() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
-  const [leads, setLeads] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [leads, setLeads] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem("omission_cached_leads");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  });
+  const [loading, setLoading] = useState(false);
   const [hoveredBar, setHoveredBar] = useState(null);
   const [showRepeatDetailsModal, setShowRepeatDetailsModal] = useState(false);
+  const [tableTab, setTableTab] = useState("orders"); // "orders" | "inquiries"
+  const [hoveredSlice, setHoveredSlice] = useState(null); // 'sample' | 'partial' | 'complete' | null
+  const [stageTimeFrame, setStageTimeFrame] = useState("all"); // "all" | "weekly" | "monthly" | "custom"
+  const [stageCustomStart, setStageCustomStart] = useState("2026-10-01");
+  const [stageCustomEnd, setStageCustomEnd] = useState("2026-11-30");
 
   // Fetch real leads data from backend
   const fetchLeads = async () => {
@@ -79,6 +118,9 @@ export default function OrderManagementDashboard() {
       const res = await api.get('/api/leads');
       if (res.data?.data) {
         setLeads(res.data.data);
+        try {
+          sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
+        } catch (_) {}
       }
     } catch (err) {
       console.error('Failed to load orders for dashboard:', err);
@@ -91,29 +133,72 @@ export default function OrderManagementDashboard() {
     fetchLeads();
   }, []);
 
-  // Filter leads to valid orders (and isolate by sales executive profile)
-  const orders = useMemo(() => {
-    let valid = leads
-      .filter(l => l.query === 'order' || l.orderStage || l.totalQuantity);
-
-    if (isSales && currentUser?.name) {
-      // Option 1: use the SAME ownership rule the stage list pages use
-      // (OrderManagement.jsx), so dashboard numbers always match what
-      // clicking "View all" opens.
-      const currentEmp = currentUser.name.toLowerCase().trim();
-      const currentId = (currentUser?.id || '').toLowerCase();
-      valid = valid.filter(l => {
-        const leadEmp = (l.employeeName || '').toLowerCase().trim();
-        const leadCreatedBy = (l.createdBy || '').toLowerCase();
-        const isOwner =
-          (currentEmp.startsWith('divyansh') || currentId === 'sales') &&
-          (leadEmp.startsWith('divyansh') || leadEmp === 'sales executive' || leadCreatedBy === 'sales');
-        return isOwner || (leadEmp && leadEmp === currentEmp);
-      });
-    }
-
-    return valid.map(normalizeRecord);
+  // Filter leads by sales executive ownership
+  const salesAllLeads = useMemo(() => {
+    if (!isSales) return leads;
+    const currentEmp = (currentUser?.name || '').toLowerCase().trim();
+    const currentId = (currentUser?.id || '').toLowerCase();
+    return leads.filter(l => {
+      const leadEmp = (l.employeeName || '').toLowerCase().trim();
+      const leadCreatedBy = (l.createdBy || '').toLowerCase();
+      const isOwner =
+        (currentEmp.startsWith('divyansh') || currentId === 'sales') &&
+        (leadEmp.startsWith('divyansh') || leadEmp === 'sales executive' || leadCreatedBy === 'sales');
+      return isOwner || (leadEmp && leadEmp === currentEmp);
+    });
   }, [leads, isSales, currentUser]);
+
+  // Orders
+  const orders = useMemo(() => {
+    const list = isSales ? salesAllLeads : leads;
+    const valid = list.filter(l => l.query === 'order' || l.orderStage || l.totalQuantity);
+    return valid.map(normalizeRecord);
+  }, [leads, salesAllLeads, isSales]);
+
+  // Open inquiries (leads not yet converted into orders)
+  const inquiries = useMemo(() => {
+    const list = isSales ? salesAllLeads : leads;
+    return list.filter(l => (l.query || '').toLowerCase() !== 'order' && !l.orderStage && !l.totalQuantity);
+  }, [leads, salesAllLeads, isSales]);
+
+  // Commercial financial metrics for sales executive
+  const salesFinancials = useMemo(() => {
+    let totalRevenue = 0;
+    let pendingPayment = 0;
+    let advancePayment = 0;
+
+    orders.forEach(o => {
+      const tot = Number(o.totalAmount) || Number(o.netAmount) || 0;
+      const adv = Number(o.advanceAmount) || 0;
+      const pend = Number(o.pendingAmount) || Math.max(tot - adv, 0);
+      totalRevenue += tot;
+      advancePayment += adv;
+      pendingPayment += pend;
+    });
+
+    const totalLeadsCount = salesAllLeads.length || orders.length;
+    const conversionRate = totalLeadsCount > 0 ? Math.round((orders.length / totalLeadsCount) * 100) : 0;
+
+    return {
+      totalRevenue,
+      pendingPayment,
+      advancePayment,
+      conversionRate,
+      inquiriesCount: inquiries.length,
+    };
+  }, [orders, salesAllLeads, inquiries]);
+
+  // Urgent Orders & Upcoming Deliveries
+  const urgentOrders = useMemo(() => {
+    return orders
+      .filter(o => (o.urgency || '').toLowerCase() === 'yes' || (o.urgency || '').toLowerCase() === 'urgent' || o.deliveryDate)
+      .slice(0, 5);
+  }, [orders]);
+
+  // Open Inquiries List for Sales Widget
+  const activeInquiriesList = useMemo(() => {
+    return inquiries.slice(0, 5);
+  }, [inquiries]);
 
   // Compute live repeat customer rate linked to lead form field `repeatedOrder`
   const repeatCustomerStats = useMemo(() => {
@@ -134,52 +219,106 @@ export default function OrderManagementDashboard() {
     };
   }, [orders]);
 
-  // Totals for top 3 cards
+  // Totals for top 3 cards (All Time pipeline counts)
   const sampleOrders = useMemo(() => orders.filter(o => o.normStage === 'sample'), [orders]);
   const partialOrders = useMemo(() => orders.filter(o => o.normStage === 'partial'), [orders]);
   const completeOrders = useMemo(() => orders.filter(o => o.normStage === 'complete'), [orders]);
 
-  // Option 1: Cards/distribution count ONLY orders currently sitting in the
-  // stage's entry sub-stage ('Order') — the exact scope the stage list pages
-  // show when you click "View all". Advanced orders (stock/printing/etc.)
-  // are still visible as pipeline totals in the stage bar charts below.
-  const sampleCardOrders = useMemo(() => sampleOrders.filter(o => o.normSub === 'order'), [sampleOrders]);
-  const partialCardOrders = useMemo(() => partialOrders.filter(o => o.normSub === 'order'), [partialOrders]);
-  const completeCardOrders = useMemo(() => completeOrders.filter(o => o.normSub === 'order'), [completeOrders]);
+  const sampleCardOrders = sampleOrders;
+  const partialCardOrders = partialOrders;
+  const completeCardOrders = completeOrders;
+
+  // Time-filtered orders for the 3 visual stage charts
+  const timeFilteredOrders = useMemo(() => {
+    if (stageTimeFrame === "all") return orders;
+
+    const maxDate = orders.reduce((max, o) => {
+      const d = new Date(o.createdAt || o.deliveryDate || '2026-10-15');
+      return d > max ? d : max;
+    }, new Date('2026-11-05T23:59:59'));
+
+    if (stageTimeFrame === "weekly") {
+      const weekStart = new Date(maxDate.getTime() - 7 * 86400000);
+      return orders.filter(o => {
+        const d = new Date(o.createdAt || o.deliveryDate || '2026-10-15');
+        return d >= weekStart && d <= maxDate;
+      });
+    }
+
+    if (stageTimeFrame === "monthly") {
+      const monthStart = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+      const monthEnd = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, 0, 23, 59, 59);
+      return orders.filter(o => {
+        const d = new Date(o.createdAt || o.deliveryDate || '2026-10-15');
+        return d >= monthStart && d <= monthEnd;
+      });
+    }
+
+    if (stageTimeFrame === "custom") {
+      const s = new Date(stageCustomStart || "2026-10-01");
+      const e = new Date((stageCustomEnd || "2026-11-30") + "T23:59:59");
+      return orders.filter(o => {
+        const d = new Date(o.createdAt || o.deliveryDate || '2026-10-15');
+        return d >= s && d <= e;
+      });
+    }
+
+    return orders;
+  }, [orders, stageTimeFrame, stageCustomStart, stageCustomEnd]);
+
+  // Stage chart filtered orders
+  const stageSampleOrders = useMemo(() => timeFilteredOrders.filter(o => o.normStage === 'sample'), [timeFilteredOrders]);
+  const stagePartialOrders = useMemo(() => timeFilteredOrders.filter(o => o.normStage === 'partial'), [timeFilteredOrders]);
+  const stageCompleteOrders = useMemo(() => timeFilteredOrders.filter(o => o.normStage === 'complete'), [timeFilteredOrders]);
 
   // Stage counts for each pipeline with quantity sums
   const sampleCounts = useMemo(() => {
+    const keys = SAMPLE_STAGES.map(s => s.key);
     return SAMPLE_STAGES.map(s => {
-      const matched = sampleOrders.filter(o => o.normSub === s.key);
+      const matched = stageSampleOrders.filter(o => {
+        if (o.normSub === s.key) return true;
+        if (s.key === 'order' && !keys.includes(o.normSub)) return true;
+        return false;
+      });
       return {
         ...s,
         count: matched.length,
         quantity: matched.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0),
       };
     });
-  }, [sampleOrders]);
+  }, [stageSampleOrders]);
 
   const partialCounts = useMemo(() => {
+    const keys = PARTIAL_STAGES.map(s => s.key);
     return PARTIAL_STAGES.map(s => {
-      const matched = partialOrders.filter(o => o.normSub === s.key);
+      const matched = stagePartialOrders.filter(o => {
+        if (o.normSub === s.key) return true;
+        if (s.key === 'order' && !keys.includes(o.normSub)) return true;
+        return false;
+      });
       return {
         ...s,
         count: matched.length,
         quantity: matched.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0),
       };
     });
-  }, [partialOrders]);
+  }, [stagePartialOrders]);
 
   const completeCounts = useMemo(() => {
+    const keys = COMPLETE_STAGES.map(s => s.key);
     return COMPLETE_STAGES.map(s => {
-      const matched = completeOrders.filter(o => o.normSub === s.key);
+      const matched = stageCompleteOrders.filter(o => {
+        if (o.normSub === s.key) return true;
+        if (s.key === 'order' && !keys.includes(o.normSub)) return true;
+        return false;
+      });
       return {
         ...s,
         count: matched.length,
         quantity: matched.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0),
       };
     });
-  }, [completeOrders]);
+  }, [stageCompleteOrders]);
 
   // Clean Reusable Bar Chart
   const renderBarChart = (data, barColor, pipelineKey, totalWidth = 360, colWidth = 28) => {
@@ -256,7 +395,7 @@ export default function OrderManagementDashboard() {
   const totalOrdersCount = sampleCardOrders.length + partialCardOrders.length + completeCardOrders.length;
   const samplePct = totalOrdersCount > 0 ? Math.round((sampleCardOrders.length / totalOrdersCount) * 100) : 0;
   const partialPct = totalOrdersCount > 0 ? Math.round((partialCardOrders.length / totalOrdersCount) * 100) : 0;
-  const completePct = totalOrdersCount > 0 ? Math.round((completeCardOrders.length / totalOrdersCount) * 100) : 0;
+  const completePct = totalOrdersCount > 0 ? Math.max(0, 100 - samplePct - partialPct) : 0;
 
   return (
     <div className="order-simple-dashboard">
@@ -265,71 +404,128 @@ export default function OrderManagementDashboard() {
         {/* Sample Card */}
         <div
           className="order-tile tile-sample"
-          onClick={() => navigate('/order/sample/order')}
-          title="Click to open Sample Orders"
+          onClick={() => navigate('/orders/view/sample')}
+          title="Click to view Sample Orders Table"
         >
           <div className="order-tile-header">
             <span className="order-tile-title">
               <span className="donut-dot-marker" style={{ background: '#0284c7' }}></span>
               Sample Orders
             </span>
-            <span className="order-tile-badge sample">5 Stages</span>
+            <span className="order-tile-badge sample">7 Stages</span>
           </div>
           <div className="order-tile-count" style={{ color: '#0284c7' }}>
             {sampleCardOrders.length}
           </div>
           <div className="order-tile-sub">
             <span>{sampleCardOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs in pipeline</span>
-            <span className="tile-action-hint">View all <ArrowRight size={13} /></span>
+            <span className="tile-action-hint">View table <ArrowRight size={13} /></span>
           </div>
         </div>
 
         {/* Partial Card */}
         <div
           className="order-tile tile-partial"
-          onClick={() => navigate('/order/partial/order')}
-          title="Click to open Partial Orders"
+          onClick={() => navigate('/orders/view/partial')}
+          title="Click to view Partial Orders Table"
         >
           <div className="order-tile-header">
             <span className="order-tile-title">
               <span className="donut-dot-marker" style={{ background: '#7c3aed' }}></span>
               Partial Orders
             </span>
-            <span className="order-tile-badge partial">6 Stages</span>
+            <span className="order-tile-badge partial">8 Stages</span>
           </div>
           <div className="order-tile-count" style={{ color: '#7c3aed' }}>
             {partialCardOrders.length}
           </div>
           <div className="order-tile-sub">
             <span>{partialCardOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs in production</span>
-            <span className="tile-action-hint">View all <ArrowRight size={13} /></span>
+            <span className="tile-action-hint">View table <ArrowRight size={13} /></span>
           </div>
         </div>
 
         {/* Complete Card */}
         <div
           className="order-tile tile-complete"
-          onClick={() => navigate('/order/complete/order')}
-          title="Click to open Complete Orders"
+          onClick={() => navigate('/orders/view/complete')}
+          title="Click to view Complete Orders Table"
         >
           <div className="order-tile-header">
             <span className="order-tile-title">
               <span className="donut-dot-marker" style={{ background: '#059669' }}></span>
               Complete Orders
             </span>
-            <span className="order-tile-badge complete">8 Stages</span>
+            <span className="order-tile-badge complete">9 Stages</span>
           </div>
           <div className="order-tile-count" style={{ color: '#059669' }}>
             {completeCardOrders.length}
           </div>
           <div className="order-tile-sub">
             <span>{completeCardOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs fulfilled</span>
-            <span className="tile-action-hint">View all <ArrowRight size={13} /></span>
+            <span className="tile-action-hint">View table <ArrowRight size={13} /></span>
           </div>
         </div>
       </div>
 
       {/* 2. THREE DEDICATED VISUAL BAR CHARTS FOR CHILD STAGES */}
+      <div className="order-charts-section-header">
+        <div className="order-charts-title-group">
+          <h3>
+            <Layers size={17} color="#4f46e5" /> Pipeline Stage Distribution
+          </h3>
+          <p>
+            {stageTimeFrame === 'weekly' ? 'Showing orders from past 7 days (Weekly)' : stageTimeFrame === 'monthly' ? 'Showing orders from current month (Monthly)' : stageTimeFrame === 'custom' ? `Showing orders between ${stageCustomStart} and ${stageCustomEnd}` : 'Showing all-time orders across workflow stages'}
+          </p>
+        </div>
+
+        <div className="sales-period-strip" style={{ marginBottom: 0, paddingBottom: 0, borderBottom: 'none' }}>
+          <button
+            className={`sales-period-chip ${stageTimeFrame === "all" ? "active" : ""}`}
+            onClick={() => setStageTimeFrame("all")}
+          >
+            All Time
+          </button>
+          <button
+            className={`sales-period-chip ${stageTimeFrame === "weekly" ? "active" : ""}`}
+            onClick={() => setStageTimeFrame("weekly")}
+          >
+            <Calendar size={13} /> Weekly
+          </button>
+          <button
+            className={`sales-period-chip ${stageTimeFrame === "monthly" ? "active" : ""}`}
+            onClick={() => setStageTimeFrame("monthly")}
+          >
+            <Calendar size={13} /> Monthly
+          </button>
+          <button
+            className={`sales-period-chip ${stageTimeFrame === "custom" ? "active" : ""}`}
+            onClick={() => setStageTimeFrame("custom")}
+          >
+            <Filter size={13} /> Custom Range
+          </button>
+
+          {stageTimeFrame === "custom" && (
+            <div className="custom-date-box">
+              <span>From:</span>
+              <input
+                type="date"
+                value={stageCustomStart}
+                onChange={(e) => setStageCustomStart(e.target.value)}
+                className="custom-date-input"
+              />
+              <span>To:</span>
+              <input
+                type="date"
+                value={stageCustomEnd}
+                onChange={(e) => setStageCustomEnd(e.target.value)}
+                className="custom-date-input"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="order-charts-grid">
         {/* Chart 1: Sample Child Side Menu Stages */}
         <div className="order-chart-card">
@@ -345,14 +541,14 @@ export default function OrderManagementDashboard() {
                     {hoveredBar.fullLabel}: {hoveredBar.count} order{hoveredBar.count === 1 ? '' : 's'} ({hoveredBar.quantity} pcs)
                   </span>
                 ) : (
-                  'Orders across 5 side menu stages'
+                  'Orders across 7 side menu stages'
                 )}
               </p>
             </div>
-            <span className="order-chart-badge">{sampleOrders.length} total</span>
+            <span className="order-chart-badge">{stageSampleOrders.length} total</span>
           </div>
 
-          {renderBarChart(sampleCounts, "#0284c7", 'sample', 340, 32)}
+          {renderBarChart(sampleCounts, '#0284c7', 'sample', 380, 26)}
 
           <div className="order-chart-footer">
             <span style={{ fontSize: '11px', color: '#94a3b8' }}>Click bar to open stage</span>
@@ -376,14 +572,14 @@ export default function OrderManagementDashboard() {
                     {hoveredBar.fullLabel}: {hoveredBar.count} order{hoveredBar.count === 1 ? '' : 's'} ({hoveredBar.quantity} pcs)
                   </span>
                 ) : (
-                  'Orders across 6 side menu stages'
+                  'Orders across 9 side menu stages'
                 )}
               </p>
             </div>
-            <span className="order-chart-badge">{partialOrders.length} total</span>
+            <span className="order-chart-badge">{stagePartialOrders.length} total</span>
           </div>
 
-          {renderBarChart(partialCounts, "#7c3aed", 'partial', 360, 28)}
+          {renderBarChart(partialCounts, '#7c3aed', 'partial', 400, 24)}
 
           <div className="order-chart-footer">
             <span style={{ fontSize: '11px', color: '#94a3b8' }}>Click bar to open stage</span>
@@ -411,10 +607,10 @@ export default function OrderManagementDashboard() {
                 )}
               </p>
             </div>
-            <span className="order-chart-badge">{completeOrders.length} total</span>
+            <span className="order-chart-badge">{stageCompleteOrders.length} total</span>
           </div>
 
-          {renderBarChart(completeCounts, "#059669", 'complete', 420, 24)}
+          {renderBarChart(completeCounts, '#059669', 'complete', 440, 22)}
 
           <div className="order-chart-footer">
             <span style={{ fontSize: '11px', color: '#94a3b8' }}>Click bar to open stage</span>
@@ -425,115 +621,303 @@ export default function OrderManagementDashboard() {
         </div>
       </div>
 
+      {/* SALES EXECUTIVE FOCUS: PRIORITY & DELIVERY WATCHLIST */}
+      {isSales && (
+        <div className="sales-focus-card" style={{ width: '100%', boxSizing: 'border-box' }}>
+          <div className="sales-focus-header">
+            <div>
+              <h3>
+                <AlertTriangle size={18} color="#dc2626" />
+                Priority & Delivery Watchlist
+              </h3>
+              <p>Orders requiring urgent attention or approaching delivery</p>
+            </div>
+            <span className="order-chart-badge">{urgentOrders.length} orders</span>
+          </div>
+
+          <div className="sales-focus-list">
+            {urgentOrders.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "20px", color: "#94a3b8", fontSize: "13px" }}>
+                No urgent delivery deadlines at this time.
+              </div>
+            ) : (
+              urgentOrders.map(order => (
+                <div
+                  key={order._id}
+                  className="sales-focus-item"
+                  onClick={() => navigate(`/order/create-lead?id=${order._id}&from=${encodeURIComponent(`/order/${order.normStage}/${order.normSub}`)}&stage=${order.normStage}`)}
+                  title="Click to open order"
+                >
+                  <div className="sales-focus-item-left">
+                    <span className="sales-focus-item-title">
+                      {order.clientName || order.companyName || "Client Order"}
+                      <span style={{ fontSize: "11px", color: "#94a3b8", marginLeft: "6px" }}>({order.orderId || "ORD-NEW"})</span>
+                    </span>
+                    <span className="sales-focus-item-meta">
+                      <Calendar size={12} /> Delivery: {order.deliveryDate || "Not set"} • {order.totalQuantity ? `${order.totalQuantity} pcs` : ""}
+                    </span>
+                  </div>
+                  <div className="sales-focus-item-right">
+                    {(order.urgency || '').toLowerCase() === 'yes' && (
+                      <span className="badge-urgent-tag">Urgent</span>
+                    )}
+                    <span className={`status-badge-pill ${order.normStage}`}>
+                      {order.normStage} ({order.normSub.replace(/-/g, ' ')})
+                    </span>
+                    <ArrowUpRight size={14} color="#94a3b8" />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 3. BOTTOM ANALYTICS ROW: OVERALL DISTRIBUTION + REPEAT CUSTOMER RATE */}
       <div className="order-analytics-grid">
         {/* Simple Donut Breakdown */}
         <div className="order-chart-card">
-          <div className="order-chart-header">
+          <div className="order-chart-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <h3>Overall Distribution</h3>
               <p>Sample vs Partial vs Complete</p>
             </div>
+            <button
+              className="order-open-link"
+              onClick={() => navigate('/orders/view/all')}
+              title="Click to view all orders data table"
+            >
+              <span>View Table</span> <ChevronRight size={14} />
+            </button>
           </div>
 
-          <div style={{ position: 'relative', width: '160px', height: '160px', margin: '8px auto 14px auto' }}>
-            <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-              <circle cx="50" cy="50" r="38" fill="transparent" stroke="#f1f5f9" strokeWidth="16" />
+          <div
+            style={{ position: 'relative', width: '160px', height: '160px', margin: '8px auto 14px auto', cursor: 'pointer' }}
+            onMouseLeave={() => setHoveredSlice(null)}
+            onClick={() => {
+              if (hoveredSlice) {
+                navigate(`/orders/view/${hoveredSlice}`);
+              } else {
+                navigate('/orders/view/all');
+              }
+            }}
+            title="Click to view orders table"
+          >
+            <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+              {/* Outer track */}
+              <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" strokeWidth="16" pointerEvents="none" />
+
+              {/* Inner clickable center circle */}
+              <circle
+                cx="50"
+                cy="50"
+                r="28"
+                fill="#ffffff"
+                style={{ cursor: 'pointer', pointerEvents: 'all' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate('/orders/view/all');
+                }}
+              />
+
               {(() => {
                 const total = totalOrdersCount || 1;
-                const circumference = 2 * Math.PI * 38;
-                const sampleArc = (sampleCardOrders.length / total) * circumference;
-                const partialArc = (partialCardOrders.length / total) * circumference;
-                const completeArc = (completeCardOrders.length / total) * circumference;
+                const sampleFrac = sampleCardOrders.length / total;
+                const partialFrac = partialCardOrders.length / total;
+                const completeFrac = completeCardOrders.length / total;
+
+                const polarToCartesian = (cx, cy, r, angleRad) => ({
+                  x: cx + r * Math.cos(angleRad),
+                  y: cy + r * Math.sin(angleRad),
+                });
+
+                const describeArc = (cx, cy, r, startAngleRad, endAngleRad) => {
+                  const start = polarToCartesian(cx, cy, r, startAngleRad);
+                  const end = polarToCartesian(cx, cy, r, endAngleRad);
+                  const angleDiff = endAngleRad - startAngleRad;
+                  const largeArcFlag = angleDiff <= Math.PI ? 0 : 1;
+                  return `M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
+                };
+
+                const a0 = -Math.PI / 2;
+                const a1 = a0 + sampleFrac * 2 * Math.PI;
+                const a2 = a1 + partialFrac * 2 * Math.PI;
+                const a3 = a0 + 2 * Math.PI - 0.0001;
+
+                const samplePath = sampleCardOrders.length > 0 ? describeArc(50, 50, 38, a0, a1) : null;
+                const partialPath = partialCardOrders.length > 0 ? describeArc(50, 50, 38, a1, a2) : null;
+                const completePath = completeCardOrders.length > 0 ? describeArc(50, 50, 38, a2, a3) : null;
 
                 return (
                   <>
-                    {sampleCardOrders.length > 0 && (
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="38"
-                        fill="transparent"
+                    {samplePath && (
+                      <path
+                        d={samplePath}
+                        fill="none"
                         stroke="#0284c7"
-                        strokeWidth="16"
-                        strokeDasharray={`${sampleArc} ${circumference - sampleArc}`}
-                        strokeDashoffset="0"
+                        strokeWidth={hoveredSlice === 'sample' ? 20 : 16}
+                        className="donut-slice"
+                        pointerEvents="stroke"
+                        style={{
+                          cursor: 'pointer',
+                          transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                          filter: hoveredSlice === 'sample' ? 'drop-shadow(0 4px 10px rgba(2, 132, 199, 0.5))' : 'none',
+                          opacity: hoveredSlice && hoveredSlice !== 'sample' ? 0.45 : 1,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/orders/view/sample');
+                        }}
+                        onMouseEnter={() => setHoveredSlice('sample')}
                       />
                     )}
-                    {partialCardOrders.length > 0 && (
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="38"
-                        fill="transparent"
+                    {partialPath && (
+                      <path
+                        d={partialPath}
+                        fill="none"
                         stroke="#7c3aed"
-                        strokeWidth="16"
-                        strokeDasharray={`${partialArc} ${circumference - partialArc}`}
-                        strokeDashoffset={-sampleArc}
+                        strokeWidth={hoveredSlice === 'partial' ? 20 : 16}
+                        className="donut-slice"
+                        pointerEvents="stroke"
+                        style={{
+                          cursor: 'pointer',
+                          transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                          filter: hoveredSlice === 'partial' ? 'drop-shadow(0 4px 10px rgba(124, 58, 237, 0.5))' : 'none',
+                          opacity: hoveredSlice && hoveredSlice !== 'partial' ? 0.45 : 1,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/orders/view/partial');
+                        }}
+                        onMouseEnter={() => setHoveredSlice('partial')}
                       />
                     )}
-                    {completeCardOrders.length > 0 && (
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="38"
-                        fill="transparent"
+                    {completePath && (
+                      <path
+                        d={completePath}
+                        fill="none"
                         stroke="#059669"
-                        strokeWidth="16"
-                        strokeDasharray={`${completeArc} ${circumference - completeArc}`}
-                        strokeDashoffset={-(sampleArc + partialArc)}
+                        strokeWidth={hoveredSlice === 'complete' ? 20 : 16}
+                        className="donut-slice"
+                        pointerEvents="stroke"
+                        style={{
+                          cursor: 'pointer',
+                          transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                          filter: hoveredSlice === 'complete' ? 'drop-shadow(0 4px 10px rgba(5, 150, 105, 0.5))' : 'none',
+                          opacity: hoveredSlice && hoveredSlice !== 'complete' ? 0.45 : 1,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/orders/view/complete');
+                        }}
+                        onMouseEnter={() => setHoveredSlice('complete')}
                       />
                     )}
                   </>
                 );
               })()}
             </svg>
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>TOTAL</span>
-              <span style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a' }}>{totalOrdersCount}</span>
-              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Orders</span>
+            <div
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '60px',
+                height: '60px',
+                borderRadius: '50%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                pointerEvents: 'none',
+                userSelect: 'none',
+                zIndex: 2,
+              }}
+            >
+              {hoveredSlice === 'sample' ? (
+                <>
+                  <span style={{ fontSize: '10px', color: '#0284c7', fontWeight: 800, letterSpacing: '0.5px' }}>SAMPLE</span>
+                  <span style={{ fontSize: '26px', fontWeight: 800, color: '#0284c7', lineHeight: 1.1 }}>{sampleCardOrders.length}</span>
+                  <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: 600 }}>{samplePct}%</span>
+                </>
+              ) : hoveredSlice === 'partial' ? (
+                <>
+                  <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 800, letterSpacing: '0.5px' }}>PARTIAL</span>
+                  <span style={{ fontSize: '26px', fontWeight: 800, color: '#7c3aed', lineHeight: 1.1 }}>{partialCardOrders.length}</span>
+                  <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: 600 }}>{partialPct}%</span>
+                </>
+              ) : hoveredSlice === 'complete' ? (
+                <>
+                  <span style={{ fontSize: '10px', color: '#059669', fontWeight: 800, letterSpacing: '0.5px' }}>COMPLETE</span>
+                  <span style={{ fontSize: '26px', fontWeight: 800, color: '#059669', lineHeight: 1.1 }}>{completeCardOrders.length}</span>
+                  <span style={{ fontSize: '11px', color: '#059669', fontWeight: 600 }}>{completePct}%</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>TOTAL</span>
+                  <span style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{totalOrdersCount}</span>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Orders</span>
+                </>
+              )}
             </div>
           </div>
 
           <div className="donut-legend-simple">
             <div
-              className="donut-legend-row"
-              onClick={() => navigate('/order/sample/order')}
-              title="Click to view Sample Orders"
+              className={`donut-legend-row ${hoveredSlice === 'sample' ? 'active-hover' : ''}`}
+              onClick={() => navigate('/orders/view/sample')}
+              onMouseEnter={() => setHoveredSlice('sample')}
+              onMouseLeave={() => setHoveredSlice(null)}
+              style={{ cursor: 'pointer' }}
+              title="Click to view Sample Orders Table"
             >
               <span className="donut-legend-left">
                 <span className="donut-dot-marker" style={{ background: '#0284c7' }}></span> Sample
               </span>
               <span className="donut-legend-right">
-                {sampleCardOrders.length} ({samplePct}%)
+                {sampleCardOrders.length} ({samplePct}%) <ChevronRight size={12} color="#94a3b8" style={{ marginLeft: '4px' }} />
               </span>
             </div>
 
             <div
-              className="donut-legend-row"
-              onClick={() => navigate('/order/partial/order')}
-              title="Click to view Partial Orders"
+              className={`donut-legend-row ${hoveredSlice === 'partial' ? 'active-hover' : ''}`}
+              onClick={() => navigate('/orders/view/partial')}
+              onMouseEnter={() => setHoveredSlice('partial')}
+              onMouseLeave={() => setHoveredSlice(null)}
+              style={{ cursor: 'pointer' }}
+              title="Click to view Partial Orders Table"
             >
               <span className="donut-legend-left">
                 <span className="donut-dot-marker" style={{ background: '#7c3aed' }}></span> Partial
               </span>
               <span className="donut-legend-right">
-                {partialCardOrders.length} ({partialPct}%)
+                {partialCardOrders.length} ({partialPct}%) <ChevronRight size={12} color="#94a3b8" style={{ marginLeft: '4px' }} />
               </span>
             </div>
 
             <div
-              className="donut-legend-row"
-              onClick={() => navigate('/order/complete/order')}
-              title="Click to view Complete Orders"
+              className={`donut-legend-row ${hoveredSlice === 'complete' ? 'active-hover' : ''}`}
+              onClick={() => navigate('/orders/view/complete')}
+              onMouseEnter={() => setHoveredSlice('complete')}
+              onMouseLeave={() => setHoveredSlice(null)}
+              style={{ cursor: 'pointer' }}
+              title="Click to view Complete Orders Table"
             >
               <span className="donut-legend-left">
                 <span className="donut-dot-marker" style={{ background: '#059669' }}></span> Complete
               </span>
               <span className="donut-legend-right">
-                {completeCardOrders.length} ({completePct}%)
+                {completeCardOrders.length} ({completePct}%) <ChevronRight size={12} color="#94a3b8" style={{ marginLeft: '4px' }} />
               </span>
             </div>
+          </div>
+
+          <div className="order-chart-footer" style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
+            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Click slice or row to view data table</span>
+            <button className="order-open-link" onClick={() => navigate('/orders/view/all')}>
+              <span>Open Table</span> <ChevronRight size={14} />
+            </button>
           </div>
         </div>
 
@@ -641,17 +1025,34 @@ export default function OrderManagementDashboard() {
         </div>
       </div>
 
-      {/* 4. RECENT ORDERS TABLE (FULL WIDTH) */}
+      {/* 4. RECENT ORDERS & INQUIRIES TABLE */}
       <div className="order-chart-card" style={{ marginTop: '4px' }}>
         <div className="order-chart-header">
-          <div>
-            <h3>Recent Orders</h3>
-            <p>Click any row to open and edit order</p>
-          </div>
+          {isSales ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                className={`table-tab-btn ${tableTab === "orders" ? "active" : ""}`}
+                onClick={() => setTableTab("orders")}
+              >
+                Confirmed Orders ({orders.length})
+              </button>
+              <button
+                className={`table-tab-btn ${tableTab === "inquiries" ? "active" : ""}`}
+                onClick={() => setTableTab("inquiries")}
+              >
+                Open Inquiries ({inquiries.length})
+              </button>
+            </div>
+          ) : (
+            <div>
+              <h3>Recent Orders</h3>
+              <p>Click any row to open and edit order</p>
+            </div>
+          )}
           <button
             className="order-open-link"
             onClick={fetchLeads}
-            title="Refresh order database"
+            title="Refresh database"
             style={{ fontSize: '12px' }}
           >
             <RefreshCw size={13} className={loading ? "spin-animation" : ""} /> Refresh
@@ -659,72 +1060,127 @@ export default function OrderManagementDashboard() {
         </div>
 
         <div style={{ overflowX: 'auto' }}>
-          <table className="clean-orders-table">
-            <thead>
-              <tr>
-                <th>Client Name</th>
-                <th>Company</th>
-                <th>Pipeline</th>
-                <th>Current Stage</th>
-                <th>Quantity</th>
-                <th>Repeat Customer</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.length === 0 ? (
+          {tableTab === "orders" ? (
+            <table className="clean-orders-table">
+              <thead>
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
-                    No orders found yet.
-                  </td>
+                  <th>Client Name</th>
+                  <th>Company</th>
+                  <th>Pipeline</th>
+                  <th>Current Stage</th>
+                  <th>Quantity</th>
+                  <th>Repeat Customer</th>
+                  <th></th>
                 </tr>
-              ) : (
-                orders.slice(0, 10).map((order) => (
-                  <tr
-                    key={order._id}
-                    className="table-row-hover"
-                    onClick={() => navigate(`/order/create-lead?id=${order._id}&from=${encodeURIComponent(`/order/${order.normStage}/${order.normSub}`)}&stage=${order.normStage}`)}
-                    title="Click to open and edit this order"
-                  >
-                    <td>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontWeight: 700 }}>
-                          {order.clientName || 'Unnamed Client'}
-                        </span>
-                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                          {order.orderId || 'ORD-NEW'}
-                        </span>
-                      </div>
-                    </td>
-                    <td>{order.companyName || '—'}</td>
-                    <td>
-                      <span className={`status-badge-pill ${order.normStage}`}>
-                        {order.normStage}
-                      </span>
-                    </td>
-                    <td style={{ textTransform: 'capitalize' }}>
-                      {order.normSub.replace(/-/g, ' ')}
-                    </td>
-                    <td style={{ fontWeight: 600 }}>
-                      {order.totalQuantity ? `${order.totalQuantity} pcs` : '—'}
-                    </td>
-                    <td>
-                      {(order.repeatedOrder || '').toLowerCase().trim() === 'yes' ? (
-                        <span className="repeat-tag yes" style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
-                          Repeat
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>First-time</span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right', color: '#94a3b8' }}>
-                      <ArrowUpRight size={15} />
+              </thead>
+              <tbody>
+                {orders.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
+                      No orders found yet.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  orders.slice(0, 10).map((order) => (
+                    <tr
+                      key={order._id}
+                      className="table-row-hover"
+                      onClick={() => navigate(`/order/create-lead?id=${order._id}&from=${encodeURIComponent(`/order/${order.normStage}/${order.normSub}`)}&stage=${order.normStage}`)}
+                      title="Click to open and edit this order"
+                    >
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 700 }}>
+                            {order.clientName || 'Unnamed Client'}
+                          </span>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            {order.orderId || 'ORD-NEW'}
+                          </span>
+                        </div>
+                      </td>
+                      <td>{order.companyName || '—'}</td>
+                      <td>
+                        <span className={`status-badge-pill ${order.normStage}`}>
+                          {order.normStage}
+                        </span>
+                      </td>
+                      <td style={{ textTransform: 'capitalize' }}>
+                        {order.normSub.replace(/-/g, ' ')}
+                      </td>
+                      <td style={{ fontWeight: 600 }}>
+                        {order.totalQuantity ? `${order.totalQuantity} pcs` : '—'}
+                      </td>
+                      <td>
+                        {(order.repeatedOrder || '').toLowerCase().trim() === 'yes' ? (
+                          <span className="repeat-tag yes" style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
+                            Repeat
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>First-time</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', color: '#94a3b8' }}>
+                        <ArrowUpRight size={15} />
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          ) : (
+            <table className="clean-orders-table">
+              <thead>
+                <tr>
+                  <th>Client / Prospect</th>
+                  <th>Company</th>
+                  <th>Phone Number</th>
+                  <th>Scheduled Date</th>
+                  <th>Note / Requirement</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inquiries.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
+                      No active inquiries right now.
+                    </td>
+                  </tr>
+                ) : (
+                  inquiries.slice(0, 10).map((inq) => (
+                    <tr
+                      key={inq._id}
+                      className="table-row-hover"
+                      onClick={() => navigate(`/order/create-lead?id=${inq._id}`)}
+                      title="Click to open and convert inquiry"
+                    >
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 700 }}>
+                            {inq.clientName || 'Unnamed Prospect'}
+                          </span>
+                          <span style={{ fontSize: '11px', color: '#2563eb' }}>
+                            Inquiry Lead
+                          </span>
+                        </div>
+                      </td>
+                      <td>{inq.companyName || '—'}</td>
+                      <td>{inq.phoneNumber || '—'}</td>
+                      <td>{inq.scheduleDate ? `${inq.scheduleDate} ${inq.scheduleTime || ''}` : 'Flexible'}</td>
+                      <td style={{ maxWidth: "250px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {inq.additionalNote || inq.queryStatus || 'New prospect inquiry'}
+                      </td>
+                      <td>
+                        <span className="badge-lead-tag" style={{ cursor: "pointer" }}>
+                          Open Lead <ArrowUpRight size={12} style={{ display: "inline" }} />
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 

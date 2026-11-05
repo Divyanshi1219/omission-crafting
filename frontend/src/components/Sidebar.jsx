@@ -9,7 +9,9 @@ import {
   ReceiptText,
   CheckSquare,
   ClipboardCheck,
-  Lightbulb
+  Lightbulb,
+  SlidersHorizontal,
+  Boxes
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -29,6 +31,12 @@ function Sidebar() {
   const isStockUser =
     currentUser?.id === "stock" ||
     Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("stock"));
+  const isOnlyStockRoomUser =
+    (currentUser?.id === "stock" ||
+      currentUser?.role === "Stock Room Manager" ||
+      Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("stock"))) &&
+    currentUser?.id !== "admin" &&
+    currentUser?.role !== "CEO";
   const isProductionUser =
     currentUser?.id === "production" ||
     Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("production") && !currentUser.role.toLowerCase().includes("lead manager"));
@@ -703,6 +711,31 @@ function Sidebar() {
           </div>
         )}
 
+        {/* Stock Room Section - ONLY visible to Stock Room role */}
+        {isOnlyStockRoomUser && (
+          <NavLink
+            to="/stock-room"
+            className={({ isActive }) =>
+              `sidebar-item ${isActive ? "active" : ""}`
+            }
+          >
+            <Boxes size={20} />
+            <span>Stock Room</span>
+          </NavLink>
+        )}
+
+        {isAdmin && (
+          <NavLink
+            to="/console"
+            className={({ isActive }) =>
+              `sidebar-item ${isActive ? "active" : ""}`
+            }
+            style={{ marginTop: '16px', borderTop: '1px solid rgba(0, 0, 0, 0.08)', paddingTop: '12px' }}
+          >
+            <SlidersHorizontal size={20} />
+            <span>Console</span>
+          </NavLink>
+        )}
       </nav>
     </aside>
   );

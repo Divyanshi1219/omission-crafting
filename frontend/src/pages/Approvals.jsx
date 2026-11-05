@@ -34,7 +34,8 @@ import {
   Scissors,
   Save,
   X,
-  Settings
+  Settings,
+  BookmarkCheck
 } from "lucide-react";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
@@ -632,6 +633,162 @@ export default function Approvals({ defaultTab = "all" }) {
 
   const handleRemoveReadyToPickAttachment = (idxToRemove) => {
     setReadyToPickAttachments((prev) => prev.filter((_, idx) => idx !== idxToRemove));
+  };
+
+  
+  const handleOpenReserveModal = (item = null) => {
+    if (!selectedOrder) return;
+    fetchWarehouseStocks();
+    setClickedReserveItem(item);
+    setShowReserveModal(true);
+
+    if (item) {
+      const itName = (item.item || item.enterItem || item.itemType || "").toLowerCase();
+      const itCol = (item.color || "").toLowerCase();
+      const itSz = (item.size || "M").toUpperCase();
+      const itQty = Number(item.quantity) || 1;
+
+      let matched = stocks.find((s) => {
+        const sProd = (s.product || "").toLowerCase();
+        const sCol = (s.colour || "").toLowerCase();
+        return (sProd.includes(itName) || itName.includes(sProd)) && (sCol.includes(itCol) || itCol.includes(sCol));
+      });
+      if (!matched) {
+        matched = stocks.find((s) => {
+          const sProd = (s.product || "").toLowerCase();
+          return sProd.includes(itName) || itName.includes(sProd);
+        }) || stocks[0];
+      }
+
+      if (matched) {
+        setSelectedReserveStockId(matched._id);
+        const chosenSize = SIZES.includes(itSz) ? itSz : "M";
+        setSelectedReserveSize(chosenSize);
+        const avail = getAvailableStock(matched._id, chosenSize);
+        setReserveQty(avail > 0 ? Math.min(itQty, avail) : 0);
+      }
+    } else if (selectedOrder.items?.length > 0) {
+      const first = selectedOrder.items[0];
+      const itName = (first.item || first.enterItem || first.itemType || "").toLowerCase();
+      const itCol = (first.color || "").toLowerCase();
+      const itSz = (first.size || "M").toUpperCase();
+
+      let matched = stocks.find((s) => {
+        const sProd = (s.product || "").toLowerCase();
+        const sCol = (s.colour || "").toLowerCase();
+        return (sProd.includes(itName) || itName.includes(sProd)) && (sCol.includes(itCol) || itCol.includes(sCol));
+      }) || stocks[0];
+
+      if (matched) {
+        setSelectedReserveStockId(matched._id);
+        const chosenSize = SIZES.includes(itSz) ? itSz : "M";
+        setSelectedReserveSize(chosenSize);
+        const avail = getAvailableStock(matched._id, chosenSize);
+        setReserveQty(avail > 0 ? 1 : 0);
+      }
+    } else if (stocks.length > 0) {
+      setSelectedReserveStockId(stocks[0]._id);
+      setSelectedReserveSize("M");
+      const avail = getAvailableStock(stocks[0]._id, "M");
+      setReserveQty(avail > 0 ? 1 : 0);
+    }
+  };
+
+  const handleCreateReservation = async (e) => {
+    e.preventDefault();
+    if (!selectedOrder || !selectedReserveStockId) return;
+    const ordId = selectedOrder.orderId || selectedOrder.taskId;
+    if (!ordId) {
+      showToast("Selected order has no Order ID or Task ID.", "error");
+      return;
+    }
+    if (reserveQty <= 0) {
+      showToast("Reservation quantity must be at least 1 pc.", "error");
+      return;
+    }
+    const avail = getAvailableStock(selectedReserveStockId, selectedReserveSize);
+    if (reserveQty > avail) {
+      showToast(`Only ${avail} pcs available for size ${selectedReserveSize}.`, "error");
+      return;
+    }
+
+    try {
+      setIsSubmittingReserve(true);
+      const res = await api.post(`/api/stock-room/${selectedReserveStockId}/reserve`, {
+        orderId: ordId,
+        size: selectedReserveSize,
+        quantity: Number(reserveQty),
+        notes: reserveNotes,
+      });
+
+      if (res.data?.success) {
+        showToast(`Reserved ${reserveQty} pcs for Order #${ordId} successfully!`, "success");
+        setShowReserveModal(false);
+        setReserveNotes("");
+        setReserveQty(1);
+        fetchOrderReservations(ordId);
+        fetchWarehouseStocks();
+      }
+    } catch (err) {
+      console.error("Error creating reservation:", err);
+      showToast(err.response?.data?.message || "Failed to create reservation.", "error");
+    } finally {
+      setIsSubmittingReserve(false);
+    }
+  };
+
+  const handleOpenReleaseModal = (reservation) => {
+    setReleaseModal({
+      isOpen: true,
+      stockId: reservation.stockId,
+      reservationId: reservation.reservationId,
+      product: reservation.product,
+      colour: reservation.colour,
+      size: reservation.size,
+      quantity: reservation.quantity,
+      orderId: reservation.orderId,
+      notes: "",
+      isSubmitting: false,
+    });
+  };
+
+  const handleConfirmReleaseReservation = async (e) => {
+    e.preventDefault();
+    if (!releaseModal.notes || !releaseModal.notes.trim()) {
+      showToast("Release notes / reason is mandatory (*).", "error");
+      return;
+    }
+
+    try {
+      setReleaseModal((prev) => ({ ...prev, isSubmitting: true }));
+      const res = await api.post(
+        `/api/stock-room/${releaseModal.stockId}/reservations/${releaseModal.reservationId}/release`,
+        { notes: releaseModal.notes.trim() }
+      );
+
+      if (res.data?.success) {
+        showToast(`Released ${releaseModal.quantity} pcs back to warehouse stock.`, "success");
+        setReleaseModal({
+          isOpen: false,
+          stockId: "",
+          reservationId: "",
+          product: "",
+          colour: "",
+          size: "",
+          quantity: 0,
+          orderId: "",
+          notes: "",
+          isSubmitting: false,
+        });
+        const ordId = selectedOrder.orderId || selectedOrder.taskId;
+        fetchOrderReservations(ordId);
+        fetchWarehouseStocks();
+      }
+    } catch (err) {
+      console.error("Error releasing reservation:", err);
+      showToast(err.response?.data?.message || "Failed to release reservation.", "error");
+      setReleaseModal((prev) => ({ ...prev, isSubmitting: false }));
+    }
   };
 
   const handleExecutePageAction = async (actionType) => {
@@ -3305,7 +3462,64 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                                   <td style={{ padding: "9px 8px", fontSize: "13.5px", color: isYetToBeCompleted ? "#334155" : "#94a3b8" }}>{it.sublimationOption || it.sublimation || "-"}</td>
                                 )}
                                 <td style={{ padding: "9px 8px", fontSize: "13.5px", color: isYetToBeCompleted ? "#334155" : "#94a3b8" }}>{it.fabric || "-"}</td>
-                                <td style={{ padding: "9px 8px", fontSize: "13.5px", fontWeight: isYetToBeCompleted ? 700 : 500, color: isYetToBeCompleted ? "#0f172a" : "#94a3b8" }}>{it.quantity ? `${it.quantity} pcs` : "0 pcs"}</td>
+                                <td style={{ padding: "9px 8px", fontSize: "13.5px", verticalAlign: "middle" }}>
+                                  {(() => {
+                                    const itProd = (it.item || it.enterItem || it.itemType || "").toLowerCase();
+                                    const itCol = (it.color || "").toLowerCase();
+                                    const itSz = (it.size || "M").toUpperCase();
+                                    const matched = (orderReservations || []).filter((r) => {
+                                      const rProd = (r.product || "").toLowerCase();
+                                      const rCol = (r.colour || "").toLowerCase();
+                                      const rSz = (r.size || "").toUpperCase();
+                                      return (
+                                        (rProd.includes(itProd) || itProd.includes(rProd)) &&
+                                        (!itCol || !rCol || rCol.includes(itCol) || itCol.includes(rCol)) &&
+                                        rSz === itSz
+                                      );
+                                    });
+                                    const resQty = matched.reduce((a, b) => a + (b.quantity || 0), 0);
+                                    return (
+                                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "nowrap" }}>
+                                        <span style={{ fontWeight: isYetToBeCompleted ? 700 : 500, color: isYetToBeCompleted ? "#0f172a" : "#94a3b8" }}>
+                                          {it.quantity ? `${it.quantity} pcs` : "0 pcs"}
+                                        </span>
+                                        {resQty > 0 && (
+                                          <span style={{
+                                            fontSize: "11px",
+                                            fontWeight: 600,
+                                            color: "#166534",
+                                            background: "#dcfce7",
+                                            padding: "1px 6px",
+                                            borderRadius: "4px",
+                                            whiteSpace: "nowrap"
+                                          }}>
+                                            {resQty} reserved
+                                          </span>
+                                        )}
+                                        {roleView === "stock" && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleOpenReserveModal(it)}
+                                            style={{
+                                              background: "none",
+                                              border: "none",
+                                              padding: "0 2px",
+                                              color: "#2563eb",
+                                              fontSize: "11.5px",
+                                              fontWeight: 600,
+                                              cursor: "pointer",
+                                              textDecoration: "underline",
+                                              whiteSpace: "nowrap"
+                                            }}
+                                            title="Reserve stock for this garment item"
+                                          >
+                                            Reserve
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </td>
                                 <td style={{ padding: "9px 8px", fontSize: "13.5px", color: isYetToBeCompleted ? "#334155" : "#94a3b8" }}>{it.size || "M"}</td>
                                 <td style={{ padding: "9px 8px", fontSize: "13.5px", color: isYetToBeCompleted ? "#334155" : "#94a3b8" }}>{it.color || "-"}</td>
 
@@ -3895,6 +4109,102 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                         </div>
                       </div>
                     )}
+
+                    
+                {/* ACTIVE STOCK RESERVATIONS FOR THIS ORDER */}
+                {orderReservations.length > 0 && (
+                  <div style={{
+                    marginTop: "14px",
+                    padding: "10px 14px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 600, color: "#334155" }}>
+                        Active Reservations ({orderReservations.reduce((acc, r) => acc + (r.quantity || 0), 0)} pcs)
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {orderReservations.map((r) => (
+                        <div key={r._id} style={{
+                          background: "#ffffff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "6px",
+                          padding: "7px 12px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "10px",
+                          fontSize: "12.5px"
+                        }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", color: "#334155" }}>
+                            <strong style={{ color: "#0f172a" }}>{r.quantity} pcs</strong>
+                            <span>{r.product}</span>
+                            <span style={{ color: "#64748b" }}>• {r.colour}, Size {r.size}</span>
+                            {(() => {
+                              const days = Math.floor((Date.now() - new Date(r.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+                              const isOverdue = days >= 5;
+                              return isOverdue ? (
+                                <span style={{
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  color: "#dc2626",
+                                  background: "#fef2f2",
+                                  border: "1px solid #fecaca",
+                                  padding: "1px 6px",
+                                  borderRadius: "4px",
+                                  whiteSpace: "nowrap"
+                                }}>
+                                  🚨 Day ${days} (Overdue ≥5d)
+                                </span>
+                              ) : (
+                                <span style={{
+                                  fontSize: "11px",
+                                  fontWeight: 500,
+                                  color: "#64748b",
+                                  background: "#f1f5f9",
+                                  padding: "1px 6px",
+                                  borderRadius: "4px",
+                                  whiteSpace: "nowrap"
+                                }}>
+                                  {days === 0 ? "Reserved today" : `Day ${days} of 5`}
+                                </span>
+                              );
+                            })()}
+                            {r.notes && (
+                              <span style={{ color: "#94a3b8", fontSize: "11.5px" }}>— Note: {r.notes}</span>
+                            )}
+                          </div>
+                          {roleView === "stock" && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenReleaseModal(r)}
+                              style={{
+                                padding: "2px 8px",
+                                borderRadius: "4px",
+                                border: "1px solid #fecaca",
+                                background: "#ffffff",
+                                color: "#dc2626",
+                                fontSize: "11.5px",
+                                fontWeight: 500,
+                                cursor: "pointer",
+                                flexShrink: 0
+                              }}
+                              title="Release this reservation back to stock"
+                            >
+                              Release
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                     {/* REMARKS */}
                     <div style={{ marginTop: "22px" }}>
@@ -5726,6 +6036,277 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
           </div>
         </div>
       )}
+
+      {/* RESERVE FOR ORDER MODAL */}
+      {showReserveModal && selectedOrder && (
+        <div
+          className="task-modal-overlay"
+          onClick={() => setShowReserveModal(false)}
+        >
+          <div
+            className="task-modal-card"
+            style={{ maxWidth: "520px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="task-modal-header">
+              <h3 style={{ color: "#2563eb" }}>
+                <BookmarkCheck size={18} color="#2563eb" />
+                Reserve Stock for Order #{selectedOrder.orderId || selectedOrder.taskId}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowReserveModal(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateReservation}>
+              <div className="task-modal-body">
+                {clickedReserveItem && (
+                  <div style={{
+                    background: "#eff6ff",
+                    border: "1px solid #bfdbfe",
+                    borderRadius: "8px",
+                    padding: "10px 14px",
+                    fontSize: "12.5px",
+                    color: "#1e40af"
+                  }}>
+                    Reserving for item: <strong>{clickedReserveItem.item || clickedReserveItem.enterItem || "Apparel"}</strong>
+                    {clickedReserveItem.color ? ` (${clickedReserveItem.color})` : ""}
+                    {clickedReserveItem.size ? ` • Size ${clickedReserveItem.size}` : ""}
+                    {clickedReserveItem.quantity ? ` • Qty: ${clickedReserveItem.quantity} pcs` : ""}
+                  </div>
+                )}
+
+                <div className="task-modal-field">
+                  <label>Select Warehouse Stock Product & Colour</label>
+                  <select
+                    value={selectedReserveStockId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSelectedReserveStockId(id);
+                      const avail = getAvailableStock(id, selectedReserveSize);
+                      if (reserveQty > avail) setReserveQty(avail > 0 ? 1 : 0);
+                    }}
+                    required
+                    style={{ border: "1px solid #cbd5e1", borderRadius: "8px", padding: "9px" }}
+                  >
+                    <option value="">Select stock item...</option>
+                    {stocks.map((s) => {
+                      const totalAvail = SIZES.reduce((acc, sz) => acc + getAvailableStock(s._id, sz), 0);
+                      return (
+                        <option key={s._id} value={s._id}>
+                          {s.product} - {s.colour} ({totalAvail} pcs free)
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div className="task-modal-field">
+                    <label>Size</label>
+                    <select
+                      value={selectedReserveSize}
+                      onChange={(e) => {
+                        const sz = e.target.value;
+                        setSelectedReserveSize(sz);
+                        const avail = getAvailableStock(selectedReserveStockId, sz);
+                        if (reserveQty > avail) setReserveQty(avail > 0 ? 1 : 0);
+                      }}
+                      style={{ border: "1px solid #cbd5e1", borderRadius: "8px", padding: "9px" }}
+                    >
+                      {SIZES.map((sz) => {
+                        const szAvail = getAvailableStock(selectedReserveStockId, sz);
+                        return (
+                          <option key={sz} value={sz}>
+                            {sz} ({szAvail} available)
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div className="task-modal-field">
+                    <label>
+                      Quantity to Reserve
+                      <span style={{ fontSize: "11px", color: currentReserveAvail > 0 ? "#16a34a" : "#dc2626", marginLeft: "6px" }}>
+                        ({currentReserveAvail} in stock)
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max={currentReserveAvail}
+                      value={reserveQty}
+                      onChange={(e) => setReserveQty(Math.max(1, Number(e.target.value) || 0))}
+                      disabled={currentReserveAvail === 0}
+                      required
+                      style={{ border: "1px solid #cbd5e1", borderRadius: "8px", padding: "9px" }}
+                    />
+                  </div>
+                </div>
+
+                <div className="task-modal-field">
+                  <label>Reservation Note / Tag (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Reserved for sample printing batch"
+                    value={reserveNotes}
+                    onChange={(e) => setReserveNotes(e.target.value)}
+                    style={{ border: "1px solid #cbd5e1", borderRadius: "8px", padding: "9px" }}
+                  />
+                  <span style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px" }}>
+                    Reserved stock will be held for up to 5 days before triggering overdue stock alerts.
+                  </span>
+                </div>
+              </div>
+
+              <div className="task-modal-footer">
+                <button
+                  type="button"
+                  onClick={() => setShowReserveModal(false)}
+                  style={{
+                    background: "#e2e8f0",
+                    border: "none",
+                    padding: "8px 16px",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    color: "#475569",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReserve || !selectedReserveStockId || currentReserveAvail === 0}
+                  style={{
+                    background: "#2563eb",
+                    border: "none",
+                    padding: "8px 20px",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    color: "#ffffff",
+                    opacity: isSubmittingReserve || !selectedReserveStockId || currentReserveAvail === 0 ? 0.6 : 1
+                  }}
+                >
+                  {isSubmittingReserve ? "Reserving..." : "Confirm Reservation"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* RELEASE RESERVATION MODAL WITH MANDATORY NOTES (*) */}
+      {releaseModal.isOpen && (
+        <div
+          className="task-modal-overlay"
+          onClick={() => setReleaseModal((prev) => ({ ...prev, isOpen: false }))}
+        >
+          <div
+            className="task-modal-card"
+            style={{ maxWidth: "480px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="task-modal-header">
+              <h3 style={{ color: "#dc2626" }}>
+                <RotateCcw size={18} color="#dc2626" />
+                Release Garment Reservation
+              </h3>
+              <button
+                type="button"
+                onClick={() => setReleaseModal((prev) => ({ ...prev, isOpen: false }))}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmReleaseReservation}>
+              <div className="task-modal-body">
+                <div style={{
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  borderRadius: "8px",
+                  padding: "10px 14px",
+                  fontSize: "13px",
+                  color: "#991b1b"
+                }}>
+                  You are releasing <strong>{releaseModal.quantity} pcs</strong> of{" "}
+                  <strong>{releaseModal.product}</strong> ({releaseModal.colour}, Size {releaseModal.size}) back to warehouse stock for Order #{releaseModal.orderId}.
+                </div>
+
+                <div className="task-modal-field">
+                  <label style={{ color: "#dc2626", fontWeight: 700 }}>
+                    Release Notes / Reason <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    placeholder="Mandatory (*): e.g. Customer changed sizing, order cancelled, switched to different fabric..."
+                    value={releaseModal.notes}
+                    onChange={(e) => setReleaseModal((prev) => ({ ...prev, notes: e.target.value }))}
+                    style={{
+                      border: "1px solid #f87171",
+                      borderRadius: "8px",
+                      padding: "10px",
+                      fontSize: "13.5px",
+                      resize: "vertical"
+                    }}
+                  />
+                  <span style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px", display: "block" }}>
+                    * An audit release note is mandatory before releasing stock back to warehouse inventory.
+                  </span>
+                </div>
+              </div>
+
+              <div className="task-modal-footer">
+                <button
+                  type="button"
+                  onClick={() => setReleaseModal((prev) => ({ ...prev, isOpen: false }))}
+                  style={{
+                    background: "#e2e8f0",
+                    border: "none",
+                    padding: "8px 16px",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    color: "#475569",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={releaseModal.isSubmitting || !releaseModal.notes.trim()}
+                  style={{
+                    background: "#dc2626",
+                    border: "none",
+                    padding: "8px 20px",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    color: "#ffffff",
+                    opacity: releaseModal.isSubmitting || !releaseModal.notes.trim() ? 0.6 : 1
+                  }}
+                >
+                  {releaseModal.isSubmitting ? "Releasing..." : "Confirm Release (*)"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

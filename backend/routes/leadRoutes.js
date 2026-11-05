@@ -51,9 +51,9 @@ router.get("/", async (req, res) => {
     if (req.query.employeeName) {
       filter.employeeName = new RegExp(`^${req.query.employeeName.trim()}$`, "i");
     }
-    // Exclude heavy base64 file payloads from list queries unless explicitly requested (?includeFiles=true).
+    // Exclude heavy base64 file payloads from list queries unless explicitly requested (?includeFiles=true or ?query=order).
     // Detail view (GET /:id) and file download endpoints return the full base64 data on demand.
-    const includesAttachment = req.query.includeFiles === "true";
+    const includesAttachment = req.query.includeFiles === "true" || req.query.query === "order";
     const leads = await Lead.find(
       filter,
       includesAttachment

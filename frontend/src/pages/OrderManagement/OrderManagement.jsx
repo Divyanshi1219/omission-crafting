@@ -454,6 +454,46 @@ function OrderManagement() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isEditing, setIsEditing] = useState(searchParams.get('edit') === 'true');
   const [items, setItems] = useState([]);
+
+  const [masterItems, setMasterItems] = useState([
+    { name: 'T-Shirt' },
+  ]);
+
+  useEffect(() => {
+    api.get('/api/items')
+      .then((res) => {
+        if (res.data?.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+          setMasterItems(res.data.data);
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not fetch master items catalog, using fallback:', err.message);
+      });
+  }, []);
+
+  const [masterFabrics, setMasterFabrics] = useState([
+    { name: 'Cotton' },
+    { name: '100% Cotton' },
+    { name: 'Polyester' },
+    { name: 'Poly-Cotton' },
+    { name: 'Dry-Fit' },
+    { name: 'Lycra' },
+    { name: 'Fleece' },
+    { name: 'Denim' },
+  ]);
+
+  useEffect(() => {
+    api.get('/api/fabrics')
+      .then((res) => {
+        if (res.data?.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+          setMasterFabrics(res.data.data);
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not fetch master fabrics catalog, using fallback:', err.message);
+      });
+  }, []);
+
   const [selectedStage, setSelectedStage] = useState('New');
   const [orderStage, setOrderStage] = useState('sample');
   const [subStage, setSubStage] = useState('order');
@@ -498,7 +538,41 @@ function OrderManagement() {
     modeOfDelivery: '',
   });
 
-  const [leadsList, setLeadsList] = useState([]);
+  const [leadsList, setLeadsList] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem("omission_cached_leads");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  });
+
+  const [isLeadsLoading, setIsLeadsLoading] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem("omission_cached_leads");
+      if (cached && JSON.parse(cached).length > 0) return false;
+    } catch (_) {}
+    return true;
+  });
+  const [orderReservations, setOrderReservations] = useState([]);
+
+  useEffect(() => {
+    const activeOrdId = (formData?.orderId || orderApprovalData?.orderId || '').trim();
+    if (activeOrdId) {
+      api.get(`/api/stock-room/reservations/order/${activeOrdId}`)
+        .then((res) => {
+          if (res.data?.success) {
+            setOrderReservations(res.data.data || []);
+          }
+        })
+        .catch(() => setOrderReservations([]));
+    } else {
+      setOrderReservations([]);
+    }
+  }, [formData?.orderId, orderApprovalData?.orderId]);
+
   const [loadingLeads, setLoadingLeads] = useState(() => location.pathname !== '/order/create-lead');
   const [orderApprovalData, setOrderApprovalData] = useState(null);
   const [activeActivityTab, setActiveActivityTab] = useState('department');
@@ -627,6 +701,9 @@ function OrderManagement() {
       .then((res) => {
         if (res.data?.data) {
           setLeadsList(res.data.data);
+          try {
+            sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
+          } catch (_) {}
         }
       })
       .catch((err) => console.error('Error fetching leads:', err));
@@ -1365,10 +1442,13 @@ function OrderManagement() {
         .then((res) => {
           if (res.data?.data) {
             setLeadsList(res.data.data);
+          try {
+            sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
+          } catch (_) {}
           }
         })
         .catch((err) => console.error('Error fetching leads:', err))
-        .finally(() => setLoadingLeads(false));
+        .finally(() => { setLoadingLeads(false); setIsLeadsLoading(false); });
     }
   }, [location.pathname]);
 
@@ -1816,6 +1896,29 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     if (it.itemType === 'others') return false;
     const t = (it.item || '').toLowerCase().trim();
     return ['t-shirt', 't shirt', 'tshirt'].includes(t);
+  };
+
+  
+  const getSelectedItemConfig = (it) => {
+    if (!it) return null;
+    if (it.itemType === 'others') return null;
+    const itemName = (it.item || it.itemType || '').trim().toLowerCase();
+    if (!itemName) return null;
+    return masterItems.find(
+      (m) => (m.name || '').trim().toLowerCase() === itemName
+    ) || null;
+  };
+
+  const getItemSelectValue = (it) => {
+    if (!it) return '';
+    if (it.itemType === 'others') return 'others';
+    const itemName = (it.item || it.itemType || '').trim();
+    if (!itemName) return '';
+    const match = masterItems.find(
+      (m) => m.name.toLowerCase() === itemName.toLowerCase()
+    );
+    if (match) return match.name;
+    return 'others';
   };
 
   const formatPrintingType = (pt) => {

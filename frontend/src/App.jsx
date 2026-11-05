@@ -11,6 +11,9 @@ import InvoicesList from "./pages/Invoices/InvoicesList";
 import CreateInvoice from "./pages/Invoices/CreateInvoice";
 import Approvals from "./pages/Approvals";
 import LeadApprovals from "./pages/LeadApprovals";
+import ItemConsole from "./pages/ItemConsole";
+import StockRoom from "./pages/StockRoom/StockRoom";
+import OrderTableView from "./pages/OrderTableView";
 import Login from "./pages/Login";
 import DemoIdeasPage from "./pages/DemoIdeasPage"; // TEMP demo page ideas (delete after client approves)
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -31,6 +34,12 @@ function AppContent({ darkMode, setDarkMode }) {
     currentUser?.id === "production" ||
     currentUser?.id === "admin" ||
     Boolean(currentUser?.role && (currentUser.role.toLowerCase().includes("stock") || (currentUser.role.toLowerCase().includes("production") && !currentUser.role.toLowerCase().includes("lead manager"))));
+  const isOnlyStockRoomUser =
+    (currentUser?.id === "stock" ||
+      currentUser?.role === "Stock Room Manager" ||
+      Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("stock"))) &&
+    currentUser?.id !== "admin" &&
+    currentUser?.role !== "CEO";
   const isLoginPage = location.pathname === "/login";
 
   if (isLoginPage) {
@@ -64,6 +73,36 @@ function AppContent({ darkMode, setDarkMode }) {
             <Route
               path="/employees"
               element={isAdmin ? <AllEmployees /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/console"
+              element={isAdmin ? <ItemConsole /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/stock-room"
+              element={(isOnlyStockRoomUser || isAdmin) ? <StockRoom /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/stock-room/view/:type"
+              element={(isOnlyStockRoomUser || isAdmin) ? <StockRoom isTableViewOnly={true} /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/dashboard/view/:type"
+              element={(isOnlyStockRoomUser || isAdmin) ? <StockRoom isTableViewOnly={true} /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/orders/view/:stage"
+              element={<OrderTableView />}
+            />
+
+            <Route
+              path="/dashboard/orders/view/:stage"
+              element={<OrderTableView />}
             />
 
             <Route

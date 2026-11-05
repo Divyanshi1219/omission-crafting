@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { Search, Plus, ArrowLeft, Users, Filter, ArrowUpDown, Calendar as CalendarIcon, Trash2, RefreshCw } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Search, Plus, ArrowLeft, Users, Filter, ArrowUpDown, Calendar as CalendarIcon, Trash2, RefreshCw, X } from "lucide-react";
 import api from "../api";
 import "./EmployeeCards.css";
 
@@ -50,6 +51,30 @@ const formatDate = (value) => {
   const d = new Date(value);
   return isNaN(d) ? value : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
+
+
+const isTraining = (e) => {
+  const s = (e.accountStatus || "").toLowerCase();
+  const t = (e.employeeType || "").toLowerCase();
+  return s === "probation" || s === "training" || t === "intern";
+};
+
+const isVerification = (e) => {
+  return !isTraining(e) && (!e.email || !e.email.includes("@"));
+};
+
+const isCompleted = (e) => {
+  return !isTraining(e) && !isVerification(e) && (e.accountStatus || "active").toLowerCase() !== "inactive" && (e.accountStatus || "").toLowerCase() !== "terminated";
+};
+
+const isOffboarded = (e) => {
+  const s = (e.accountStatus || "").toLowerCase();
+  return s === "inactive" || s === "suspended" || s === "offboarding" || s === "terminated";
+};
+
+const isHandover = (e) => isOffboarded(e) && (e.authorizationInfo || "").toLowerCase().includes("handover");
+const isClearance = (e) => isOffboarded(e) && (e.authorizationInfo || "").toLowerCase().includes("clearance");
+const isDeprovisioned = (e) => isOffboarded(e) && !isHandover(e) && !isClearance(e);
 
 function AllEmployees() {
   const [isAdding, setIsAdding] = useState(false);
@@ -134,12 +159,32 @@ function AllEmployees() {
     }
   };
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentFilter = (searchParams.get("filter") || "all").toLowerCase().trim();
+
+  const trainingCount = useMemo(() => employees.filter(isTraining).length, [employees]);
+  const verificationCount = useMemo(() => employees.filter(isVerification).length, [employees]);
+  const completedCount = useMemo(() => employees.filter(isCompleted).length, [employees]);
+  const offboardingCount = useMemo(() => employees.filter(isOffboarded).length, [employees]);
+
   const filteredEmployees = employees.filter((emp) => {
+    // 1. Lifecycle filter from URL query param
+    if (currentFilter === "training" && !isTraining(emp)) return false;
+    if (currentFilter === "verification" && !isVerification(emp)) return false;
+    if (currentFilter === "completed" && !isCompleted(emp)) return false;
+    if (currentFilter === "offboarding" && !isOffboarded(emp)) return false;
+    if (currentFilter === "handover" && !isHandover(emp)) return false;
+    if (currentFilter === "clearance" && !isClearance(emp)) return false;
+    if (currentFilter === "deprovisioned" && !isDeprovisioned(emp)) return false;
+
+    // 2. Search query filter
     const term = searchTerm.toLowerCase();
     return (
       (emp.displayName || "").toLowerCase().includes(term) ||
       (emp.employeeId || "").toLowerCase().includes(term) ||
-      (emp.email || "").toLowerCase().includes(term)
+      (emp.email || "").toLowerCase().includes(term) ||
+      (emp.jobTitle || "").toLowerCase().includes(term) ||
+      (emp.department || "").toLowerCase().includes(term)
     );
   });
 
@@ -387,12 +432,45 @@ function AllEmployees() {
 
       <div className="dashboard-content">
         <div className="employee-content-container" style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
-          <div className="employee-table-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', alignItems: 'center' }}>
+                    <div className="employee-table-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
             <div className="eth-left" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div className="eth-icon" style={{ backgroundColor: '#fff0ec', padding: '8px', borderRadius: '8px', display: 'flex' }}>
                 <Users size={20} color="#ff6b4a" />
               </div>
-              <h2 style={{ fontSize: '18px', margin: 0, color: '#475569' }}>Total Employee : <strong style={{ color: '#0f172a' }}>{employees.length} persons</strong></h2>
+              <h2 style={{ fontSize: '18px', margin: 0, color: '#475569', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span>Total Employee : <strong style={{ color: '#0f172a' }}>{filteredEmployees.length} {filteredEmployees.length === 1 ? 'person' : 'persons'}</strong></span>
+                {currentFilter !== 'all' && (
+                  <span style={{
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    background: currentFilter === 'verification' ? '#d1fae5' : currentFilter === 'completed' ? '#fef3c7' : currentFilter === 'training' ? '#dbeafe' : '#fee2e2',
+                    color: currentFilter === 'verification' ? '#047857' : currentFilter === 'completed' ? '#b45309' : currentFilter === 'training' ? '#1d4ed8' : '#dc2626',
+                    padding: '3px 10px',
+                    borderRadius: '12px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    Filtered by: {currentFilter.charAt(0).toUpperCase() + currentFilter.slice(1)}
+                    <button
+                      onClick={() => setSearchParams({})}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        color: 'inherit',
+                        fontWeight: 'bold'
+                      }}
+                      title="Clear filter and show all"
+                    >
+                      <X size={13} />
+                    </button>
+                  </span>
+                )}
+              </h2>
             </div>
             <div className="eth-right" style={{ display: 'flex', gap: '12px' }}>
               <div className="search-box" style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', minWidth: '250px' }}>
@@ -409,6 +487,92 @@ function AllEmployees() {
                 <ArrowUpDown size={16} /> Sort
               </button>
             </div>
+          </div>
+
+          {/* Quick Lifecycle Filter Tabs */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+            <button
+              onClick={() => setSearchParams({})}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                border: currentFilter === 'all' ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                background: currentFilter === 'all' ? '#eff6ff' : '#fff',
+                color: currentFilter === 'all' ? '#2563eb' : '#64748b',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              All ({employees.length})
+            </button>
+            <button
+              onClick={() => setSearchParams({ filter: 'completed' })}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                border: currentFilter === 'completed' ? '2px solid #f59e0b' : '1px solid #e2e8f0',
+                background: currentFilter === 'completed' ? '#fef3c7' : '#fff',
+                color: currentFilter === 'completed' ? '#d97706' : '#64748b',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Completed ({completedCount})
+            </button>
+            <button
+              onClick={() => setSearchParams({ filter: 'verification' })}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                border: currentFilter === 'verification' ? '2px solid #10b981' : '1px solid #e2e8f0',
+                background: currentFilter === 'verification' ? '#d1fae5' : '#fff',
+                color: currentFilter === 'verification' ? '#059669' : '#64748b',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Verification ({verificationCount})
+            </button>
+            <button
+              onClick={() => setSearchParams({ filter: 'training' })}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                border: currentFilter === 'training' ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                background: currentFilter === 'training' ? '#dbeafe' : '#fff',
+                color: currentFilter === 'training' ? '#1d4ed8' : '#64748b',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Training ({trainingCount})
+            </button>
+            {(currentFilter === 'offboarding' || currentFilter === 'handover' || currentFilter === 'clearance' || currentFilter === 'deprovisioned') && (
+              <button
+                onClick={() => setSearchParams({ filter: currentFilter })}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  border: '2px solid #ef4444',
+                  background: '#fee2e2',
+                  color: '#dc2626',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Offboarding: {currentFilter} ({filteredEmployees.length})
+              </button>
+            )}
           </div>
 
             <div className="employee-list-view">
@@ -438,7 +602,19 @@ function AllEmployees() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(emp.displayName || '?')}&background=${getAvatarBg(emp.displayName)}&color=fff`} alt={emp.displayName} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
                             <div>
-                              <div style={{ fontWeight: '600', color: '#0f172a' }}>{emp.displayName}</div>
+                              <div style={{ fontWeight: '600', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {emp.displayName}
+                                {isVerification(emp) && (
+                                  <span style={{ fontSize: '11px', background: '#ecfdf5', color: '#059669', padding: '1px 6px', borderRadius: '4px', border: '1px solid #a7f3d0' }}>
+                                    Verification
+                                  </span>
+                                )}
+                                {isTraining(emp) && (
+                                  <span style={{ fontSize: '11px', background: '#eff6ff', color: '#2563eb', padding: '1px 6px', borderRadius: '4px', border: '1px solid #bfdbfe' }}>
+                                    Training
+                                  </span>
+                                )}
+                              </div>
                               <div style={{ color: '#64748b', fontSize: '13px' }}>{emp.email || '-'}</div>
                             </div>
                           </div>
