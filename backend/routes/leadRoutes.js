@@ -263,6 +263,13 @@ const formatSubStageLabel = (s) => {
     .join(" ");
 };
 
+const isEmbroidery = (lead) => {
+  if (!lead) return false;
+  if (String(lead.printingType || "").toLowerCase().trim() === "embroidery") return true;
+  if (Array.isArray(lead.items) && lead.items.some((it) => String(it?.printingType || "").toLowerCase().trim() === "embroidery")) return true;
+  return false;
+};
+
 const getItemDisplayName = (it) => {
   if (!it) return "Item";
   const raw = (it.item || it.enterItem || it.itemType || "").trim();
@@ -593,6 +600,15 @@ router.post("/", async (req, res) => {
       }
     }
 
+    if (Array.isArray(leadData.items) && leadData.items.length > 0) {
+      const embItem = leadData.items.find((it) => String(it?.printingType || "").toLowerCase().trim() === "embroidery");
+      if (embItem) {
+        leadData.printingType = "Embroidery";
+      } else if (!leadData.printingType) {
+        leadData.printingType = leadData.items[0]?.printingType || "DTF";
+      }
+    }
+
     const actorName = performedBy || leadData.employeeName || "Sales Executive";
     const actorRole = performedByRole || "Sales Executive";
     const actorLogin = performedById || leadData.createdBy || "sales";
@@ -828,19 +844,31 @@ router.patch("/:id/approval", async (req, res) => {
         lead.approvalStatus = "Referred Back";
         lead.subStage = "order";
       } else if (status === "Approved") {
-        // Advance from order stage to next stage (dtf-pending)
-        if (!lead.subStage || lead.subStage === "order" || lead.subStage === "leads" || lead.subStage === "new") {
-          lead.subStage = "dtf-pending";
+        const isEmb = isEmbroidery(lead);
+        if (isEmb) {
+          // For Embroidery: ONLY ONE TASK - Task 1: Stock Room (Elena Rostova). No Production task.
+          lead.stockTaskStage = "verification";
+          lead.stockApproval = { status: "Pending", note: "", author: "Elena Rostova", updatedAt: null };
+          lead.productionApproval = { status: "Not Applicable", note: "Not required for Embroidery", author: "N/A", updatedAt: new Date() };
+          lead.approvalStatus = "Pending";
+          if (!lead.subStage || lead.subStage === "order" || lead.subStage === "leads" || lead.subStage === "new") {
+            lead.subStage = "order";
+          }
+        } else {
+          // Advance from order stage to next stage (dtf-pending)
+          if (!lead.subStage || lead.subStage === "order" || lead.subStage === "leads" || lead.subStage === "new") {
+            lead.subStage = "dtf-pending";
+          }
+          lead.stockTaskStage = "verification";
+          lead.productionTaskStage = "logo_printing";
+          lead.stockApproval = { status: "Pending", note: "", author: "Elena Rostova", updatedAt: null };
+          lead.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
+          lead.productionTaskData = {
+            ...(lead.productionTaskData || {}),
+            printingSubmitted: false,
+          };
+          lead.approvalStatus = "Pending";
         }
-        lead.stockTaskStage = "verification";
-        lead.productionTaskStage = "logo_printing";
-        lead.stockApproval = { status: "Pending", note: "", author: "Elena Rostova", updatedAt: null };
-        lead.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
-        lead.productionTaskData = {
-          ...(lead.productionTaskData || {}),
-          printingSubmitted: false,
-        };
-        lead.approvalStatus = "Pending";
       }
     } else if (isStock) {
       lead.stockApproval = {
@@ -868,22 +896,25 @@ router.patch("/:id/approval", async (req, res) => {
         lead.approvalStatus = "Referred Back";
         lead.subStage = "order";
       } else if (status === "Approved") {
-        if (!lead.subStage || lead.subStage === "order" || lead.subStage === "leads" || lead.subStage === "new") {
-          lead.subStage = "dtf-pending";
+        if (!isEmbroidery(lead)) {
+          if (!lead.subStage || lead.subStage === "order" || lead.subStage === "leads" || lead.subStage === "new") {
+            lead.subStage = "dtf-pending";
+          }
         }
       }
     }
 
     // Determine overall approvalStatus
     if (!isLeadManager) {
+      const isEmb = isEmbroidery(lead);
       if (
         lead.stockApproval.status === "Referred Back" ||
-        lead.productionApproval.status === "Referred Back"
+        (!isEmb && lead.productionApproval.status === "Referred Back")
       ) {
         lead.approvalStatus = "Referred Back";
       } else if (
         lead.stockApproval.status === "Approved" &&
-        lead.productionApproval.status === "Approved"
+        (isEmb || lead.productionApproval.status === "Approved")
       ) {
         lead.approvalStatus = "Approved";
       } else {
@@ -916,12 +947,21 @@ router.patch("/:id/approval", async (req, res) => {
 
     if (isLeadManager) {
       if (status === "Approved") {
-        logActionTitle = "Task 0 - Lead Manager Approved (Moved to DTF Pending)";
-        logDetails = `Order approved by ${resolvedAuthor} (${resolvedRole}). Application moved from ${formatStageLabel(lead.orderStage || "sample")} → Order to ${currentStageStr} and assigned to Stock Room Manager & Production Room.`;
-        logChanges.push(`From Stage: ${formatStageLabel(lead.orderStage || "sample")} → Order`);
-        logChanges.push(`To Stage: ${currentStageStr}`);
-        logChanges.push(`Task 0 Status: Approved`);
-        logChanges.push(`Assigned To: Task 1 - Stock Room (Verification) & Task 2 - Production Room (Logo Printing)`);
+        const isEmb = isEmbroidery(lead);
+        if (isEmb) {
+          logActionTitle = "Task 0 - Lead Manager Approved (Assigned to Stock Room - Embroidery)";
+          logDetails = `Order approved by ${resolvedAuthor} (${resolvedRole}). Application assigned to Stock Room Manager (Elena Rostova) for Embroidery Task.`;
+          logChanges.push(`Task 0 Status: Approved`);
+          logChanges.push(`Workflow: Embroidery (Single Task: Stock Room)`);
+          logChanges.push(`Assigned To: Task 1 - Stock Room (Verification)`);
+        } else {
+          logActionTitle = "Task 0 - Lead Manager Approved (Moved to DTF Pending)";
+          logDetails = `Order approved by ${resolvedAuthor} (${resolvedRole}). Application moved from ${formatStageLabel(lead.orderStage || "sample")} → Order to ${currentStageStr} and assigned to Stock Room Manager & Production Room.`;
+          logChanges.push(`From Stage: ${formatStageLabel(lead.orderStage || "sample")} → Order`);
+          logChanges.push(`To Stage: ${currentStageStr}`);
+          logChanges.push(`Task 0 Status: Approved`);
+          logChanges.push(`Assigned To: Task 1 - Stock Room (Verification) & Task 2 - Production Room (Logo Printing)`);
+        }
       } else {
         logActionTitle = "Task 0 - Referred Back by Lead Manager";
         logDetails = `Order referred back to Sales Executive (${formatStageLabel(lead.orderStage || "sample")} → Order) by ${resolvedAuthor} (${resolvedRole}).`;
@@ -1047,8 +1087,9 @@ router.patch("/:id/stock-task", async (req, res) => {
           updatedAt: new Date(),
         };
 
-        // If Production Room has also approved, advance to Printing of the active major stage!
-        if (lead.productionApproval?.status === "Approved") {
+        const isEmb = isEmbroidery(lead);
+        // If Production Room has also approved (or embroidery where stock room is the only task), advance to Printing!
+        if (isEmb || lead.productionApproval?.status === "Approved") {
           lead.approvalStatus = "Approved";
           if (!lead.orderStage) lead.orderStage = "sample";
           lead.subStage = "printing";
@@ -1085,12 +1126,15 @@ router.patch("/:id/stock-task", async (req, res) => {
 
     // Record in Activity Logs
     if (!Array.isArray(lead.activityLogs)) lead.activityLogs = [];
-    const stockStageLabel = formatSubStageLabel(stage || "verification");
-    const nextStockLabel = formatSubStageLabel(lead.stockTaskStage || "completed");
+    const isEmb = isEmbroidery(lead);
+    const stockStageLabel = stage === "staging_room" && isEmb ? "Embroidery Staging Room" : formatSubStageLabel(stage || "verification");
+    const nextStockLabel = lead.stockTaskStage === "staging_room" && isEmb ? "Embroidery Staging Room" : formatSubStageLabel(lead.stockTaskStage || "completed");
     const logChanges = [
       `From: Stock Room → ${stockStageLabel}`,
       movedToPrinting
-        ? `To: ${formatStageLabel(lead.orderStage || "sample")} → Printing (Task 1 & Task 2 Clearances Approved)`
+        ? isEmb
+          ? `To: ${formatStageLabel(lead.orderStage || "sample")} → Printing (Embroidery Stock Clearance Approved)`
+          : `To: ${formatStageLabel(lead.orderStage || "sample")} → Printing (Task 1 & Task 2 Clearances Approved)`
         : `To: Stock Room → ${nextStockLabel}`,
     ];
     if (stockTaskData?.isStockAvailable !== undefined) {
@@ -1109,7 +1153,7 @@ router.patch("/:id/stock-task", async (req, res) => {
       logChanges.push(`Note: "${comment}"`);
     }
     if (movedToPrinting) {
-      logChanges.push(`Stage Transition: Moved from Stock Room & Production Clearance to ${formatStageLabel(lead.orderStage || "sample")} → Printing`);
+      logChanges.push(`Stage Transition: Moved from Stock Room Clearance to ${formatStageLabel(lead.orderStage || "sample")} → Printing`);
     }
 
     lead.activityLogs.push({
@@ -1118,7 +1162,9 @@ router.patch("/:id/stock-task", async (req, res) => {
           ? `Stock Task - ${stockStageLabel} Saved`
           : action === "submit"
           ? stage === "staging_room"
-            ? movedToPrinting
+            ? isEmb
+              ? "Task 1 - Stock Room Approved (Embroidery Clearance Complete)"
+              : movedToPrinting
               ? "Task 1 - Stock Room Approved (Moved to Printing)"
               : "Task 1 - Stock Room Approved"
             : `Stock Task - ${stockStageLabel} Submitted`
@@ -1134,7 +1180,9 @@ router.patch("/:id/stock-task", async (req, res) => {
           ? `Stock Room ${stockStageLabel} draft saved by ${actorName}.`
           : action === "submit"
           ? stage === "staging_room"
-            ? `Stock Room Staging Room submitted and Task 1 Clearance approved by ${actorName}.${movedToPrinting ? ` Both Stock & Production clearances completed — Application moved to ${formatStageLabel(lead.orderStage || "sample")} → Printing.` : ""}`
+            ? isEmb
+              ? `Stock Room Embroidery Staging Room completed and Task 1 Clearance approved by ${actorName}. Application moved to ${formatStageLabel(lead.orderStage || "sample")} → Printing.`
+              : `Stock Room Staging Room submitted and Task 1 Clearance approved by ${actorName}.${movedToPrinting ? ` Both Stock & Production clearances completed — Application moved to ${formatStageLabel(lead.orderStage || "sample")} → Printing.` : ""}`
             : `Stock Room ${stockStageLabel} completed by ${actorName}. Advanced to ${nextStockLabel}.`
           : `Stock Room referred back from ${stockStageLabel} by ${actorName}.`,
       changes: logChanges,

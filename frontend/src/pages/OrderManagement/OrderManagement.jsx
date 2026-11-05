@@ -27,6 +27,55 @@ const SAMPLE_STAGES = [
   'Customer Approval Awaiting'
 ];
 
+const EMBROIDERY_SAMPLE_STAGES = [
+  'Order',
+  'Stock Dispatch',
+  'Vendor Received',
+  'Vendor Dispatch at Staging Room',
+  'Delivery Pending',
+  'Delivered',
+  'Customer Support'
+];
+
+const INDIAN_STATES = [
+  'ANDAMAN AND NICOBAR ISLANDS',
+  'ANDHRA PRADESH',
+  'ARUNACHAL PRADESH',
+  'ASSAM',
+  'BIHAR',
+  'CHANDIGARH',
+  'CHHATTISGARH',
+  'DADRA AND NAGAR HAVELI AND DAMAN AND DIU',
+  'DELHI',
+  'GOA',
+  'GUJARAT',
+  'HARYANA',
+  'HIMACHAL PRADESH',
+  'JAMMU AND KASHMIR',
+  'JHARKHAND',
+  'KARNATAKA',
+  'KERALA',
+  'LADAKH',
+  'LAKSHADWEEP',
+  'MADHYA PRADESH',
+  'MAHARASHTRA',
+  'MANIPUR',
+  'MEGHALAYA',
+  'MIZORAM',
+  'NAGALAND',
+  'ODISHA',
+  'PUDUCHERRY',
+  'PUNJAB',
+  'RAJASTHAN',
+  'SIKKIM',
+  'TAMIL NADU',
+  'TELANGANA',
+  'TRIPURA',
+  'UTTAR PRADESH',
+  'UTTARAKHAND',
+  'WEST BENGAL'
+];
+
 const PARTIAL_STAGES = [
   'Order',
   'DTF Pending',
@@ -91,10 +140,58 @@ const SUB_STAGES_BY_ORDER_STAGE = {
 
 const MAJOR_STAGES_ORDER = ['sample', 'partial', 'complete'];
 
-const getLeadStageInfo = (item, targetStage, targetSubStage) => {
+const isOrderEmbroidery = (order) => {
+  if (!order) return false;
+  if (String(order.printingType || '').toLowerCase().trim() === 'embroidery') return true;
+  if (Array.isArray(order.items) && order.items.some((it) => String(it?.printingType || '').toLowerCase().trim() === 'embroidery')) return true;
+  return false;
+};
+
+const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'dtf') => {
   const normTargetStage = (targetStage || '').toLowerCase().trim();
   const normTargetSub = (targetSubStage || '').toLowerCase().trim().replace(/\s+/g, '-');
-  
+  const isEmb = isOrderEmbroidery(item);
+
+  // If viewing Embroidery workflow
+  if (targetWorkflow === 'embroidery') {
+    if (!isEmb) return { matches: false, status: 'none', isCompleted: false };
+    if (normTargetSub === 'all') {
+      return { matches: true, status: 'in_progress', isCompleted: false };
+    }
+    if (normTargetSub === 'leads' || normTargetSub === 'new') {
+      const isLead = (item.query || '').toLowerCase().trim() === 'lead';
+      return { matches: isLead, status: 'in_progress', isCompleted: false };
+    }
+    if ((item.query || '').toLowerCase().trim() === 'lead') {
+      return { matches: false, status: 'none', isCompleted: false };
+    }
+    if (normTargetSub === 'order') {
+      const rawSub = (item.subStage || 'order').toLowerCase().trim();
+      const isOrder = rawSub === 'order' || rawSub === 'new' || rawSub === 'leads' || !rawSub;
+      return { matches: isOrder, status: item.approvalStatus === 'Approved' ? 'approved' : 'in_progress', isCompleted: item.approvalStatus === 'Approved' };
+    }
+    if (normTargetSub === 'stock-dispatch') {
+      return { matches: (item.subStage || '').toLowerCase().trim() === 'stock-dispatch', status: 'in_progress', isCompleted: false };
+    }
+    if (normTargetSub === 'vendor-received') {
+      return { matches: (item.subStage || '').toLowerCase().trim() === 'vendor-received', status: 'in_progress', isCompleted: false };
+    }
+    if (normTargetSub === 'vendor-dispatch-at-staging-room' || normTargetSub === 'staging-room' || normTargetSub === 'vendor-dispatch') {
+      const rawSub = (item.subStage || '').toLowerCase().trim();
+      return { matches: rawSub === 'vendor-dispatch-at-staging-room' || rawSub === 'staging-room' || rawSub === 'vendor-dispatch', status: 'in_progress', isCompleted: false };
+    }
+    if (normTargetSub === 'delivery-pending') {
+      return { matches: (item.subStage || '').toLowerCase().trim() === 'delivery-pending', status: 'in_progress', isCompleted: false };
+    }
+    if (normTargetSub === 'delivered') {
+      return { matches: (item.subStage || '').toLowerCase().trim() === 'delivered', status: 'in_progress', isCompleted: false };
+    }
+    if (normTargetSub === 'customer-support') {
+      return { matches: (item.subStage || '').toLowerCase().trim() === 'customer-support', status: 'in_progress', isCompleted: false };
+    }
+    return { matches: true, status: 'in_progress', isCompleted: false };
+  }
+
   const rawItemStage = (item.orderStage || 'sample').toLowerCase().trim();
   const itemStage = ['sample', 'partial', 'complete'].includes(rawItemStage) ? rawItemStage : 'sample';
 
@@ -104,6 +201,30 @@ const getLeadStageInfo = (item, targetStage, targetSubStage) => {
     itemSub = 'order';
   } else if (itemSub === 'dtf' || itemSub === 'dtf-pending-workspace') {
     itemSub = 'dtf-pending';
+  }
+
+  // Dedicated handling for Embroidery in DTF / Standard Order Management:
+  // "But in the normal order management it will be there in the all only."
+  if (isEmb) {
+    if (normTargetSub === 'all') {
+      const isLead = (item.query || '').toLowerCase().trim() === 'lead';
+      if (!normTargetStage || normTargetStage === 'sample') {
+        if (isLead || itemStage === 'sample') {
+          return { matches: true, status: 'in_progress', isCompleted: false };
+        }
+        return { matches: false, status: 'none', isCompleted: false };
+      }
+      if (isLead) return { matches: false, status: 'none', isCompleted: false };
+      if (itemStage === normTargetStage) {
+        return { matches: true, status: 'in_progress', isCompleted: false };
+      }
+      return { matches: false, status: 'none', isCompleted: false };
+    }
+    if ((normTargetSub === 'leads' || normTargetSub === 'new') && (item.query || '').toLowerCase().trim() === 'lead') {
+      return { matches: true, status: 'in_progress', isCompleted: false };
+    }
+    // Excluded from DTF Pending, Stock, Printing, etc. under normal order management
+    return { matches: false, status: 'none', isCompleted: false };
   }
 
   // 1. Dedicated handling for Customer Support (/order/customer-support or /order/complete/customer-support)
@@ -277,6 +398,20 @@ const STAGE_ROUTE_MAP = {
   '/order/complete/delivery-pending': 'Delivery Pending',
   '/order/complete/delivered': 'Delivered',
   '/order/complete/customer-support': 'Customer Support',
+
+  // Embroidery child routes
+  '/order/embroidery/all': 'All',
+  '/order/embroidery/leads': 'Leads',
+  '/order/embroidery/sample/all': 'All',
+  '/order/embroidery/sample/order': 'Order',
+  '/order/embroidery/sample/stock-dispatch': 'Stock Dispatch',
+  '/order/embroidery/sample/vendor-received': 'Vendor Received',
+  '/order/embroidery/sample/vendor-dispatch-at-staging-room': 'Vendor Dispatch at Staging Room',
+  '/order/embroidery/sample/vendor-dispatch': 'Vendor Dispatch at Staging Room',
+  '/order/embroidery/sample/staging-room': 'Vendor Dispatch at Staging Room',
+  '/order/embroidery/sample/delivery-pending': 'Delivery Pending',
+  '/order/embroidery/sample/delivered': 'Delivered',
+  '/order/embroidery/sample/customer-support': 'Customer Support',
 };
 
 const getDefaultDeliveryDate = () => {
@@ -613,7 +748,7 @@ function OrderManagement() {
         companyName: d.companyName || '',
         clientName: d.clientName || '',
         companyAddress: d.companyAddress || '',
-        state: d.state || '',
+        state: d.state ? String(d.state).toUpperCase() : '',
         pincode: d.pincode || '',
         phoneNumber: d.phoneNumber || '',
         repeatedOrder: d.repeatedOrder || 'No',
@@ -1117,7 +1252,7 @@ function OrderManagement() {
                 companyName: d.companyName || '',
                 clientName: d.clientName || '',
                 companyAddress: d.companyAddress || '',
-                state: d.state || '',
+                state: d.state ? String(d.state).toUpperCase() : '',
                 pincode: d.pincode || '',
                 phoneNumber: d.phoneNumber || '',
                 repeatedOrder: d.repeatedOrder || 'No',
@@ -1315,16 +1450,18 @@ function OrderManagement() {
       const os = orderStage.toLowerCase().trim();
       if (['sample', 'partial', 'complete'].includes(os)) return os;
     }
-
-    if (location.pathname.includes('/order/sample') || location.pathname.includes('/sample/')) return 'sample';
+if (location.pathname.startsWith('/order/embroidery/sample') || location.pathname.includes('/order/sample') || location.pathname.includes('/sample/')) return 'sample';
     if (location.pathname.includes('/order/partial') || location.pathname.includes('/partial/')) return 'partial';
     if (location.pathname.includes('/order/complete') || location.pathname.includes('/complete/')) return 'complete';
-
     if (editId) return 'sample';
     return '';
   };
 
   const getCurrentStages = () => {
+    const isEmbroideryUrl = location.pathname.startsWith('/order/embroidery') || searchParams.get('from')?.startsWith('/order/embroidery');
+    if (isEmbroideryUrl) {
+      return EMBROIDERY_SAMPLE_STAGES;
+    }
     const activeDef = getActiveDefinition();
     if (activeDef === 'sample') {
       return SAMPLE_STAGES;
@@ -4654,21 +4791,32 @@ function OrderManagement() {
   };
 
   // Filter leads table data based on stage and sub-stage
+  let currentWorkflow = 'dtf';
   let currentStage = '';
   let currentSubStage = '';
 
-  if (pathParts.length >= 3) {
-    currentStage = pathParts[1].toLowerCase();
-    currentSubStage = pathParts[2].toLowerCase();
-  } else if (pathParts.length === 2) {
-    if (['sample', 'partial', 'complete'].includes(pathParts[1].toLowerCase())) {
-      currentStage = pathParts[1].toLowerCase();
+  const parts = pathParts.map((p) => p.toLowerCase());
+  if (parts.includes('embroidery')) {
+    currentWorkflow = 'embroidery';
+  } else if (parts.includes('dtf')) {
+    currentWorkflow = 'dtf';
+  }
+
+  const cleanParts = parts.filter((p) => p !== 'order' && p !== 'dtf' && p !== 'embroidery');
+
+  if (cleanParts.length >= 2) {
+    currentStage = cleanParts[0];
+    currentSubStage = cleanParts[1];
+  } else if (cleanParts.length === 1) {
+    const only = cleanParts[0];
+    if (['sample', 'partial', 'complete'].includes(only)) {
+      currentStage = only;
       currentSubStage = 'order';
-    } else if (pathParts[1].toLowerCase() === 'customer-support') {
+    } else if (only === 'customer-support') {
       currentStage = 'complete';
       currentSubStage = 'customer-support';
     } else {
-      currentSubStage = pathParts[1].toLowerCase();
+      currentSubStage = only;
     }
   }
 
@@ -4698,7 +4846,7 @@ function OrderManagement() {
       return false;
     }
 
-    const info = getLeadStageInfo(item, currentStage, currentSubStage);
+    const info = getLeadStageInfo(item, currentStage, currentSubStage, currentWorkflow);
     if (!info.matches) return false;
 
     if (tableSearch.trim()) {
@@ -5236,13 +5384,25 @@ function OrderManagement() {
 
                 <div className="form-group">
                   <label>State {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <input
-                    type="text"
+                  <select
                     required={(query || '').toLowerCase().trim() === 'order'}
                     disabled={isReadOnly}
-                    value={formData.state}
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                  />
+                    value={(formData.state || '').toUpperCase()}
+                    onChange={(e) => setFormData({ ...formData, state: e.target.value.toUpperCase() })}
+                    style={{ textTransform: 'uppercase' }}
+                  >
+                    <option value="">SELECT STATE / UNION TERRITORY</option>
+                    {formData.state && !INDIAN_STATES.includes((formData.state || '').toUpperCase()) && (
+                      <option value={(formData.state || '').toUpperCase()}>
+                        {(formData.state || '').toUpperCase()}
+                      </option>
+                    )}
+                    {INDIAN_STATES.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="form-group">
@@ -5825,8 +5985,6 @@ function OrderManagement() {
                                   handleItemChange(item.id, {
                                     itemType: 'others',
                                     item: item.enterItem || '',
-                                    printingType: '',
-                                    sublimationOption: '',
                                   });
                                 } else {
                                   handleItemChange(item.id, {
@@ -5863,7 +6021,7 @@ function OrderManagement() {
                             </div>
                           )}
 
-                          {isTshirt(item) && (
+                          {(isTshirt(item) || item.itemType === 'others') && (
                             <div style={{ flex: '1.2 1 125px', minWidth: '115px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                               <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Printing Type</label>
                               <select
@@ -6186,133 +6344,171 @@ function OrderManagement() {
 
               {/* MINI TAB 1: DEPARTMENT LOG */}
               {activeActivityTab === 'department' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {/* Task 0 - Lead Manager */}
-                  <div className="order-task-card">
-                    <div className="task-col-left">
-                      <div className="task-title">Task 0 - Lead Manager Clearance</div>
-                      <div className="task-manager-subtitle">{leadAppr.author || 'Sarah Jenkins'} (Lead Manager)</div>
-                    </div>
+                (() => {
+                  const isLeadApproved =
+                    leadAppr.status === 'Approved' ||
+                    orderApprovalData?.leadApproval?.status === 'Approved' ||
+                    orderApprovalData?.approvalStatus === 'Approved' ||
+                    Boolean(
+                      orderApprovalData?.dtfPendingAt ||
+                      orderApprovalData?.stockAt ||
+                      orderApprovalData?.printingAt ||
+                      orderApprovalData?.readyToPickUpAt ||
+                      orderApprovalData?.stagingRoomAt ||
+                      orderApprovalData?.customerApprovalAwaitingAt ||
+                      orderApprovalData?.completedAt
+                    );
 
-                    <div className="task-col-center">
-                      <span className="task-status-label">Status</span>
-                      <span
-                        className={`task-status-pill ${
-                          leadAppr.status === 'Approved'
-                            ? 'approved'
-                            : leadAppr.status === 'Referred Back'
-                            ? 'referred'
-                            : 'pending'
-                        }`}
+                  if (!isLeadApproved) {
+                    return (
+                      <div
+                        style={{
+                          padding: '24px 20px',
+                          textAlign: 'center',
+                          color: '#64748b',
+                          fontSize: '13.5px',
+                          background: '#f8fafc',
+                          borderRadius: '8px',
+                          border: '1px dashed #cbd5e1',
+                        }}
                       >
-                        {leadAppr.status || 'Pending'}
-                      </span>
-                    </div>
+                        No tasks assigned yet. Department tasks will be initiated once the Lead Manager approves the order.
+                      </div>
+                    );
+                  }
 
-                    <div className="task-col-right">
-                      <span className="task-note-label">Lead Manager Notes</span>
-                      {leadAppr.note ? (
-                        <div
-                          className={`task-note-content ${
-                            leadAppr.status === 'Referred Back' ? 'referred' : ''
-                          }`}
-                        >
-                          {leadAppr.note}
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {/* Task 0 - Lead Manager */}
+                      <div className="order-task-card">
+                        <div className="task-col-left">
+                          <div className="task-title">Task 0 - Lead Manager Clearance</div>
+                          <div className="task-manager-subtitle">{leadAppr.author || 'Sarah Jenkins'} (Lead Manager)</div>
                         </div>
-                      ) : (
-                        <div className="task-note-placeholder">
-                          {leadAppr.status === 'Approved'
-                            ? 'Approved by Lead Manager'
-                            : 'Awaiting Review'}
+
+                        <div className="task-col-center">
+                          <span className="task-status-label">Status</span>
+                          <span
+                            className={`task-status-pill ${
+                              leadAppr.status === 'Approved'
+                                ? 'approved'
+                                : leadAppr.status === 'Referred Back'
+                                ? 'referred'
+                                : 'pending'
+                            }`}
+                          >
+                            {leadAppr.status || 'Pending'}
+                          </span>
+                        </div>
+
+                        <div className="task-col-right">
+                          <span className="task-note-label">Lead Manager Notes</span>
+                          {leadAppr.note ? (
+                            <div
+                              className={`task-note-content ${
+                                leadAppr.status === 'Referred Back' ? 'referred' : ''
+                              }`}
+                            >
+                              {leadAppr.note}
+                            </div>
+                          ) : (
+                            <div className="task-note-placeholder">
+                              {leadAppr.status === 'Approved'
+                                ? 'Approved by Lead Manager'
+                                : 'Awaiting Review'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Task 1 - Stock Room */}
+                      <div className="order-task-card">
+                        <div className="task-col-left">
+                          <div className="task-title">Task 1 - Stock Room</div>
+                          <div className="task-manager-subtitle">Elena Rostova (Stock Room Manager)</div>
+                        </div>
+
+                        <div className="task-col-center">
+                          <span className="task-status-label">Status</span>
+                          <span
+                            className={`task-status-pill ${
+                              stockAppr.status === 'Approved'
+                                ? 'approved'
+                                : stockAppr.status === 'Referred Back'
+                                ? 'referred'
+                                : 'pending'
+                            }`}
+                          >
+                            {stockAppr.status || 'Pending'}
+                          </span>
+                        </div>
+
+                        <div className="task-col-right">
+                          <span className="task-note-label">Stock Room Notes</span>
+                          {stockAppr.note ? (
+                            <div
+                              className={`task-note-content ${
+                                stockAppr.status === 'Referred Back' ? 'referred' : ''
+                              }`}
+                            >
+                              {stockAppr.note}
+                            </div>
+                          ) : (
+                            <div className="task-note-placeholder">
+                              {stockAppr.status === 'Approved'
+                                ? 'Approved by Stock Room'
+                                : 'Awaiting Review'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Task 2 - Production Room (Only for DTF workflows; Embroidery has single Stock Room task) */}
+                      {!isOrderEmbroidery(orderApprovalData || { printingType: formData?.printingType, items }) && (
+                        <div className="order-task-card">
+                          <div className="task-col-left">
+                            <div className="task-title">Task 2 - Production Room</div>
+                            <div className="task-manager-subtitle">Marcus Vance (Production Lead)</div>
+                          </div>
+
+                          <div className="task-col-center">
+                            <span className="task-status-label">Status</span>
+                            <span
+                              className={`task-status-pill ${
+                                prodAppr.status === 'Approved'
+                                  ? 'approved'
+                                  : prodAppr.status === 'Referred Back'
+                                  ? 'referred'
+                                  : 'pending'
+                              }`}
+                            >
+                              {prodAppr.status || 'Pending'}
+                            </span>
+                          </div>
+
+                          <div className="task-col-right">
+                            <span className="task-note-label">Production Notes</span>
+                            {prodAppr.note ? (
+                              <div
+                                className={`task-note-content ${
+                                  prodAppr.status === 'Referred Back' ? 'referred' : ''
+                                }`}
+                              >
+                                {prodAppr.note}
+                              </div>
+                            ) : (
+                              <div className="task-note-placeholder">
+                                {prodAppr.status === 'Approved'
+                                  ? 'Approved by Production'
+                                  : 'Awaiting Review'}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
-                  </div>
-
-                  {/* Task 1 - Stock Room */}
-                  <div className="order-task-card">
-                    <div className="task-col-left">
-                      <div className="task-title">Task 1 - Stock Room</div>
-                      <div className="task-manager-subtitle">Elena Rostova (Stock Room Manager)</div>
-                    </div>
-
-                    <div className="task-col-center">
-                      <span className="task-status-label">Status</span>
-                      <span
-                        className={`task-status-pill ${
-                          stockAppr.status === 'Approved'
-                            ? 'approved'
-                            : stockAppr.status === 'Referred Back'
-                            ? 'referred'
-                            : 'pending'
-                        }`}
-                      >
-                        {stockAppr.status || 'Pending'}
-                      </span>
-                    </div>
-
-                    <div className="task-col-right">
-                      <span className="task-note-label">Stock Room Notes</span>
-                      {stockAppr.note ? (
-                        <div
-                          className={`task-note-content ${
-                            stockAppr.status === 'Referred Back' ? 'referred' : ''
-                          }`}
-                        >
-                          {stockAppr.note}
-                        </div>
-                      ) : (
-                        <div className="task-note-placeholder">
-                          {stockAppr.status === 'Approved'
-                            ? 'Approved by Stock Room'
-                            : 'Awaiting Review'}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Task 2 - Production Room */}
-                  <div className="order-task-card">
-                    <div className="task-col-left">
-                      <div className="task-title">Task 2 - Production Room</div>
-                      <div className="task-manager-subtitle">Marcus Vance (Production Lead)</div>
-                    </div>
-
-                    <div className="task-col-center">
-                      <span className="task-status-label">Status</span>
-                      <span
-                        className={`task-status-pill ${
-                          prodAppr.status === 'Approved'
-                            ? 'approved'
-                            : prodAppr.status === 'Referred Back'
-                            ? 'referred'
-                            : 'pending'
-                        }`}
-                      >
-                        {prodAppr.status || 'Pending'}
-                      </span>
-                    </div>
-
-                    <div className="task-col-right">
-                      <span className="task-note-label">Production Notes</span>
-                      {prodAppr.note ? (
-                        <div
-                          className={`task-note-content ${
-                            prodAppr.status === 'Referred Back' ? 'referred' : ''
-                          }`}
-                        >
-                          {prodAppr.note}
-                        </div>
-                      ) : (
-                        <div className="task-note-placeholder">
-                          {prodAppr.status === 'Approved'
-                            ? 'Approved by Production'
-                            : 'Awaiting Review'}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()
               )}
 
               {/* MINI TAB 2: APPLICATION LOG */}
@@ -7167,8 +7363,8 @@ function OrderManagement() {
                         </td>
                       )}
                       {visibleColumns.state && (
-                        <td style={{ padding: '12px', color: '#475569' }}>
-                          {item.state || '—'}
+                        <td style={{ padding: '12px', color: '#475569', textTransform: 'uppercase' }}>
+                          {item.state ? String(item.state).toUpperCase() : '—'}
                         </td>
                       )}
                       {visibleColumns.pincode && (

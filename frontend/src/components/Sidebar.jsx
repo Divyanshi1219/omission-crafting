@@ -61,11 +61,28 @@ function Sidebar() {
     setIsOrderMenuOpen(isOrderRoute);
   }, [isOrderRoute]);
 
+  const isEmbroideryOrderRoute = activePath.startsWith('/order/embroidery');
+  const isDtfOrderRoute = isOrderRoute && !isEmbroideryOrderRoute && activePath !== '/order/create-lead';
+
+  const [openOrderGroups, setOpenOrderGroups] = useState({
+    dtf: true,
+    embroidery: true,
+  });
+
+  const toggleOrderGroup = (groupKey) => {
+    setOpenOrderGroups(prev => ({
+      ...prev,
+      [groupKey]: !prev[groupKey]
+    }));
+  };
+
   const [openSubMenus, setOpenSubMenus] = useState({
-    leads: isOrderRoute && activePath.startsWith('/order/leads'),
+    leads: isOrderRoute && (activePath.startsWith('/order/leads') || activePath === '/order/leads'),
     sample: isOrderRoute && activePath.startsWith('/order/sample'),
     partial: isOrderRoute && activePath.startsWith('/order/partial'),
     complete: isOrderRoute && activePath.startsWith('/order/complete'),
+    embroideryLeads: isOrderRoute && activePath.startsWith('/order/embroidery/leads'),
+    embroiderySample: isOrderRoute && activePath.startsWith('/order/embroidery/sample'),
   });
 
   useEffect(() => {
@@ -75,20 +92,45 @@ function Sidebar() {
         sample: false,
         partial: false,
         complete: false,
+        embroideryLeads: false,
+        embroiderySample: false,
       });
+    } else if (activePath.startsWith('/order/embroidery/sample')) {
+      setOpenSubMenus(prev => ({ ...prev, embroiderySample: true }));
+    } else if (activePath.startsWith('/order/embroidery/leads')) {
+      setOpenSubMenus(prev => ({ ...prev, embroideryLeads: true }));
     } else if (activePath.startsWith('/order/leads')) {
-      setOpenSubMenus({ leads: true, sample: false, partial: false, complete: false });
+      setOpenSubMenus(prev => ({ ...prev, leads: true }));
     } else if (activePath.startsWith('/order/sample')) {
-      setOpenSubMenus({ leads: false, sample: true, partial: false, complete: false });
+      setOpenSubMenus(prev => ({ ...prev, sample: true }));
     } else if (activePath.startsWith('/order/partial')) {
-      setOpenSubMenus({ leads: false, sample: false, partial: true, complete: false });
+      setOpenSubMenus(prev => ({ ...prev, partial: true }));
     } else if (activePath.startsWith('/order/complete')) {
-      setOpenSubMenus({ leads: false, sample: false, partial: false, complete: true });
+      setOpenSubMenus(prev => ({ ...prev, complete: true }));
     }
   }, [isOrderRoute, activePath]);
 
   const toggleSubMenu = (menuKey) => {
     setOpenSubMenus(prev => ({
+      ...prev,
+      [menuKey]: !prev[menuKey]
+    }));
+  };
+
+  const isDtfTask =
+    activePath === "/tasks/verification" ||
+    activePath === "/tasks/ready-to-pick" ||
+    activePath === "/tasks/staging-room";
+  const isEmbroideryTask =
+    activePath.startsWith("/tasks/embroidery");
+
+  const [openTaskSubMenus, setOpenTaskSubMenus] = useState({
+    dtf: true,
+    embroidery: true,
+  });
+
+  const toggleTaskSubMenu = (menuKey) => {
+    setOpenTaskSubMenus(prev => ({
       ...prev,
       [menuKey]: !prev[menuKey]
     }));
@@ -127,6 +169,17 @@ function Sidebar() {
     { name: 'Packaging', path: '/order/complete/packaging' },
     { name: 'Delivery Pending', path: '/order/complete/delivery-pending' },
     { name: 'Delivered', path: '/order/complete/delivered' },
+  ];
+
+  const embroiderySampleItems = [
+    { name: 'All', path: '/order/embroidery/sample/all' },
+    { name: 'Order', path: '/order/embroidery/sample/order' },
+    { name: 'Stock Dispatch', path: '/order/embroidery/sample/stock-dispatch' },
+    { name: 'Vendor Received', path: '/order/embroidery/sample/vendor-received' },
+    { name: 'Vendor Dispatch at Staging Room', path: '/order/embroidery/sample/vendor-dispatch-at-staging-room' },
+    { name: 'Delivery Pending', path: '/order/embroidery/sample/delivery-pending' },
+    { name: 'Delivered', path: '/order/embroidery/sample/delivered' },
+    { name: 'Customer Support', path: '/order/embroidery/sample/customer-support' },
   ];
 
   return (
@@ -192,144 +245,246 @@ function Sidebar() {
                 Create lead
               </NavLink>
 
-              {/* 2. All */}
-              <NavLink
-                to="/order/all"
-                className={({ isActive }) =>
-                  `sidebar-submenu-item ${(isActive || (isOrderRoute && activePath === '/order/all')) ? "active" : ""}`
-                }
-              >
-                <span className="submenu-dot"></span>
-                All
-              </NavLink>
-
-              {/* 3. Lead / Leads */}
+              {/* 2. DTF Section */}
               <div className="sidebar-nested-accordion">
                 <div
-                  className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/leads') ? 'active' : ''}`}
-                  onClick={() => toggleSubMenu('leads')}
+                  className={`sidebar-submenu-header ${isDtfOrderRoute ? 'active' : ''}`}
+                  onClick={() => toggleOrderGroup('dtf')}
                 >
                   <div className="submenu-header-content">
                     <span className="submenu-dot"></span>
-                    <span>Lead</span>
+                    <span>DTF</span>
                   </div>
-                  {openSubMenus.leads ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {openOrderGroups.dtf ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </div>
-                {openSubMenus.leads && (
+                {openOrderGroups.dtf && (
                   <div className="sidebar-childmenu">
+                    {/* All */}
                     <NavLink
-                      to="/order/leads"
+                      to="/order/all"
                       className={({ isActive }) =>
-                        `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === '/order/leads')) ? "active" : ""}`
+                        `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === '/order/all')) ? "active" : ""}`
                       }
                     >
                       <span className="childmenu-dot"></span>
-                      Leads
+                      All
+                    </NavLink>
+
+                    {/* Lead */}
+                    <div className="sidebar-nested-accordion">
+                      <div
+                        className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/leads') ? 'active' : ''}`}
+                        onClick={() => toggleSubMenu('leads')}
+                      >
+                        <div className="submenu-header-content">
+                          <span className="submenu-dot"></span>
+                          <span>Lead</span>
+                        </div>
+                        {openSubMenus.leads ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </div>
+                      {openSubMenus.leads && (
+                        <div className="sidebar-childmenu">
+                          <NavLink
+                            to="/order/leads"
+                            className={({ isActive }) =>
+                              `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === '/order/leads')) ? "active" : ""}`
+                            }
+                          >
+                            <span className="childmenu-dot"></span>
+                            Leads
+                          </NavLink>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sample */}
+                    <div className="sidebar-nested-accordion">
+                      <div
+                        className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/sample') ? 'active' : ''}`}
+                        onClick={() => toggleSubMenu('sample')}
+                      >
+                        <div className="submenu-header-content">
+                          <span className="submenu-dot"></span>
+                          <span>Sample</span>
+                        </div>
+                        {openSubMenus.sample ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </div>
+                      {openSubMenus.sample && (
+                        <div className="sidebar-childmenu">
+                          {sampleItems.map((item) => (
+                            <NavLink
+                              key={item.path}
+                              to={item.path}
+                              className={({ isActive }) =>
+                                `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === item.path)) ? "active" : ""}`
+                              }
+                            >
+                              <span className="childmenu-dot"></span>
+                              {item.name}
+                            </NavLink>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Partial */}
+                    <div className="sidebar-nested-accordion">
+                      <div
+                        className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/partial') ? 'active' : ''}`}
+                        onClick={() => toggleSubMenu('partial')}
+                      >
+                        <div className="submenu-header-content">
+                          <span className="submenu-dot"></span>
+                          <span>Partial</span>
+                        </div>
+                        {openSubMenus.partial ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </div>
+                      {openSubMenus.partial && (
+                        <div className="sidebar-childmenu">
+                          {partialItems.map((item) => (
+                            <NavLink
+                              key={item.path}
+                              to={item.path}
+                              className={({ isActive }) =>
+                                `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === item.path)) ? "active" : ""}`
+                              }
+                            >
+                              <span className="childmenu-dot"></span>
+                              {item.name}
+                            </NavLink>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Complete */}
+                    <div className="sidebar-nested-accordion">
+                      <div
+                        className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/complete') ? 'active' : ''}`}
+                        onClick={() => toggleSubMenu('complete')}
+                      >
+                        <div className="submenu-header-content">
+                          <span className="submenu-dot"></span>
+                          <span>Complete</span>
+                        </div>
+                        {openSubMenus.complete ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </div>
+                      {openSubMenus.complete && (
+                        <div className="sidebar-childmenu">
+                          {completeItems.map((item) => (
+                            <NavLink
+                              key={item.path}
+                              to={item.path}
+                              className={({ isActive }) =>
+                                `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === item.path)) ? "active" : ""}`
+                              }
+                            >
+                              <span className="childmenu-dot"></span>
+                              {item.name}
+                            </NavLink>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Customer support */}
+                    <NavLink
+                      to="/order/customer-support"
+                      className={({ isActive }) =>
+                        `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === '/order/customer-support')) ? "active" : ""}`
+                      }
+                    >
+                      <span className="childmenu-dot"></span>
+                      Customer support
                     </NavLink>
                   </div>
                 )}
               </div>
 
-              {/* 3. Sample */}
+              {/* 3. Embroidery Section */}
               <div className="sidebar-nested-accordion">
                 <div
-                  className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/sample') ? 'active' : ''}`}
-                  onClick={() => toggleSubMenu('sample')}
+                  className={`sidebar-submenu-header ${isEmbroideryOrderRoute ? 'active' : ''}`}
+                  onClick={() => toggleOrderGroup('embroidery')}
                 >
                   <div className="submenu-header-content">
                     <span className="submenu-dot"></span>
-                    <span>Sample</span>
+                    <span>Embroidery</span>
                   </div>
-                  {openSubMenus.sample ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {openOrderGroups.embroidery ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </div>
-                {openSubMenus.sample && (
+                {openOrderGroups.embroidery && (
                   <div className="sidebar-childmenu">
-                    {sampleItems.map((item) => (
-                      <NavLink
-                        key={item.path}
-                        to={item.path}
-                        className={({ isActive }) =>
-                          `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === item.path)) ? "active" : ""}`
-                        }
+                    {/* All */}
+                    <NavLink
+                      to="/order/embroidery/all"
+                      className={({ isActive }) =>
+                        `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === '/order/embroidery/all')) ? "active" : ""}`
+                      }
+                    >
+                      <span className="childmenu-dot"></span>
+                      All
+                    </NavLink>
+
+                    {/* Lead */}
+                    <div className="sidebar-nested-accordion">
+                      <div
+                        className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/embroidery/leads') ? 'active' : ''}`}
+                        onClick={() => toggleSubMenu('embroideryLeads')}
                       >
-                        <span className="childmenu-dot"></span>
-                        {item.name}
-                      </NavLink>
-                    ))}
+                        <div className="submenu-header-content">
+                          <span className="submenu-dot"></span>
+                          <span>Lead</span>
+                        </div>
+                        {openSubMenus.embroideryLeads ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </div>
+                      {openSubMenus.embroideryLeads && (
+                        <div className="sidebar-childmenu">
+                          <NavLink
+                            to="/order/embroidery/leads"
+                            className={({ isActive }) =>
+                              `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === '/order/embroidery/leads')) ? "active" : ""}`
+                            }
+                          >
+                            <span className="childmenu-dot"></span>
+                            Leads
+                          </NavLink>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sample */}
+                    <div className="sidebar-nested-accordion">
+                      <div
+                        className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/embroidery/sample') ? 'active' : ''}`}
+                        onClick={() => toggleSubMenu('embroiderySample')}
+                      >
+                        <div className="submenu-header-content">
+                          <span className="submenu-dot"></span>
+                          <span>Sample</span>
+                        </div>
+                        {openSubMenus.embroiderySample ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </div>
+                      {openSubMenus.embroiderySample && (
+                        <div className="sidebar-childmenu">
+                          {embroiderySampleItems.map((item) => (
+                            <NavLink
+                              key={item.path}
+                              to={item.path}
+                              className={({ isActive }) =>
+                                `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === item.path)) ? "active" : ""}`
+                              }
+                            >
+                              <span className="childmenu-dot"></span>
+                              {item.name}
+                            </NavLink>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
-
-              {/* 3. Partial */}
-              <div className="sidebar-nested-accordion">
-                <div
-                  className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/partial') ? 'active' : ''}`}
-                  onClick={() => toggleSubMenu('partial')}
-                >
-                  <div className="submenu-header-content">
-                    <span className="submenu-dot"></span>
-                    <span>Partial</span>
-                  </div>
-                  {openSubMenus.partial ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </div>
-                {openSubMenus.partial && (
-                  <div className="sidebar-childmenu">
-                    {partialItems.map((item) => (
-                      <NavLink
-                        key={item.path}
-                        to={item.path}
-                        className={({ isActive }) =>
-                          `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === item.path)) ? "active" : ""}`
-                        }
-                      >
-                        <span className="childmenu-dot"></span>
-                        {item.name}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* 4. Complete */}
-              <div className="sidebar-nested-accordion">
-                <div
-                  className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/complete') ? 'active' : ''}`}
-                  onClick={() => toggleSubMenu('complete')}
-                >
-                  <div className="submenu-header-content">
-                    <span className="submenu-dot"></span>
-                    <span>Complete</span>
-                  </div>
-                  {openSubMenus.complete ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </div>
-                {openSubMenus.complete && (
-                  <div className="sidebar-childmenu">
-                    {completeItems.map((item) => (
-                      <NavLink
-                        key={item.path}
-                        to={item.path}
-                        className={({ isActive }) =>
-                          `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === item.path)) ? "active" : ""}`
-                        }
-                      >
-                        <span className="childmenu-dot"></span>
-                        {item.name}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* 5. Customer support */}
-              <NavLink
-                to="/order/customer-support"
-                className={({ isActive }) =>
-                  `sidebar-submenu-item ${(isActive && !isViewingOrder) ? "active" : ""}`
-                }
-              >
-                <span className="submenu-dot"></span>
-                Customer support
-              </NavLink>
             </div>
           )}
         </div>
@@ -423,35 +578,99 @@ function Sidebar() {
                 {/* Stock Room Manager Submenus */}
                 {(isStockUser || isAdmin) && (
                   <>
-                    <NavLink
-                      to="/tasks/verification"
-                      className={({ isActive }) =>
-                        `sidebar-submenu-item ${isActive ? "active" : ""}`
-                      }
-                    >
-                      <span className="submenu-dot"></span>
-                      Verification
-                    </NavLink>
+                    {/* DTF Section */}
+                    <div className="sidebar-nested-accordion">
+                      <div
+                        className={`sidebar-submenu-header ${isDtfTask ? "active" : ""}`}
+                        onClick={() => toggleTaskSubMenu("dtf")}
+                      >
+                        <div className="submenu-header-content">
+                          <span className="submenu-dot"></span>
+                          <span>DTF</span>
+                        </div>
+                        {openTaskSubMenus.dtf ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </div>
+                      {openTaskSubMenus.dtf && (
+                        <div className="sidebar-childmenu">
+                          <NavLink
+                            to="/tasks/verification"
+                            className={({ isActive }) =>
+                              `sidebar-childmenu-item ${isActive ? "active" : ""}`
+                            }
+                          >
+                            <span className="childmenu-dot"></span>
+                            Verification
+                          </NavLink>
 
-                    <NavLink
-                      to="/tasks/ready-to-pick"
-                      className={({ isActive }) =>
-                        `sidebar-submenu-item ${isActive ? "active" : ""}`
-                      }
-                    >
-                      <span className="submenu-dot"></span>
-                      Ready to Pick
-                    </NavLink>
+                          <NavLink
+                            to="/tasks/ready-to-pick"
+                            className={({ isActive }) =>
+                              `sidebar-childmenu-item ${isActive ? "active" : ""}`
+                            }
+                          >
+                            <span className="childmenu-dot"></span>
+                            Ready to Pick
+                          </NavLink>
 
-                    <NavLink
-                      to="/tasks/staging-room"
-                      className={({ isActive }) =>
-                        `sidebar-submenu-item ${isActive ? "active" : ""}`
-                      }
-                    >
-                      <span className="submenu-dot"></span>
-                      Staging Room
-                    </NavLink>
+                          <NavLink
+                            to="/tasks/staging-room"
+                            className={({ isActive }) =>
+                              `sidebar-childmenu-item ${isActive ? "active" : ""}`
+                            }
+                          >
+                            <span className="childmenu-dot"></span>
+                            Staging Room
+                          </NavLink>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Embroidery Section */}
+                    <div className="sidebar-nested-accordion">
+                      <div
+                        className={`sidebar-submenu-header ${isEmbroideryTask ? "active" : ""}`}
+                        onClick={() => toggleTaskSubMenu("embroidery")}
+                      >
+                        <div className="submenu-header-content">
+                          <span className="submenu-dot"></span>
+                          <span>Embroidery</span>
+                        </div>
+                        {openTaskSubMenus.embroidery ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </div>
+                      {openTaskSubMenus.embroidery && (
+                        <div className="sidebar-childmenu">
+                          <NavLink
+                            to="/tasks/embroidery-verification"
+                            className={({ isActive }) =>
+                              `sidebar-childmenu-item ${isActive ? "active" : ""}`
+                            }
+                          >
+                            <span className="childmenu-dot"></span>
+                            Verification
+                          </NavLink>
+
+                          <NavLink
+                            to="/tasks/embroidery-ready-to-pick"
+                            className={({ isActive }) =>
+                              `sidebar-childmenu-item ${isActive ? "active" : ""}`
+                            }
+                          >
+                            <span className="childmenu-dot"></span>
+                            Ready to Pick
+                          </NavLink>
+
+                          <NavLink
+                            to="/tasks/embroidery-staging-room"
+                            className={({ isActive }) =>
+                              `sidebar-childmenu-item ${isActive ? "active" : ""}`
+                            }
+                          >
+                            <span className="childmenu-dot"></span>
+                            Embroidery Staging Room
+                          </NavLink>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
 

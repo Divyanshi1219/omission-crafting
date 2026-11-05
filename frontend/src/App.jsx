@@ -103,6 +103,11 @@ function AppContent({ darkMode, setDarkMode }) {
             />
 
             <Route
+              path="/tasks/embroidery/:status"
+              element={isTaskUser ? <Approvals /> : <Navigate to="/" replace />}
+            />
+
+            <Route
               path="/approvals"
               element={
                 (isLeadManager || isAdmin) ? (

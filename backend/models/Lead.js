@@ -19,6 +19,11 @@ const leadSchema = new mongoose.Schema(
       default: "Divyanshi",
       trim: true,
     },
+    printingType: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     createdBy: {
       type: String,
       default: "",
