@@ -556,6 +556,7 @@ function OrderManagement() {
     } catch (_) {}
     return true;
   });
+  const [orderApprovalData, setOrderApprovalData] = useState(null);
   const [orderReservations, setOrderReservations] = useState([]);
 
   useEffect(() => {
@@ -574,7 +575,6 @@ function OrderManagement() {
   }, [formData?.orderId, orderApprovalData?.orderId]);
 
   const [loadingLeads, setLoadingLeads] = useState(() => location.pathname !== '/order/create-lead');
-  const [orderApprovalData, setOrderApprovalData] = useState(null);
   const [activeActivityTab, setActiveActivityTab] = useState('department');
   const [tableSearch, setTableSearch] = useState('');
   const [showColumnSettings, setShowColumnSettings] = useState(false);

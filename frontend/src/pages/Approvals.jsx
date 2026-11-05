@@ -132,6 +132,75 @@ export default function Approvals({ defaultTab = "all" }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusTab, setStatusTab] = useState(() => getTabFromParam(status)); // 'all' | 'pending' | 'referred-back' | 'approved'
   const [toast, setToast] = useState(null);
+
+  // Reservation states for Stock Room tasks
+  const SIZES = ["XS", "S", "M", "L", "XL", "XXL"];
+  const [orderReservations, setOrderReservations] = useState([]);
+  const [stocks, setStocks] = useState([]);
+  const [showReserveModal, setShowReserveModal] = useState(false);
+  const [selectedReserveStockId, setSelectedReserveStockId] = useState("");
+  const [selectedReserveSize, setSelectedReserveSize] = useState("M");
+  const [reserveQty, setReserveQty] = useState(1);
+  const [reserveNotes, setReserveNotes] = useState("");
+  const [isSubmittingReserve, setIsSubmittingReserve] = useState(false);
+  const [clickedReserveItem, setClickedReserveItem] = useState(null);
+
+  // Release Modal State with mandatory notes (*)
+  const [releaseModal, setReleaseModal] = useState({
+    isOpen: false,
+    stockId: "",
+    reservationId: "",
+    product: "",
+    colour: "",
+    size: "",
+    quantity: 0,
+    orderId: "",
+    notes: "",
+    isSubmitting: false,
+  });
+
+  const getAvailableStock = (stockId, size) => {
+    if (!stockId || !size) return 0;
+    const sel = stocks.find((s) => s._id === stockId);
+    if (!sel) return 0;
+    const phys = Number(sel.sizes?.[size] || 0);
+    const resv = (sel.reservations || [])
+      .filter((r) => r.size === size && r.status === "Active")
+      .reduce((a, b) => a + (b.quantity || 0), 0);
+    return Math.max(0, phys - resv);
+  };
+
+  const currentReserveAvail = useMemo(() => {
+    return getAvailableStock(selectedReserveStockId, selectedReserveSize);
+  }, [stocks, selectedReserveStockId, selectedReserveSize]);
+
+  const fetchOrderReservations = async (ordId) => {
+    if (!ordId) {
+      setOrderReservations([]);
+      return;
+    }
+    try {
+      const res = await api.get(`/api/stock-room/reservations/order/${encodeURIComponent(ordId)}`);
+      if (res.data?.success) {
+        setOrderReservations(res.data.data || []);
+      }
+    } catch (err) {
+      console.warn("Could not fetch order reservations:", err.message);
+      setOrderReservations([]);
+    }
+  };
+
+  const fetchWarehouseStocks = async () => {
+    try {
+      const res = await api.get("/api/stock-room");
+      if (res.data?.success) {
+        setStocks(res.data.data || []);
+      }
+    } catch (err) {
+      console.warn("Could not fetch warehouse stocks:", err.message);
+    }
+  };
+
   const [showColumnSettings, setShowColumnSettings] = useState(false);
   const columnSettingsRef = useRef(null);
   const [extraColumns, setExtraColumns] = useState({
