@@ -425,6 +425,7 @@ const getDefaultDeliveryDate = () => {
 
 function OrderManagement() {
   const { currentUser } = useAuth();
+  const isAdmin = currentUser?.id === 'admin' || currentUser?.role === 'CEO' || (currentUser?.name || '').toLowerCase().startsWith('adam');
   const isSales = currentUser?.role === 'Sales Executive' || currentUser?.id?.startsWith('sales');
   const isLeadManager =
     currentUser?.id === 'lead_manager' ||
@@ -4931,15 +4932,15 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     const itemCreatedBy = (item.createdBy || '').toLowerCase().trim();
 
     let isOwner = false;
-    if (itemEmp && myName && (itemEmp === myName || itemEmp.includes(myName) || myName.includes(itemEmp))) {
+    if (isAdmin || myId === 'admin' || myName.startsWith('adam') || isLeadManager || myId === 'lead_manager') {
+      isOwner = true;
+    } else if (itemEmp && myName && (itemEmp === myName || itemEmp.includes(myName) || myName.includes(itemEmp))) {
       isOwner = true;
     } else if (itemCreatedBy && myId && itemCreatedBy === myId) {
       isOwner = true;
     } else if ((myName.startsWith('divyansh') || myId === 'sales') && (itemEmp.startsWith('divyansh') || itemEmp === 'sales executive' || itemCreatedBy === 'sales')) {
       isOwner = true;
     } else if ((myName.startsWith('marcus') || myId === 'production') && (itemEmp.startsWith('marcus') || itemCreatedBy === 'production')) {
-      isOwner = true;
-    } else if ((myName.startsWith('adam') || myId === 'admin') && (itemEmp.startsWith('adam') || itemCreatedBy === 'admin')) {
       isOwner = true;
     } else if ((myName.startsWith('elena') || myId === 'stock') && (itemEmp.startsWith('elena') || itemCreatedBy === 'stock')) {
       isOwner = true;
