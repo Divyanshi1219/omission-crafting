@@ -19,6 +19,7 @@ function Navbar({ darkMode, setDarkMode }) {
   const navigate = useNavigate();
   const { currentUser, profiles, switchProfile, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [profileSearch, setProfileSearch] = useState("");
   const dropdownRef = useRef(null);
 
   // Close dropdown when clicking outside
@@ -148,38 +149,72 @@ function Navbar({ darkMode, setDarkMode }) {
                 </div>
               </div>
 
-              <div className="dropdown-section-title">Switch Workspace Profile</div>
+              <div className="dropdown-section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Switch Workspace Profile</span>
+                <span style={{ fontSize: "10.5px", fontWeight: 600, color: "#64748b" }}>
+                  {Object.keys(profiles).length} Profiles
+                </span>
+              </div>
 
-              <div className="dropdown-profile-list">
-                {Object.values(profiles).map((prof) => {
-                  const isActive = prof.id === currentUser.id;
-                  return (
-                    <button
-                      key={prof.id}
-                      className={`dropdown-profile-item ${isActive ? "active" : ""}`}
-                      onClick={() => handleProfileSwitch(prof.id)}
-                    >
-                      <div className="dropdown-profile-left">
-                        <div
-                          className="dropdown-mini-avatar"
-                          style={{
-                            backgroundColor: prof.avatarBg,
-                            color: prof.avatarColor,
-                          }}
-                        >
-                          {prof.initials}
+              <div style={{ marginBottom: "8px" }}>
+                <input
+                  type="text"
+                  placeholder="Search employee by name or dept..."
+                  value={profileSearch}
+                  onChange={(e) => setProfileSearch(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "6px 10px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "12px",
+                    boxSizing: "border-box",
+                    background: darkMode ? "rgba(255,255,255,0.05)" : "#f8fafc",
+                    color: "inherit",
+                  }}
+                />
+              </div>
+
+              <div className="dropdown-profile-list" style={{ maxHeight: "250px", overflowY: "auto", paddingRight: "2px" }}>
+                {Object.values(profiles)
+                  .filter((prof) => {
+                    if (!profileSearch.trim()) return true;
+                    const q = profileSearch.toLowerCase();
+                    return (
+                      (prof.name || "").toLowerCase().includes(q) ||
+                      (prof.department || "").toLowerCase().includes(q) ||
+                      (prof.role || "").toLowerCase().includes(q)
+                    );
+                  })
+                  .map((prof) => {
+                    const isActive = prof.id === currentUser.id;
+                    return (
+                      <button
+                        key={prof.id}
+                        className={`dropdown-profile-item ${isActive ? "active" : ""}`}
+                        onClick={() => handleProfileSwitch(prof.id)}
+                      >
+                        <div className="dropdown-profile-left">
+                          <div
+                            className="dropdown-mini-avatar"
+                            style={{
+                              backgroundColor: prof.avatarBg,
+                              color: prof.avatarColor,
+                            }}
+                          >
+                            {prof.initials}
+                          </div>
+                          <div className="dropdown-profile-meta">
+                            <h5>{prof.name}</h5>
+                            <span>{prof.department || prof.role}</span>
+                          </div>
                         </div>
-                        <div className="dropdown-profile-meta">
-                          <h5>{prof.name}</h5>
-                          <span>{prof.department || prof.role}</span>
-                        </div>
-                      </div>
-                      {isActive && (
-                        <Check size={14} style={{ color: "#f59e0b" }} />
-                      )}
-                    </button>
-                  );
-                })}
+                        {isActive && (
+                          <Check size={14} style={{ color: "#f59e0b" }} />
+                        )}
+                      </button>
+                    );
+                  })}
               </div>
 
               <div className="dropdown-divider"></div>
