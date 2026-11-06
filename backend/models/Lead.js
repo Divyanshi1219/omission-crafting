@@ -373,4 +373,8 @@ leadSchema.pre("save", function () {
   }
 });
 
+leadSchema.index({ updatedAt: -1, createdAt: -1 });
+leadSchema.index({ query: 1, updatedAt: -1, createdAt: -1 });
+leadSchema.index({ orderStage: 1, subStage: 1, updatedAt: -1 });
+
 module.exports = mongoose.model("Lead", leadSchema);

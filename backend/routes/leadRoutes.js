@@ -51,9 +51,9 @@ router.get("/", async (req, res) => {
     if (req.query.employeeName) {
       filter.employeeName = new RegExp(`^${req.query.employeeName.trim()}$`, "i");
     }
-    // Exclude heavy base64 file payloads from list queries unless explicitly requested (?includeFiles=true or ?query=order).
+    // Exclude heavy base64 file payloads from list queries unless explicitly requested (?includeFiles=true).
     // Detail view (GET /:id) and file download endpoints return the full base64 data on demand.
-    const includesAttachment = req.query.includeFiles === "true" || req.query.query === "order";
+    const includesAttachment = req.query.includeFiles === "true";
     const leads = await Lead.find(
       filter,
       includesAttachment
@@ -71,6 +71,7 @@ router.get("/", async (req, res) => {
           }
     )
       .sort({ updatedAt: -1, createdAt: -1 })
+      .allowDiskUse(true)
       .lean();
 
     // Clean up contaminated approvals and ensure starting stage (batched in bulkWrite)
@@ -493,6 +494,46 @@ router.get("/next-task-id", async (req, res) => {
 });
 
 // GET /api/leads/:id - Fetch single lead by id
+// GET /api/leads/:id/attachment - Download or stream lead attachment on demand
+router.get("/:id/attachment", async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).send("Invalid ID");
+    }
+    const lead = await Lead.findById(req.params.id).select(
+      "attachment logoDesign logoDesignFiles digitalDesign digitalDesignFiles attachmentName logoDesignName"
+    );
+    if (!lead) return res.status(404).send("Not found");
+    const fileData =
+      lead.attachment ||
+      lead.logoDesign ||
+      lead.digitalDesign ||
+      (Array.isArray(lead.logoDesignFiles) && lead.logoDesignFiles[0]?.data) ||
+      (Array.isArray(lead.digitalDesignFiles) && lead.digitalDesignFiles[0]?.data) ||
+      "";
+    if (!fileData) return res.status(404).send("No attachment found");
+
+    const fileName = lead.logoDesignName || lead.attachmentName || "download";
+    const matches = fileData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (matches) {
+      const mime = matches[1];
+      const buffer = Buffer.from(matches[2], "base64");
+      res.setHeader("Content-Type", mime);
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      return res.send(buffer);
+    }
+    if (fileData.startsWith("http://") || fileData.startsWith("https://")) {
+      return res.redirect(fileData);
+    }
+    const buffer = Buffer.from(fileData, "base64");
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    return res.send(buffer);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
