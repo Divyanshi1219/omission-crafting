@@ -24,16 +24,29 @@ function AppContent({ darkMode, setDarkMode }) {
   const location = useLocation();
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.id === "admin";
-  const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
+  const isSales =
+    currentUser?.role === "Sales Executive" ||
+    currentUser?.id?.startsWith("sales") ||
+    (currentUser?.department || "").toLowerCase().includes("sales");
   const isLeadManager =
     currentUser?.id === "lead_manager" ||
-    Boolean(currentUser?.role && currentUser.role.toLowerCase() === "lead manager");
+    Boolean(currentUser?.role && currentUser.role.toLowerCase() === "lead manager") ||
+    Boolean(currentUser?.department && currentUser.department.toLowerCase() === "lead manager");
   const isSalesOrAdmin = isSales || currentUser?.id === "admin" || isLeadManager;
   const isTaskUser =
     currentUser?.id === "stock" ||
     currentUser?.id === "production" ||
     currentUser?.id === "admin" ||
-    Boolean(currentUser?.role && (currentUser.role.toLowerCase().includes("stock") || (currentUser.role.toLowerCase().includes("production") && !currentUser.role.toLowerCase().includes("lead manager"))));
+    Boolean(
+      currentUser?.role &&
+        (currentUser.role.toLowerCase().includes("stock") ||
+          (currentUser.role.toLowerCase().includes("production") && !currentUser.role.toLowerCase().includes("lead manager")))
+    ) ||
+    Boolean(
+      currentUser?.department &&
+        (currentUser.department.toLowerCase().includes("stock") ||
+          (currentUser.department.toLowerCase().includes("production") && !currentUser.department.toLowerCase().includes("lead manager")))
+    );
   const isOnlyStockRoomUser =
     (currentUser?.id === "stock" ||
       currentUser?.role === "Stock Room Manager" ||

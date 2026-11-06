@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Eye,
@@ -17,7 +17,7 @@ function Login({ darkMode, setDarkMode }) {
   const navigate = useNavigate();
   const { profiles, currentUser, login } = useAuth();
 
-  // Selected profile state: 'admin' | 'production' | 'stock' | 'sales'
+  // Selected profile state
   const [selectedProfileId, setSelectedProfileId] = useState(
     currentUser?.id || "admin"
   );
@@ -28,8 +28,15 @@ function Login({ darkMode, setDarkMode }) {
   const [password, setPassword] = useState("••••••••••••");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [searchChip, setSearchChip] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  useEffect(() => {
+    if (profiles[selectedProfileId]) {
+      setEmail(profiles[selectedProfileId].email);
+    }
+  }, [selectedProfileId, profiles]);
 
   // Switch profile in form
   const handleSelectProfile = (profileId) => {
@@ -46,7 +53,13 @@ function Login({ darkMode, setDarkMode }) {
     setIsLoading(true);
 
     setTimeout(() => {
-      login(selectedProfileId, { email, rememberMe });
+      let matchedId = selectedProfileId;
+      const typed = (email || "").toLowerCase().trim();
+      const found = Object.values(profiles).find((p) => (p.email || "").toLowerCase().trim() === typed);
+      if (found) {
+        matchedId = found.id;
+      }
+      login(matchedId, { email, rememberMe });
       setIsLoading(false);
       setIsSuccess(true);
 
@@ -101,8 +114,40 @@ function Login({ darkMode, setDarkMode }) {
             Access your account to view orders, track production queues, manage stock, and handle sales leads.
           </p>
 
-          <div className="login-profile-segmented-grid">
-            {Object.values(profiles).map((prof) => {
+          <div style={{ marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "12px", fontWeight: 600, color: darkMode ? "#94a3b8" : "#64748b" }}>
+              Quick Select Profile ({Object.keys(profiles).length} Employees):
+            </span>
+            <input
+              type="text"
+              placeholder="Filter by name/role..."
+              value={searchChip}
+              onChange={(e) => setSearchChip(e.target.value)}
+              style={{
+                padding: "4px 8px",
+                borderRadius: "6px",
+                border: "1px solid #cbd5e1",
+                fontSize: "11.5px",
+                width: "160px",
+                background: darkMode ? "rgba(255,255,255,0.05)" : "#ffffff",
+                color: "inherit"
+              }}
+            />
+          </div>
+
+          <div className="login-profile-segmented-grid" style={{ maxHeight: "170px", overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: "6px", padding: "6px" }}>
+            {Object.values(profiles)
+              .filter((prof) => {
+                if (!searchChip.trim()) return true;
+                const q = searchChip.toLowerCase();
+                return (
+                  (prof.name || "").toLowerCase().includes(q) ||
+                  (prof.department || "").toLowerCase().includes(q) ||
+                  (prof.role || "").toLowerCase().includes(q) ||
+                  (prof.email || "").toLowerCase().includes(q)
+                );
+              })
+              .map((prof) => {
               const isSelected = selectedProfileId === prof.id;
               return (
                 <div

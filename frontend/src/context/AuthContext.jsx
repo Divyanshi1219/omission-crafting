@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import api from "../api";
 
 export const PROFILES = {
   admin: {
@@ -105,16 +106,70 @@ export const PROFILES = {
   },
 };
 
+export const SALES_EMPLOYEE_NAMES = [
+  "Neha Panchal", "Deepika", "Yanshika", "Kavita", "Mounika", "Sneha", "Sakshi",
+  "Anju", "Rinki", "Mahank", "Ranjeeta", "Kirtika", "Nandita", "Bharti",
+  "Ismiti", "Manju", "Shweta", "Nishu", "Kirti", "Tina", "Khushboo",
+  "Gungun", "Smita", "Sonali", "Shalini", "Komal", "Bindiya", "Janvi",
+  "Ankita", "Rekha", "Palak", "Swati", "Pihu", "Sakshi Rai", "Nisha",
+  "Lakshmi", "Nandini", "Vanshika", "Pooja", "Jyoti", "Maya", "Tanu",
+  "Diksha", "Leena", "Anshu", "Khushi", "Rashmi", "Vani", "Anisha"
+];
+
+const PRE_COLORS = ["#2563eb", "#7c3aed", "#db2777", "#059669", "#d97706", "#0284c7", "#4f46e5", "#e11d48"];
+
+SALES_EMPLOYEE_NAMES.forEach((name) => {
+  const key = "sales_" + name.toLowerCase().replace(/[^a-z0-9]/g, "_");
+  const fName = name.split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+  const initials = name
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const bg = PRE_COLORS[(name.charCodeAt(0) || 0) % PRE_COLORS.length];
+
+  if (!PROFILES[key]) {
+    PROFILES[key] = {
+      id: key,
+      name,
+      role: "Sales Executive",
+      department: "Sales",
+      subtitle: "Sales • Omission Crafting",
+      email: `${fName}.sales@omissioncrafting.com`,
+      initials,
+      avatarBg: bg,
+      avatarColor: "#ffffff",
+      badge: "Sales",
+      badgeColor: "#0284c7",
+      badgeBg: "#e0f2fe",
+      description: "Client inquiries, quotation management, lead tracking, and order placement.",
+      permissions: ["Client Inquiries", "Quotation Management", "Lead Tracking", "Order Placement"],
+      stats: { clearance: "Level 2 (Commercial)", location: "Sales Suite", department: "Sales" },
+    };
+  }
+});
+
 const AuthContext = createContext(null);
 
 const STORAGE_KEY = "omission_active_profile";
 
+const AVATAR_COLORS = ["#2563eb", "#7c3aed", "#db2777", "#059669", "#d97706", "#0284c7", "#4f46e5", "#e11d48"];
+const getEmployeeAvatarBg = (name = "") => AVATAR_COLORS[(name.charCodeAt(0) || 0) % AVATAR_COLORS.length];
+
 export function AuthProvider({ children }) {
+  const [profiles, setProfiles] = useState(PROFILES);
+
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved && PROFILES[saved]) {
-        return PROFILES[saved];
+      if (saved) {
+        if (PROFILES[saved]) return PROFILES[saved];
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.name) return parsed;
+        } catch (_) {}
       }
     } catch (_) {}
     return PROFILES.admin;
@@ -122,16 +177,70 @@ export function AuthProvider({ children }) {
 
   const [isAuthenticated, setIsAuthenticated] = useState(true);
 
+  // Fetch dynamic employees from database and merge into profiles
+  useEffect(() => {
+    api
+      .get("/api/employees")
+      .then((res) => {
+        const payload = res?.data;
+        if (payload?.success && Array.isArray(payload.data)) {
+          const merged = { ...PROFILES };
+          payload.data.forEach((emp) => {
+            const id = emp._id ? String(emp._id) : (emp.displayName || "").toLowerCase().replace(/\s+/g, "_");
+            const name = emp.displayName || "Employee";
+            const firstName = (emp.firstName || name.split(" ")[0] || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            const dept = emp.department || "Sales";
+            const deptClean = dept.toLowerCase().replace(/[^a-z0-9]/g, "");
+            const email = emp.email || `${firstName}.${deptClean}@omissioncrafting.com`;
+
+            // If name already matches a core preset (Adam, Marcus Vance, Elena Rostova, Sarah Jenkins, Divyanshi, Karan)
+            const isCoreManager = Object.values(PROFILES).some((p) => (p.name || "").toLowerCase() === name.toLowerCase());
+            if (isCoreManager) return;
+
+            const initials =
+              name
+                .split(" ")
+                .filter(Boolean)
+                .map((w) => w[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase() || "EM";
+
+            merged[id] = {
+              id,
+              name,
+              role: emp.jobTitle || (dept.toLowerCase().includes("sales") ? "Sales Executive" : dept),
+              department: dept,
+              subtitle: `${dept} • Omission Crafting`,
+              email,
+              initials,
+              avatarBg: getEmployeeAvatarBg(name),
+              avatarColor: "#ffffff",
+              badge: dept,
+              badgeColor: "#0284c7",
+              badgeBg: "#e0f2fe",
+              description: `${dept} team member`,
+              permissions: ["Lead Tracking", "Order Placement"],
+              stats: { clearance: "Level 1", location: "Sales Suite", department: dept },
+            };
+          });
+
+          setProfiles(merged);
+        }
+      })
+      .catch((err) => console.error("Error loading dynamic profiles in AuthContext:", err));
+  }, []);
+
   useEffect(() => {
     try {
-      if (currentUser?.id) {
-        localStorage.setItem(STORAGE_KEY, currentUser.id);
+      if (currentUser) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
       }
     } catch (_) {}
   }, [currentUser]);
 
   const switchProfile = (profileId) => {
-    const target = PROFILES[profileId];
+    const target = profiles[profileId] || PROFILES[profileId];
     if (target) {
       setCurrentUser(target);
       setIsAuthenticated(true);
@@ -141,7 +250,12 @@ export function AuthProvider({ children }) {
   };
 
   const login = (profileId, credentials = {}) => {
-    const target = PROFILES[profileId] || PROFILES.admin;
+    let target = profiles[profileId] || PROFILES[profileId];
+    if (!target && credentials.email) {
+      const emailTrim = credentials.email.toLowerCase().trim();
+      target = Object.values(profiles).find((p) => (p.email || "").toLowerCase().trim() === emailTrim);
+    }
+    target = target || PROFILES.admin;
     setCurrentUser(target);
     setIsAuthenticated(true);
     return target;
@@ -156,7 +270,7 @@ export function AuthProvider({ children }) {
       value={{
         currentUser,
         isAuthenticated,
-        profiles: PROFILES,
+        profiles,
         switchProfile,
         login,
         logout,
