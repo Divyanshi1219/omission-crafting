@@ -26,6 +26,23 @@ import InventoryAnalyticsPanel from "../../components/InventoryAnalyticsPanel";
 
 const SIZES = ["XS", "S", "M", "L", "XL", "XXL"];
 
+const getColorHex = (colour) => {
+  const c = (colour || "").toLowerCase().trim();
+  if (c.includes("black")) return "#0f172a";
+  if (c.includes("white") || c.includes("without color")) return "#cbd5e1";
+  if (c.includes("navy")) return "#1e3a8a";
+  if (c.includes("sky") || c.includes("light blue")) return "#38bdf8";
+  if (c.includes("blue")) return "#2563eb";
+  if (c.includes("orange")) return "#ea580c";
+  if (c.includes("red") || c.includes("maroon")) return "#dc2626";
+  if (c.includes("green")) return "#16a34a";
+  if (c.includes("grey") || c.includes("gray")) return "#64748b";
+  if (c.includes("yellow")) return "#eab308";
+  if (c.includes("purple")) return "#9333ea";
+  if (c.includes("pink")) return "#ec4899";
+  return "#94a3b8";
+};
+
 export default function StockRoom({ isEmbedded = false, isTableViewOnly = false }) {
   const { currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -205,8 +222,9 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
   const [adjustNotes, setAdjustNotes] = useState("");
   const [isSubmittingAdjust, setIsSubmittingAdjust] = useState(false);
 
-  // New Garment Inward Modal (Location removed)
+  // New Garment Inward Modal / Restock Modal
   const [showNewGarmentModal, setShowNewGarmentModal] = useState(false);
+  const [stockModalTab, setStockModalTab] = useState("new"); // "new" | "restock"
   const [newGarmentData, setNewGarmentData] = useState({
     product: "",
     colour: "",
@@ -214,6 +232,13 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
     type: "Stock",
     sizes: { XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 },
   });
+
+  // Option 2: Restock existing item states
+  const [selectedRestockProduct, setSelectedRestockProduct] = useState("");
+  const [selectedRestockVariantId, setSelectedRestockVariantId] = useState("");
+  const [restockSizes, setRestockSizes] = useState({ XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 });
+  const [restockNotes, setRestockNotes] = useState("");
+  const [isSubmittingRestock, setIsSubmittingRestock] = useState(false);
 
   // Dropdown refs
   const sortRef = useRef(null);
@@ -308,6 +333,24 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
   const uniqueProducts = useMemo(() => {
     return Array.from(new Set(stocks.map((s) => s.product).filter(Boolean))).sort();
   }, [stocks]);
+
+  // Derived variants for Option 2: Restock
+  const productVariants = useMemo(() => {
+    if (!selectedRestockProduct) return [];
+    return stocks.filter(
+      (s) => (s.product || "").toLowerCase().trim() === selectedRestockProduct.toLowerCase().trim()
+    );
+  }, [stocks, selectedRestockProduct]);
+
+  const selectedVariant = useMemo(() => {
+    if (!productVariants.length) return null;
+    const found = productVariants.find((v) => v._id === selectedRestockVariantId);
+    return found || productVariants[0];
+  }, [productVariants, selectedRestockVariantId]);
+
+  const totalRestockQuantity = useMemo(() => {
+    return SIZES.reduce((sum, sz) => sum + Math.max(0, parseInt(restockSizes[sz], 10) || 0), 0);
+  }, [restockSizes]);
 
   const uniqueColours = useMemo(() => {
     return Array.from(new Set(stocks.map((s) => s.colour).filter(Boolean))).sort();
@@ -596,6 +639,42 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
     } catch (err) {
       console.error("Error adding garment:", err);
       showToast(err.response?.data?.message || "Error creating garment record");
+    }
+  };
+
+  // Option 2: Restock existing garment handler
+  const handleRestockSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedVariant) {
+      showToast("Please select a product variant to restock");
+      return;
+    }
+    if (totalRestockQuantity <= 0) {
+      showToast("Please enter a restock quantity greater than 0 for at least one size.");
+      return;
+    }
+
+    try {
+      setIsSubmittingRestock(true);
+      const res = await api.post("/api/stock-room/restock", {
+        stockId: selectedVariant._id,
+        sizes: restockSizes,
+        notes: restockNotes.trim() || `Inward restock (+${totalRestockQuantity} pcs)`,
+        loggedBy: `${currentUser?.name || "Elena Rostova"} (${currentUser?.role || "Stock Room Manager"})`,
+      });
+
+      if (res.data?.success) {
+        showToast(res.data.message || `Successfully restocked ${totalRestockQuantity} pieces!`);
+        setShowNewGarmentModal(false);
+        fetchStockData();
+        setRestockSizes({ XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 });
+        setRestockNotes("");
+      }
+    } catch (err) {
+      console.error("Error restocking garment:", err);
+      showToast(err.response?.data?.message || "Failed to restock stock item");
+    } finally {
+      setIsSubmittingRestock(false);
     }
   };
 
@@ -1936,8 +2015,12 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
           >
             <div className="modal-header-row">
               <div className="modal-title-wrap">
-                <h2>Add Stock Inventory Record</h2>
-                <p>Register a product, colour, cut, and initial stock quantities</p>
+                <h2>{stockModalTab === "new" ? "Add Stock Inventory Record" : "Restock Existing Inventory"}</h2>
+                <p>
+                  {stockModalTab === "new"
+                    ? "Register a brand new product, colour, cut, and initial stock quantities"
+                    : "Select an existing product from stock to replenish size quantities"}
+                </p>
               </div>
               <button
                 className="modal-close-btn"
@@ -1947,6 +2030,34 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
               </button>
             </div>
 
+            {/* Segmented Mode Selector: Option 1 (New Item) vs Option 2 (Restock) */}
+            <div className="stock-modal-tab-bar">
+              <button
+                type="button"
+                className={`stock-modal-tab-btn ${stockModalTab === "new" ? "active" : ""}`}
+                onClick={() => setStockModalTab("new")}
+              >
+                <Plus size={15} />
+                <span>Option 1: Add Any Item</span>
+              </button>
+              <button
+                type="button"
+                className={`stock-modal-tab-btn ${stockModalTab === "restock" ? "active" : ""}`}
+                onClick={() => {
+                  setStockModalTab("restock");
+                  if (!selectedRestockProduct && uniqueProducts.length > 0) {
+                    const defaultProd = uniqueProducts.find(p => p.toLowerCase().includes("hoodie")) || uniqueProducts[0];
+                    setSelectedRestockProduct(defaultProd);
+                  }
+                }}
+              >
+                <Layers size={15} />
+                <span>Option 2: Restock Items</span>
+              </button>
+            </div>
+
+            {/* OPTION 1: Add New Item Form (Original working form preserved 100%) */}
+            {stockModalTab === "new" && (
             <form onSubmit={handleCreateNewGarment} className="new-garment-form">
               <div className="form-row-2">
                 <div className="form-col">
@@ -2184,6 +2295,264 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
                 </button>
               </div>
             </form>
+            )}
+
+            {/* OPTION 2: Restock Existing Items (Select product dropdown -> all variants appear -> select variant & add stock) */}
+            {stockModalTab === "restock" && (
+            <form onSubmit={handleRestockSubmit} className="restock-garment-form">
+              {/* Step 1: Product Selection Dropdown */}
+              <div className="restock-step-box">
+                <label className="restock-step-title">
+                  <span className="step-badge">1</span>
+                  <span>Select Product to Restock:</span>
+                </label>
+                <div className="restock-select-wrap">
+                  <select
+                    className="restock-product-select"
+                    value={selectedRestockProduct}
+                    onChange={(e) => {
+                      const newProd = e.target.value;
+                      setSelectedRestockProduct(newProd);
+                      setRestockSizes({ XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 });
+                    }}
+                  >
+                    <option value="">-- Select Product (e.g. Hoodie, T-Shirt, Shirt) --</option>
+                    {uniqueProducts.map((prod) => {
+                      const count = stocks.filter(
+                        (s) => (s.product || "").toLowerCase().trim() === prod.toLowerCase().trim()
+                      ).length;
+                      return (
+                        <option key={prod} value={prod}>
+                          {prod} ({count} {count === 1 ? "variant" : "variants"} in stock)
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* Quick select chips for products */}
+                <div className="product-quick-chips" style={{ marginTop: "6px" }}>
+                  <span style={{ fontSize: "11px", color: "#64748b", alignSelf: "center" }}>Quick select:</span>
+                  {uniqueProducts.map((prod) => (
+                    <button
+                      key={prod}
+                      type="button"
+                      className={`prod-chip-btn ${selectedRestockProduct === prod ? "active" : ""}`}
+                      onClick={() => {
+                        setSelectedRestockProduct(prod);
+                        setRestockSizes({ XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 });
+                      }}
+                    >
+                      {prod}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 2: All variants of the selected product (e.g. Hoodie variants section) */}
+              {selectedRestockProduct ? (
+                <div className="restock-step-box">
+                  <label className="restock-step-title">
+                    <span className="step-badge">2</span>
+                    <span>
+                      Select {selectedRestockProduct} Variant ({productVariants.length} available):
+                    </span>
+                  </label>
+
+                  {productVariants.length === 0 ? (
+                    <div className="restock-empty-notice">
+                      No stock variants found for "{selectedRestockProduct}". You can register a new one using Option 1 above.
+                    </div>
+                  ) : (
+                    <div className="restock-variants-grid">
+                      {productVariants.map((variant) => {
+                        const isSelected = selectedVariant && selectedVariant._id === variant._id;
+                        const totalPieces = SIZES.reduce(
+                          (sum, sz) => sum + (Number(variant.sizes?.[sz]) || 0),
+                          0
+                        );
+                        return (
+                          <div
+                            key={variant._id}
+                            className={`restock-variant-card ${isSelected ? "selected" : ""}`}
+                            onClick={() => {
+                              setSelectedRestockVariantId(variant._id);
+                              setRestockSizes({ XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 });
+                            }}
+                          >
+                            <div className="variant-card-top">
+                              <div className="variant-color-badge">
+                                <span
+                                  className="variant-color-dot"
+                                  style={{ backgroundColor: getColorHex(variant.colour) }}
+                                />
+                                <strong>{variant.colour}</strong>
+                              </div>
+                              <span className="variant-stock-pill">{totalPieces} pcs</span>
+                            </div>
+                            <div className="variant-cut-line">
+                              <span>Cut / Spec:</span>
+                              <strong>{variant.cut}</strong>
+                            </div>
+                            {isSelected && (
+                              <div className="variant-selected-badge">
+                                <Check size={12} /> Selected
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="restock-prompt-box">
+                  <Layers size={28} color="#94a3b8" />
+                  <p>Please select a product from the dropdown above (e.g. <strong>Hoodie</strong>) to view all available variants and add stock.</p>
+                </div>
+              )}
+
+              {/* Step 3: Size Restock Grid for the selected variant */}
+              {selectedVariant && (
+                <div className="restock-step-box restock-sizes-section">
+                  <div className="restock-sizes-header">
+                    <div>
+                      <label className="restock-step-title" style={{ margin: 0 }}>
+                        <span className="step-badge">3</span>
+                        <span>Add Stock Quantities by Size:</span>
+                      </label>
+                      <p style={{ fontSize: "11.5px", color: "#64748b", margin: "2px 0 0 28px" }}>
+                        Selected: <strong style={{ color: "#0f172a" }}>{selectedVariant.product}</strong> ({selectedVariant.colour}, {selectedVariant.cut})
+                      </p>
+                    </div>
+                    {totalRestockQuantity > 0 && (
+                      <span className="restock-total-pill">
+                        +{totalRestockQuantity} pcs to add
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="restock-sizes-grid">
+                    {SIZES.map((sz) => {
+                      const curr = Number(selectedVariant.sizes?.[sz]) || 0;
+                      const add = Math.max(0, parseInt(restockSizes[sz], 10) || 0);
+                      const projected = curr + add;
+                      return (
+                        <div key={sz} className={`restock-size-box ${add > 0 ? "has-add" : ""}`}>
+                          <span className="restock-sz-title">{sz}</span>
+                          <div className="restock-curr-stock" title="Current in-stock count">
+                            <span className="micro-lbl">Current:</span>
+                            <strong>{curr}</strong>
+                          </div>
+                          <div className="restock-input-wrap">
+                            <span className="plus-sign">+</span>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={restockSizes[sz] === 0 ? "" : restockSizes[sz]}
+                              onChange={(e) => {
+                                const val = e.target.value === "" ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0);
+                                setRestockSizes((prev) => ({
+                                  ...prev,
+                                  [sz]: val,
+                                }));
+                              }}
+                            />
+                          </div>
+                          <div className="restock-projected-stock">
+                            <span className="micro-lbl">New:</span>
+                            <span className={`projected-val ${add > 0 ? "highlight" : ""}`}>
+                              {projected}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Quick-add helper row */}
+                  <div className="restock-quick-actions">
+                    <span style={{ fontSize: "11px", color: "#64748b" }}>Quick add:</span>
+                    {[5, 10, 20].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        className="quick-add-btn"
+                        onClick={() => {
+                          const updated = {};
+                          SIZES.forEach((sz) => {
+                            updated[sz] = (restockSizes[sz] || 0) + num;
+                          });
+                          setRestockSizes(updated);
+                        }}
+                      >
+                        +{num} all sizes
+                      </button>
+                    ))}
+                    {totalRestockQuantity > 0 && (
+                      <button
+                        type="button"
+                        className="quick-clear-btn"
+                        onClick={() =>
+                          setRestockSizes({ XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 })
+                        }
+                      >
+                        Reset to 0
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Restock Reference Note */}
+                  <div className="form-col" style={{ marginTop: "10px" }}>
+                    <label style={{ fontSize: "11.5px", fontWeight: 600, color: "#334155" }}>
+                      Restock Notes / Batch Reference (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Supplier intake, winter batch replenishment"
+                      value={restockNotes}
+                      onChange={(e) => setRestockNotes(e.target.value)}
+                      style={{ fontSize: "12px", padding: "7px 10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="modal-actions-footer">
+                <button
+                  type="button"
+                  className="action-btn-outline"
+                  onClick={() => setShowNewGarmentModal(false)}
+                  disabled={isSubmittingRestock}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="action-btn-primary"
+                  disabled={isSubmittingRestock || totalRestockQuantity <= 0}
+                  style={{ minWidth: "150px" }}
+                >
+                  {isSubmittingRestock ? (
+                    <>
+                      <RefreshCw size={14} className="spin-icon" />
+                      <span>Restocking...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={15} />
+                      <span>
+                        {totalRestockQuantity > 0
+                          ? `Restock (+${totalRestockQuantity} pcs)`
+                          : "Add Stock"}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+            )}
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -41,6 +41,8 @@ const normalizeRecord = (lead) => {
 
 export default function OrderTableView() {
   const { stage: rawStage } = useParams();
+  const [searchParams] = useSearchParams();
+  const subParam = searchParams.get('sub');
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
@@ -59,9 +61,17 @@ export default function OrderTableView() {
   });
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [subStageFilter, setSubStageFilter] = useState("all");
+  const [subStageFilter, setSubStageFilter] = useState(() => subParam || "all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
   const [repeatFilter, setRepeatFilter] = useState("all");
+
+  useEffect(() => {
+    if (subParam) {
+      setSubStageFilter(subParam);
+    } else {
+      setSubStageFilter("all");
+    }
+  }, [subParam]);
 
   const fetchLeads = async () => {
     try {
@@ -114,8 +124,24 @@ export default function OrderTableView() {
   const filteredOrders = useMemo(() => {
     return stageOrders.filter(o => {
       // Sub-stage filter
-      if (subStageFilter !== 'all' && o.normSub !== subStageFilter) {
-        return false;
+      if (subStageFilter !== 'all') {
+        const target = subStageFilter.toLowerCase();
+        const oSub = (o.normSub || '').toLowerCase();
+        const isMatch =
+          oSub === target ||
+          (target === 'customer-approval-awaiting' && (oSub === 'customer-approved' || oSub === 'approved')) ||
+          (target === 'customer-approved' && (oSub === 'customer-approval-awaiting' || oSub === 'approved')) ||
+          (target === 'staging-ground' && oSub === 'staging-room') ||
+          (target === 'staging-room' && oSub === 'staging-ground') ||
+          (target === 'payment-confirmation' && oSub === 'payment-status') ||
+          (target === 'payment-status' && oSub === 'payment-confirmation') ||
+          (target === 'delivered' && oSub === 'delivery') ||
+          (target === 'delivery' && oSub === 'delivered') ||
+          (target === 'customer-support' && (oSub === 'support' || oSub === 'archived')) ||
+          (target === 'support' && (oSub === 'customer-support' || oSub === 'archived')) ||
+          (target === 'order' && (!oSub || oSub === 'order' || oSub === 'new' || oSub === 'leads'));
+
+        if (!isMatch) return false;
       }
       // Urgency filter
       if (urgencyFilter === 'urgent') {
@@ -157,7 +183,9 @@ export default function OrderTableView() {
           { key: 'dtf-pending', label: 'DTF Pending' },
           { key: 'stock', label: 'Stock' },
           { key: 'printing', label: 'Printing' },
-          { key: 'customer-approved', label: 'Customer Approved' }
+          { key: 'ready-to-pick-up', label: 'Ready to Pick Up' },
+          { key: 'staging-ground', label: 'Staging Ground' },
+          { key: 'customer-approval-awaiting', label: 'Customer Approved' }
         ]
       };
     }
@@ -172,7 +200,9 @@ export default function OrderTableView() {
           { key: 'stock', label: 'Stock' },
           { key: 'printing', label: 'Printing' },
           { key: 'quality-check', label: 'Quality Check' },
-          { key: 'payment-status', label: 'Payment Status' }
+          { key: 'packaging', label: 'Packaging' },
+          { key: 'staging-room', label: 'Staging Room' },
+          { key: 'payment-confirmation', label: 'Payment Confirmation' }
         ]
       };
     }
@@ -189,7 +219,8 @@ export default function OrderTableView() {
           { key: 'quality-check', label: 'Quality Check' },
           { key: 'packaging', label: 'Packaging' },
           { key: 'delivery-pending', label: 'Delivery Pending' },
-          { key: 'delivery', label: 'Delivery' }
+          { key: 'delivered', label: 'Delivered' },
+          { key: 'customer-support', label: 'Customer Support' }
         ]
       };
     }
@@ -204,7 +235,8 @@ export default function OrderTableView() {
         { key: 'printing', label: 'Printing' },
         { key: 'quality-check', label: 'Quality Check' },
         { key: 'packaging', label: 'Packaging' },
-        { key: 'delivery', label: 'Delivery' }
+        { key: 'delivery', label: 'Delivery' },
+        { key: 'customer-support', label: 'Customer Support' }
       ]
     };
   }, [stage]);

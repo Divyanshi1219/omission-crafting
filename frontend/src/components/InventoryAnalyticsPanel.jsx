@@ -175,8 +175,29 @@ export default function InventoryAnalyticsPanel({
     });
 
     const availableStock = Math.max(0, totalStock - activeReserved);
+    const onTimeReserved = Math.max(0, activeReserved - overduePcs);
     const availablePct = totalStock > 0 ? Math.round((availableStock / totalStock) * 100) : 0;
     const reservedPct = totalStock > 0 ? Math.round((activeReserved / totalStock) * 100) : 0;
+    const overduePct = totalStock > 0 ? Math.round((overduePcs / totalStock) * 100) : 0;
+
+    // Segment lengths for SVG Donut (Circumference = 2 * PI * 62 = 389.56)
+    const C = 389.56;
+    let overdueLength = 0;
+    let reservedLength = 0;
+    let availableLength = C;
+
+    if (totalStock > 0) {
+      if (overduePcs > 0) {
+        // Enforce visible stroke length for overdue so it clearly shows on the donut
+        const rawOverdue = (overduePcs / totalStock) * C;
+        overdueLength = Math.max(14, rawOverdue);
+      }
+      if (activeReserved > 0) {
+        const rawReserved = (Math.max(1, activeReserved - overduePcs) / totalStock) * C;
+        reservedLength = Math.max(14, rawReserved);
+      }
+      availableLength = Math.max(0, C - reservedLength - overdueLength);
+    }
 
     const totalValuation = Object.values(productMap).reduce((acc, p) => acc + p.totalValue, 0);
 
@@ -206,9 +227,14 @@ export default function InventoryAnalyticsPanel({
       availableStock,
       availablePct,
       activeReserved,
+      onTimeReserved,
       reservedPct,
       overdueCount,
       overduePcs,
+      overduePct,
+      availableLength,
+      reservedLength,
+      overdueLength,
       lowStockCount,
       outOfStockCount,
       totalValuation,
@@ -235,10 +261,11 @@ export default function InventoryAnalyticsPanel({
         </div>
 
         <div className="allocation-spacious-body">
-          {/* Interactive SVG Donut with Hover on Green & Purple segments */}
+          {/* Interactive SVG Donut with Hover on Green, Purple & Red (Overdue) segments */}
           <div className="donut-box-large">
             <svg viewBox="0 0 160 160" className="donut-svg">
               <circle cx="80" cy="80" r="62" fill="none" stroke="#f1f5f9" strokeWidth="16" />
+
               {/* Green Circle - Available Stock */}
               <circle
                 cx="80"
@@ -247,7 +274,7 @@ export default function InventoryAnalyticsPanel({
                 fill="none"
                 stroke={hoveredDonut === 'available' ? '#059669' : '#10b981'}
                 strokeWidth={hoveredDonut === 'available' ? 21 : 16}
-                strokeDasharray={`${(data.availablePct * 389.56) / 100} 389.56`}
+                strokeDasharray={`${data.availableLength} 389.56`}
                 strokeDashoffset="0"
                 strokeLinecap="round"
                 className="donut-segment segment-green"
@@ -264,6 +291,7 @@ export default function InventoryAnalyticsPanel({
               >
                 <title>{data.availableStock.toLocaleString('en-IN')} pcs Available ({data.availablePct}%)</title>
               </circle>
+
               {/* Purple Circle - Reserved for Orders */}
               <circle
                 cx="80"
@@ -272,8 +300,8 @@ export default function InventoryAnalyticsPanel({
                 fill="none"
                 stroke={hoveredDonut === 'reserved' ? '#6d28d9' : '#7c3aed'}
                 strokeWidth={hoveredDonut === 'reserved' ? 21 : 16}
-                strokeDasharray={`${(data.reservedPct * 389.56) / 100} 389.56`}
-                strokeDashoffset={`-${(data.availablePct * 389.56) / 100}`}
+                strokeDasharray={`${data.reservedLength} 389.56`}
+                strokeDashoffset={`-${data.availableLength}`}
                 strokeLinecap="round"
                 className="donut-segment segment-purple"
                 onMouseEnter={() => setHoveredDonut('reserved')}
@@ -287,23 +315,55 @@ export default function InventoryAnalyticsPanel({
                   filter: hoveredDonut === 'reserved' ? 'drop-shadow(0 0 8px rgba(124, 58, 237, 0.8))' : 'none'
                 }}
               >
-                <title>{data.activeReserved.toLocaleString('en-IN')} pcs Reserved ({data.reservedPct}%)</title>
+                <title>{data.onTimeReserved > 0 ? `${data.onTimeReserved.toLocaleString('en-IN')} pcs Active Reserved` : `${data.activeReserved.toLocaleString('en-IN')} pcs Reserved`} ({data.reservedPct}%)</title>
               </circle>
+
+              {/* Red Circle - Overdue Reservations */}
+              {data.overduePcs > 0 && (
+                <circle
+                  cx="80"
+                  cy="80"
+                  r="62"
+                  fill="none"
+                  stroke={hoveredDonut === 'overdue' ? '#b91c1c' : '#ef4444'}
+                  strokeWidth={hoveredDonut === 'overdue' ? 21 : 16}
+                  strokeDasharray={`${data.overdueLength} 389.56`}
+                  strokeDashoffset={`-${data.availableLength + data.reservedLength}`}
+                  strokeLinecap="round"
+                  className="donut-segment segment-red"
+                  onMouseEnter={() => setHoveredDonut('overdue')}
+                  onMouseOver={() => setHoveredDonut('overdue')}
+                  onMouseLeave={() => setHoveredDonut(null)}
+                  onMouseOut={() => setHoveredDonut(null)}
+                  style={{
+                    cursor: 'pointer',
+                    pointerEvents: 'stroke',
+                    transition: 'all 0.25s ease',
+                    filter: hoveredDonut === 'overdue' ? 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.85))' : 'none'
+                  }}
+                >
+                  <title>{data.overduePcs} pcs Overdue ({data.overdueCount} order{data.overdueCount === 1 ? '' : 's'})</title>
+                </circle>
+              )}
             </svg>
             <div className="donut-center-label">
               <span className={`donut-val-big ${hoveredDonut ? 'is-active' : ''}`}>
                 {hoveredDonut === 'available'
                   ? `${data.availableStock.toLocaleString('en-IN')}`
                   : hoveredDonut === 'reserved'
-                  ? `${data.activeReserved.toLocaleString('en-IN')}`
-                  : `${data.availablePct}%`}
+                    ? `${data.activeReserved.toLocaleString('en-IN')}`
+                    : hoveredDonut === 'overdue'
+                      ? `${data.overduePcs} pcs`
+                      : `${data.availablePct}%`}
               </span>
               <span className={`donut-sub-big ${hoveredDonut || ''}`}>
                 {hoveredDonut === 'available'
                   ? 'pcs Available'
                   : hoveredDonut === 'reserved'
-                  ? 'pcs Reserved'
-                  : 'Available'}
+                    ? 'pcs Reserved'
+                    : hoveredDonut === 'overdue'
+                      ? `Overdue (${data.overdueCount} ord)`
+                      : 'Available'}
               </span>
             </div>
           </div>
@@ -340,7 +400,11 @@ export default function InventoryAnalyticsPanel({
               </div>
             </div>
 
-            <div className="alloc-minimal-row">
+            <div
+              className={`alloc-minimal-row ${hoveredDonut === 'overdue' ? 'active-row red' : ''}`}
+              onMouseEnter={() => setHoveredDonut('overdue')}
+              onMouseLeave={() => setHoveredDonut(null)}
+            >
               <div className="alloc-row-left">
                 <span className="dot dot-red"></span>
                 <span className="alloc-row-name">Overdue</span>
@@ -348,6 +412,11 @@ export default function InventoryAnalyticsPanel({
               <div className="alloc-row-right">
                 <span className="alloc-row-count">{data.overdueCount} orders</span>
                 {data.overduePcs > 0 && <span className="alloc-row-dim">({data.overduePcs} pcs)</span>}
+                {data.overdueCount > 0 && (
+                  <span className="alloc-row-pct red">
+                    {data.overduePct > 0 ? `${data.overduePct}%` : '<1%'}
+                  </span>
+                )}
               </div>
             </div>
 

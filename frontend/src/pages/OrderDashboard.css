@@ -301,21 +301,14 @@
 
 .chart-bar-group {
   cursor: pointer;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.chart-bar-group rect {
-  transition: filter 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  transform-origin: bottom;
+.chart-bar-group rect.visual-bar {
+  transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
-.chart-bar-group:hover rect {
-  filter: brightness(1.18) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.16));
-  transform: scaleY(1.04);
-}
-
-.chart-bar-group:hover text {
-  font-weight: 800;
+.chart-bar-group:hover rect.visual-bar {
+  filter: brightness(1.15) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.16));
 }
 
 .order-chart-footer {
@@ -323,7 +316,7 @@
   padding-top: 14px;
   border-top: 1px solid #f1f5f9;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
 }
 

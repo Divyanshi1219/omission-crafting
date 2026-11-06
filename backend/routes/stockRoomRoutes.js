@@ -473,6 +473,78 @@ router.post("/adjust", async (req, res) => {
   }
 });
 
+// POST /api/stock-room/restock - Multi-size restock for an existing garment record
+router.post("/restock", async (req, res) => {
+  try {
+    const { stockId, sizes, notes, loggedBy } = req.body;
+
+    if (!stockId || !sizes || typeof sizes !== "object") {
+      return res.status(400).json({
+        success: false,
+        message: "stockId and sizes object are required.",
+      });
+    }
+
+    const stock = await GarmentStock.findById(stockId);
+    if (!stock) {
+      return res.status(404).json({
+        success: false,
+        message: "Garment stock record not found.",
+      });
+    }
+
+    const validSizes = ["XS", "S", "M", "L", "XL", "XXL"];
+    let totalAdded = 0;
+    const dateStr = new Date().toISOString().split("T")[0];
+    const timeStr = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    validSizes.forEach((sz) => {
+      const addQty = Math.max(0, parseInt(sizes[sz], 10) || 0);
+      if (addQty > 0) {
+        stock.sizes[sz] = Number(stock.sizes[sz] || 0) + addQty;
+        totalAdded += addQty;
+
+        stock.transactions.unshift({
+          date: dateStr,
+          time: timeStr,
+          type: "Inward / Restock",
+          size: sz,
+          quantity: addQty,
+          impact: addQty,
+          notes: (notes || "").trim() || `Restock batch: +${addQty} pcs for size ${sz}`,
+          loggedBy: (loggedBy || "Elena Rostova (Stock Room Manager)").trim(),
+          createdAt: new Date(),
+        });
+      }
+    });
+
+    if (totalAdded === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a restock quantity greater than 0 for at least one size.",
+      });
+    }
+
+    await stock.save();
+
+    const allStocks = await GarmentStock.find();
+    const metrics = calculateMetrics(allStocks);
+
+    res.json({
+      success: true,
+      message: `Successfully restocked ${totalAdded} pcs into ${stock.product} (${stock.colour}, ${stock.cut})!`,
+      data: stock,
+      metrics,
+    });
+  } catch (error) {
+    console.error("Error restocking garment:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // POST /api/stock-room/item - Add new garment stock entry (no location required)
 router.post("/item", async (req, res) => {
   try {

@@ -196,6 +196,10 @@
   filter: drop-shadow(0 0 8px rgba(124, 58, 237, 0.8));
 }
 
+.donut-segment.segment-red:hover {
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.85));
+}
+
 .donut-center-label {
   position: absolute;
   top: 50%;
@@ -244,12 +248,20 @@
   color: #7c3aed;
 }
 
+.donut-sub-big.overdue {
+  color: #ef4444;
+}
+
 .app.dark .donut-sub-big.available {
   color: #34d399;
 }
 
 .app.dark .donut-sub-big.reserved {
   color: #a78bfa;
+}
+
+.app.dark .donut-sub-big.overdue {
+  color: #f87171;
 }
 
 /* Minimal Stat List - Compact, Small, Elegant Rows */
@@ -294,6 +306,11 @@
   border-color: rgba(124, 58, 237, 0.3);
 }
 
+.alloc-minimal-row.active-row.red {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
 .app.dark .alloc-minimal-row {
   background: rgba(255, 255, 255, 0.03);
 }
@@ -311,6 +328,11 @@
 .app.dark .alloc-minimal-row.active-row.purple {
   background: rgba(124, 58, 237, 0.16);
   border-color: rgba(124, 58, 237, 0.4);
+}
+
+.app.dark .alloc-minimal-row.active-row.red {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
 .alloc-row-left {
@@ -365,6 +387,11 @@
   color: #6b21a8;
 }
 
+.alloc-row-pct.red {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .app.dark .alloc-row-pct.green {
   background: rgba(16, 185, 129, 0.2);
   color: #6ee7b7;
@@ -373,6 +400,11 @@
 .app.dark .alloc-row-pct.purple {
   background: rgba(124, 58, 237, 0.2);
   color: #d8b4fe;
+}
+
+.app.dark .alloc-row-pct.red {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
 }
 
 .alloc-row-dim {

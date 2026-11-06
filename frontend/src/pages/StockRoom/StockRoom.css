@@ -1252,9 +1252,458 @@
   padding: 16px 0;
 }
 
-/* New Garment Storage Form */
+/* New Garment Storage & Restock Modal */
 .new-garment-modal {
-  max-width: 580px;
+  max-width: 630px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Modal Segmented Tab Bar (Option 1 vs Option 2) */
+.stock-modal-tab-bar {
+  display: flex;
+  gap: 8px;
+  background: #f1f5f9;
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 14px;
+  border: 1px solid #e2e8f0;
+}
+
+.stock-modal-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.stock-modal-tab-btn:hover {
+  color: #0f172a;
+}
+
+.stock-modal-tab-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.app.dark .stock-modal-tab-bar {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.app.dark .stock-modal-tab-btn {
+  color: #94a3b8;
+}
+
+.app.dark .stock-modal-tab-btn.active {
+  background: #1e293b;
+  color: #f8fafc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Restock Form Elements */
+.restock-garment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.restock-step-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.restock-step-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.app.dark .restock-step-title {
+  color: #f8fafc;
+}
+
+.step-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.restock-select-wrap {
+  width: 100%;
+}
+
+.restock-product-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #0f172a;
+  background: #ffffff;
+  outline: none;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.restock-product-select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.app.dark .restock-product-select {
+  background: #0f172a;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+/* Restock Variants Grid */
+.restock-variants-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.restock-variant-card {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 11px 13px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+.restock-variant-card:hover {
+  border-color: #93c5fd;
+  background: #f8fafc;
+  transform: translateY(-1px);
+}
+
+.restock-variant-card.selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.14);
+}
+
+.app.dark .restock-variant-card {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.app.dark .restock-variant-card:hover {
+  background: #253349;
+}
+
+.app.dark .restock-variant-card.selected {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: #3b82f6;
+}
+
+.variant-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.variant-color-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.app.dark .variant-color-badge {
+  color: #f8fafc;
+}
+
+.variant-color-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  display: inline-block;
+}
+
+.variant-stock-pill {
+  font-size: 11px;
+  font-weight: 700;
+  color: #059669;
+  background: #d1fae5;
+  padding: 2px 7px;
+  border-radius: 12px;
+}
+
+.variant-cut-line {
+  font-size: 11.5px;
+  color: #64748b;
+  display: flex;
+  gap: 5px;
+}
+
+.variant-cut-line strong {
+  color: #334155;
+  text-transform: capitalize;
+}
+
+.app.dark .variant-cut-line strong {
+  color: #cbd5e1;
+}
+
+.variant-selected-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+/* Prompt Box */
+.restock-prompt-box {
+  background: #f8fafc;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 24px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.restock-prompt-box p {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+  max-width: 420px;
+}
+
+.restock-empty-notice {
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  color: #b45309;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+/* Restock Sizes Section */
+.restock-sizes-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.app.dark .restock-sizes-section {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+.restock-sizes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.restock-total-pill {
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 14px;
+  letter-spacing: 0.2px;
+}
+
+.restock-sizes-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.restock-size-box {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.restock-size-box.has-add {
+  border-color: #2563eb;
+  background: #f0f7ff;
+}
+
+.app.dark .restock-size-box {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.app.dark .restock-size-box.has-add {
+  border-color: #3b82f6;
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.restock-sz-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.app.dark .restock-sz-title {
+  color: #f8fafc;
+}
+
+.restock-curr-stock {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.micro-lbl {
+  font-size: 9.5px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.restock-input-wrap {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.restock-input-wrap:focus-within {
+  border-color: #2563eb;
+}
+
+.app.dark .restock-input-wrap {
+  background: #0f172a;
+  border-color: #475569;
+}
+
+.restock-input-wrap .plus-sign {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #2563eb;
+  padding-left: 5px;
+}
+
+.restock-input-wrap input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: center;
+  padding: 5px 3px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  outline: none;
+}
+
+.app.dark .restock-input-wrap input {
+  color: #f8fafc;
+}
+
+.restock-projected-stock {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.projected-val.highlight {
+  color: #059669;
+  font-weight: 800;
+}
+
+/* Quick Add helpers */
+.restock-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.quick-add-btn {
+  background: #e2e8f0;
+  border: none;
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.quick-add-btn:hover {
+  background: #cbd5e1;
+  color: #0f172a;
+}
+
+.quick-clear-btn {
+  background: transparent;
+  border: 1px solid #fca5a5;
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #dc2626;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.quick-clear-btn:hover {
+  background: #fef2f2;
 }
 
 .new-garment-form {

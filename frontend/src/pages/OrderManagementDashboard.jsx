@@ -34,36 +34,36 @@ import "./OverviewDashboard.css";
 
 // Exact child side menu stages from Sidebar.jsx
 const SAMPLE_STAGES = [
-  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/order/sample/order' },
-  { key: 'dtf-pending', shortLabel: 'DTF', fullLabel: 'DTF Pending', path: '/order/sample/dtf-pending' },
-  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/sample/stock' },
-  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/sample/printing' },
-  { key: 'ready-to-pick-up', shortLabel: 'Pickup', fullLabel: 'Ready to Pick Up', path: '/order/sample/ready-to-pick-up' },
-  { key: 'staging-ground', shortLabel: 'Staging', fullLabel: 'Staging Ground', path: '/order/sample/staging-ground' },
-  { key: 'customer-approval-awaiting', shortLabel: 'Approved', fullLabel: 'Customer Approval Awaiting', path: '/order/sample/customer-approval-awaiting' },
+  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/orders/view/sample?sub=order' },
+  { key: 'dtf-pending', shortLabel: 'DTF', fullLabel: 'DTF Pending', path: '/orders/view/sample?sub=dtf-pending' },
+  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/orders/view/sample?sub=stock' },
+  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/orders/view/sample?sub=printing' },
+  { key: 'ready-to-pick-up', shortLabel: 'Pickup', fullLabel: 'Ready to Pick Up', path: '/orders/view/sample?sub=ready-to-pick-up' },
+  { key: 'staging-ground', shortLabel: 'Staging', fullLabel: 'Staging Ground', path: '/orders/view/sample?sub=staging-ground' },
+  { key: 'customer-approval-awaiting', shortLabel: 'Approved', fullLabel: 'Customer Approval Awaiting', path: '/orders/view/sample?sub=customer-approval-awaiting' },
 ];
 
 const PARTIAL_STAGES = [
-  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/order/partial/order' },
-  { key: 'dtf-pending', shortLabel: 'DTF', fullLabel: 'DTF Pending', path: '/order/partial/dtf-pending' },
-  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/partial/stock' },
-  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/partial/printing' },
-  { key: 'quality-check', shortLabel: 'QC', fullLabel: 'Quality Check', path: '/order/partial/quality-check' },
-  { key: 'packaging', shortLabel: 'Package', fullLabel: 'Packaging', path: '/order/partial/packaging' },
-  { key: 'staging-room', shortLabel: 'Staging', fullLabel: 'Staging Room', path: '/order/partial/staging-room' },
-  { key: 'payment-confirmation', shortLabel: 'Payment', fullLabel: 'Payment Confirmation', path: '/order/partial/payment-confirmation' },
+  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/orders/view/partial?sub=order' },
+  { key: 'dtf-pending', shortLabel: 'DTF', fullLabel: 'DTF Pending', path: '/orders/view/partial?sub=dtf-pending' },
+  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/orders/view/partial?sub=stock' },
+  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/orders/view/partial?sub=printing' },
+  { key: 'quality-check', shortLabel: 'QC', fullLabel: 'Quality Check', path: '/orders/view/partial?sub=quality-check' },
+  { key: 'packaging', shortLabel: 'Package', fullLabel: 'Packaging', path: '/orders/view/partial?sub=packaging' },
+  { key: 'staging-room', shortLabel: 'Staging', fullLabel: 'Staging Room', path: '/orders/view/partial?sub=staging-room' },
+  { key: 'payment-confirmation', shortLabel: 'Payment', fullLabel: 'Payment Confirmation', path: '/orders/view/partial?sub=payment-confirmation' },
 ];
 
 const COMPLETE_STAGES = [
-  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/order/complete/order' },
-  { key: 'dtf-pending', shortLabel: 'DTF', fullLabel: 'DTF Pending', path: '/order/complete/dtf-pending' },
-  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/complete/stock' },
-  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/complete/printing' },
-  { key: 'quality-check', shortLabel: 'QC', fullLabel: 'Quality Check', path: '/order/complete/quality-check' },
-  { key: 'packaging', shortLabel: 'Package', fullLabel: 'Packaging', path: '/order/complete/packaging' },
-  { key: 'delivery-pending', shortLabel: 'Pending', fullLabel: 'Delivery Pending', path: '/order/complete/delivery-pending' },
-  { key: 'delivered', shortLabel: 'Delivered', fullLabel: 'Delivered', path: '/order/complete/delivered' },
-  { key: 'customer-support', shortLabel: 'Support', fullLabel: 'Customer Support', path: '/order/complete/customer-support' },
+  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/orders/view/complete?sub=order' },
+  { key: 'dtf-pending', shortLabel: 'DTF', fullLabel: 'DTF Pending', path: '/orders/view/complete?sub=dtf-pending' },
+  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/orders/view/complete?sub=stock' },
+  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/orders/view/complete?sub=printing' },
+  { key: 'quality-check', shortLabel: 'QC', fullLabel: 'Quality Check', path: '/orders/view/complete?sub=quality-check' },
+  { key: 'packaging', shortLabel: 'Package', fullLabel: 'Packaging', path: '/orders/view/complete?sub=packaging' },
+  { key: 'delivery-pending', shortLabel: 'Pending', fullLabel: 'Delivery Pending', path: '/orders/view/complete?sub=delivery-pending' },
+  { key: 'delivered', shortLabel: 'Delivered', fullLabel: 'Delivered', path: '/orders/view/complete?sub=delivered' },
+  { key: 'customer-support', shortLabel: 'Support', fullLabel: 'Customer Support', path: '/orders/view/complete?sub=customer-support' },
 ];
 
 // Helper to normalize stage and subStage from database records
@@ -337,6 +337,7 @@ export default function OrderManagementDashboard() {
             const x = spacing + i * (colWidth + spacing);
             const y = baselineY - barH;
             const isHovered = hoveredBar && hoveredBar.pipeline === pipelineKey && hoveredBar.key === item.key;
+            const safeRadius = Math.min(6, Math.max(1, barH / 2));
 
             return (
               <g
@@ -345,8 +346,18 @@ export default function OrderManagementDashboard() {
                 onClick={() => navigate(item.path)}
                 onMouseEnter={() => setHoveredBar({ ...item, pipeline: pipelineKey })}
                 onMouseLeave={() => setHoveredBar(null)}
-                title={`${item.fullLabel}: ${item.count} order${item.count === 1 ? '' : 's'} (${item.quantity} pcs) - Click to open`}
+                style={{ cursor: 'pointer' }}
               >
+                {/* Full-column transparent hit-area prevents mouse oscillation & freezing on small/zero bars */}
+                <rect
+                  x={x - 2}
+                  y={0}
+                  width={colWidth + 4}
+                  height={135}
+                  fill="transparent"
+                  style={{ pointerEvents: 'all' }}
+                />
+
                 {/* Number above the bar */}
                 <text
                   x={x + colWidth / 2}
@@ -355,21 +366,24 @@ export default function OrderManagementDashboard() {
                   fontSize="12"
                   fontWeight="700"
                   fill={isHovered ? barColor : (hasData ? "#0f172a" : "#94a3b8")}
+                  style={{ pointerEvents: 'none' }}
                 >
                   {item.count}
                 </text>
 
                 {/* Vertical Bar */}
                 <rect
+                  className="visual-bar"
                   x={x}
                   y={y}
                   width={colWidth}
                   height={barH}
-                  rx="6"
+                  rx={safeRadius}
                   fill={hasData ? barColor : "#e2e8f0"}
                   style={{
                     opacity: isHovered ? 1 : (hasData ? 0.9 : 0.6),
-                    filter: isHovered ? `drop-shadow(0 4px 8px ${barColor}66)` : 'none'
+                    filter: isHovered ? `drop-shadow(0 4px 8px ${barColor}66)` : 'none',
+                    pointerEvents: 'none'
                   }}
                 />
 
@@ -381,6 +395,7 @@ export default function OrderManagementDashboard() {
                   fontSize="11"
                   fontWeight={isHovered || hasData ? "600" : "500"}
                   fill={isHovered ? barColor : (hasData ? "#334155" : "#94a3b8")}
+                  style={{ pointerEvents: 'none' }}
                 >
                   {item.shortLabel}
                 </text>
@@ -527,7 +542,7 @@ export default function OrderManagementDashboard() {
       </div>
 
       <div className="order-charts-grid">
-        {/* Chart 1: Sample Child Side Menu Stages */}
+        {/* Chart 1: Sample Child Stages */}
         <div className="order-chart-card">
           <div className="order-chart-header">
             <div>
@@ -538,10 +553,10 @@ export default function OrderManagementDashboard() {
               <p>
                 {hoveredBar && hoveredBar.pipeline === 'sample' ? (
                   <span style={{ color: '#0284c7', fontWeight: 700 }}>
-                    {hoveredBar.fullLabel}: {hoveredBar.count} order{hoveredBar.count === 1 ? '' : 's'} ({hoveredBar.quantity} pcs)
+                    {hoveredBar.fullLabel}: {hoveredBar.count || 0} order{(hoveredBar.count || 0) === 1 ? '' : 's'} ({hoveredBar.quantity || 0} pcs)
                   </span>
                 ) : (
-                  'Orders across 7 side menu stages'
+                  'Orders across 7 stages'
                 )}
               </p>
             </div>
@@ -551,14 +566,13 @@ export default function OrderManagementDashboard() {
           {renderBarChart(sampleCounts, '#0284c7', 'sample', 380, 26)}
 
           <div className="order-chart-footer">
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Click bar to open stage</span>
-            <button className="order-open-link" onClick={() => navigate('/order/sample/order')}>
+            <button className="order-open-link" onClick={() => navigate('/orders/view/sample')}>
               <span>Open Sample</span> <ChevronRight size={14} />
             </button>
           </div>
         </div>
 
-        {/* Chart 2: Partial Child Side Menu Stages */}
+        {/* Chart 2: Partial Child Stages */}
         <div className="order-chart-card">
           <div className="order-chart-header">
             <div>
@@ -569,10 +583,10 @@ export default function OrderManagementDashboard() {
               <p>
                 {hoveredBar && hoveredBar.pipeline === 'partial' ? (
                   <span style={{ color: '#7c3aed', fontWeight: 700 }}>
-                    {hoveredBar.fullLabel}: {hoveredBar.count} order{hoveredBar.count === 1 ? '' : 's'} ({hoveredBar.quantity} pcs)
+                    {hoveredBar.fullLabel}: {hoveredBar.count || 0} order{(hoveredBar.count || 0) === 1 ? '' : 's'} ({hoveredBar.quantity || 0} pcs)
                   </span>
                 ) : (
-                  'Orders across 9 side menu stages'
+                  'Orders across 8 stages'
                 )}
               </p>
             </div>
@@ -582,14 +596,13 @@ export default function OrderManagementDashboard() {
           {renderBarChart(partialCounts, '#7c3aed', 'partial', 400, 24)}
 
           <div className="order-chart-footer">
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Click bar to open stage</span>
-            <button className="order-open-link" onClick={() => navigate('/order/partial/order')}>
+            <button className="order-open-link" onClick={() => navigate('/orders/view/partial')}>
               <span>Open Partial</span> <ChevronRight size={14} />
             </button>
           </div>
         </div>
 
-        {/* Chart 3: Complete Child Side Menu Stages */}
+        {/* Chart 3: Complete Child Stages */}
         <div className="order-chart-card">
           <div className="order-chart-header">
             <div>
@@ -600,10 +613,10 @@ export default function OrderManagementDashboard() {
               <p>
                 {hoveredBar && hoveredBar.pipeline === 'complete' ? (
                   <span style={{ color: '#059669', fontWeight: 700 }}>
-                    {hoveredBar.fullLabel}: {hoveredBar.count} order{hoveredBar.count === 1 ? '' : 's'} ({hoveredBar.quantity} pcs)
+                    {hoveredBar.fullLabel}: {hoveredBar.count || 0} order{(hoveredBar.count || 0) === 1 ? '' : 's'} ({hoveredBar.quantity || 0} pcs)
                   </span>
                 ) : (
-                  'Orders across 8 side menu stages'
+                  'Orders across 9 stages'
                 )}
               </p>
             </div>
@@ -613,8 +626,7 @@ export default function OrderManagementDashboard() {
           {renderBarChart(completeCounts, '#059669', 'complete', 440, 22)}
 
           <div className="order-chart-footer">
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Click bar to open stage</span>
-            <button className="order-open-link" onClick={() => navigate('/order/complete/order')}>
+            <button className="order-open-link" onClick={() => navigate('/orders/view/complete')}>
               <span>Open Complete</span> <ChevronRight size={14} />
             </button>
           </div>
