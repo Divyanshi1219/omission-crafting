@@ -10,7 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
-  DollarSign
+  IndianRupee
 } from 'lucide-react';
 import api from '../api';
 import './InventoryAnalyticsPanel.css';

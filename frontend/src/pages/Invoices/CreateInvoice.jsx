@@ -14,7 +14,7 @@ import {
   Hash,
   User,
   Building,
-  DollarSign,
+  IndianRupee,
   ChevronDown,
   Layers,
   Sparkles,

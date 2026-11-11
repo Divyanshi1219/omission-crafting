@@ -16,7 +16,7 @@ import {
   Phone,
   Calendar,
   Layers,
-  DollarSign,
+  IndianRupee,
   Package,
   FileText,
   Send,

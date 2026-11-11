@@ -25,7 +25,7 @@ import {
   Warehouse,
   AlertTriangle,
   CheckCircle2,
-  DollarSign,
+  IndianRupee,
   BarChart3,
   Plus,
   Archive,
@@ -113,10 +113,31 @@ function Dashboard() {
   }, [isStock, isAdmin]);
 
   // Live Leads and Production Data from Backend
-  const [leads, setLeads] = useState([]);
+  const [rawLeads, setRawLeads] = useState([]);
   // True once the leads fetch succeeded — lets profiles with zero orders
   // display their real (0) numbers instead of the demo baseline data.
   const [leadsLoaded, setLeadsLoaded] = useState(false);
+
+  // Profile-specific reactive leads filtering
+  const leads = useMemo(() => {
+    if (!rawLeads || rawLeads.length === 0) return [];
+    if (isAdmin) return rawLeads;
+    const myName = (currentUser?.name || "").toLowerCase().trim();
+    const myId = (currentUser?.id || "").toLowerCase();
+    return rawLeads.filter((l) => {
+      const itemEmp = (l.employeeName || "").toLowerCase().trim();
+      const itemCreatedBy = (l.createdBy || "").toLowerCase();
+      const itemLeadApprover = (l.leadApproval?.author || "").toLowerCase();
+      const itemStockApprover = (l.stockApproval?.author || "").toLowerCase();
+      const itemProdApprover = (l.productionApproval?.author || "").toLowerCase();
+      return (
+        (myName && itemEmp && itemEmp === myName) ||
+        (myName && itemEmp && (itemEmp.startsWith(myName) || myName.startsWith(itemEmp))) ||
+        (myId && itemCreatedBy && itemCreatedBy.includes(myId)) ||
+        (myName && [itemLeadApprover, itemStockApprover, itemProdApprover].some((a) => a.includes(myName)))
+      );
+    });
+  }, [rawLeads, currentUser, isAdmin]);
 
   // UI Interactive States
   const [chartViewMode, setChartViewMode] = useState("volume"); // "volume" | "revenue"
@@ -423,29 +444,7 @@ function Dashboard() {
     api.get("/api/leads")
       .then((res) => {
         if (res.data?.data) {
-          let fetchedLeads = res.data.data;
-          // CEO (admin) sees the complete company data — unchanged.
-          // Every other profile sees only their own profile-specific data:
-          // orders they created/own (employeeName / createdBy) or that
-          // involve them as an approver (Lead Manager / Stock / Production).
-          if (!isAdmin) {
-            const myName = (currentUser?.name || "").toLowerCase().trim();
-            const myId = (currentUser?.id || "").toLowerCase();
-            fetchedLeads = fetchedLeads.filter((l) => {
-              const itemEmp = (l.employeeName || "").toLowerCase().trim();
-              const itemCreatedBy = (l.createdBy || "").toLowerCase();
-              const itemLeadApprover = (l.leadApproval?.author || "").toLowerCase();
-              const itemStockApprover = (l.stockApproval?.author || "").toLowerCase();
-              const itemProdApprover = (l.productionApproval?.author || "").toLowerCase();
-              return (
-                (myName && itemEmp && itemEmp === myName) ||
-                (myName && itemEmp && (itemEmp.startsWith(myName) || myName.startsWith(itemEmp))) ||
-                (myId && itemCreatedBy && itemCreatedBy.includes(myId)) ||
-                (myName && [itemLeadApprover, itemStockApprover, itemProdApprover].some((a) => a.includes(myName)))
-              );
-            });
-          }
-          setLeads(fetchedLeads);
+          setRawLeads(res.data.data);
           setLeadsLoaded(true);
         }
       })
@@ -466,26 +465,17 @@ function Dashboard() {
 
   // Compute live repeat customer rate linked to lead form field `repeatedOrder`
   const repeatCustomerStats = useMemo(() => {
-    // CEO keeps the original behavior; other profiles are live even with 0 orders
-    const hasLiveLeads = isAdmin ? leads.length > 0 : leadsLoaded;
-    const totalCount = hasLiveLeads ? leads.length : 25;
+    const ordersList = leads.filter(l => l.query === 'order' || l.orderStage || l.totalQuantity);
+    const hasLiveOrders = isAdmin ? ordersList.length > 0 : (leadsLoaded && ordersList.length > 0);
+    const totalCount = hasLiveOrders ? ordersList.length : (leads.length || 25);
     
-    // Count leads where repeatedOrder === "Yes" (matching create lead form radio value)
-    const repeatLeads = hasLiveLeads
-      ? leads.filter(l => (l.repeatedOrder || "").toLowerCase().trim() === "yes")
-      : [
-          { clientName: "Acme Apparel", orderStage: "complete", netAmount: 1850, repeatedOrder: "Yes", createdAt: "2026-10-02" },
-          { clientName: "Vortex Athletics", orderStage: "partial", netAmount: 2400, repeatedOrder: "Yes", createdAt: "2026-10-04" },
-          { clientName: "Summit Brand Studio", orderStage: "sample", netAmount: 650, repeatedOrder: "Yes", createdAt: "2026-10-05" },
-          { clientName: "Urban Stitch Co", orderStage: "complete", netAmount: 3100, repeatedOrder: "Yes", createdAt: "2026-09-28" },
-          { clientName: "Prime Uniforms", orderStage: "partial", netAmount: 1450, repeatedOrder: "Yes", createdAt: "2026-09-24" },
-        ];
-    
-    const repeatCount = hasLiveLeads ? repeatLeads.length : 17;
-    const firstTimeCount = totalCount - repeatCount;
-    // Zero-division safe (only reachable for profiles with 0 orders)
+    // Count orders where repeatedOrder === "Yes" (matching create lead form radio value)
+    const repeatLeads = (hasLiveOrders ? ordersList : leads).filter(l => (l.repeatedOrder || "").toLowerCase().trim() === "yes");
+    const repeatCount = hasLiveOrders ? repeatLeads.length : (hasLiveOrders ? 0 : 7);
+    const firstTimeCount = Math.max(0, totalCount - repeatCount);
+    // Zero-division safe
     const rate = totalCount > 0 ? Math.round((repeatCount / totalCount) * 100) : 0;
-    const target = 80;
+    const target = 30;
 
     return {
       totalCount,
@@ -493,17 +483,19 @@ function Dashboard() {
       firstTimeCount,
       rate,
       target,
-      isLive: hasLiveLeads,
+      isLive: hasLiveOrders,
       repeatLeads
     };
-  }, [leads, leadsLoaded]);
+  }, [leads, leadsLoaded, isAdmin]);
 
   // Compute live stage counts for Sample, Partial, Complete
   const stageStats = useMemo(() => {
-    // CEO keeps the original behavior; other profiles are live even with 0 orders
     const hasLiveLeads = isAdmin ? leads.length > 0 : leadsLoaded;
 
-    const sampleLeads = leads.filter(l => (l.orderStage || "sample").toLowerCase().trim() === "sample");
+    const sampleLeads = leads.filter(l => {
+      const s = (l.orderStage || "sample").toLowerCase().trim();
+      return s === "sample" || (s !== "partial" && s !== "complete");
+    });
     const partialLeads = leads.filter(l => (l.orderStage || "").toLowerCase().trim() === "partial");
     const completeLeads = leads.filter(l => (l.orderStage || "").toLowerCase().trim() === "complete");
 
@@ -518,10 +510,10 @@ function Dashboard() {
     return {
       sample: { count: sampleCount, pct: pctOf(sampleCount) },
       partial: { count: partialCount, pct: pctOf(partialCount) },
-      complete: { count: completeCount, pct: 100 - pctOf(sampleCount) - pctOf(partialCount) },
+      complete: { count: completeCount, pct: Math.max(0, 100 - pctOf(sampleCount) - pctOf(partialCount)) },
       total
     };
-  }, [leads, leadsLoaded]);
+  }, [leads, leadsLoaded, isAdmin]);
 
   // Currency formatter for INR
   const formatINR = (val, compact = false) => {
@@ -654,42 +646,6 @@ function Dashboard() {
       peakPeriod: columns.reduce((p, c) => (c.val > (p?.val || 0) ? c : p), columns[0])
     };
   }, [leads, leadsLoaded, salesTimeFrame, customStartDate, customEndDate, chartViewMode]);
-
-  // Monthly dataset for the Sample / Partial / Complete Production & Orders Overview
-  const monthlyStageData = useMemo(() => {
-    return [
-      {
-        month: "Oct",
-        totalLabelUnits: "340 Units",
-        totalLabelRevenue: "$ 2,988.20",
-        stages: {
-          sample: { count: 85, revenue: "$ 740.00", pct: 25, h: 26, color: "#6366f1" },
-          partial: { count: 125, revenue: "$ 1,120.00", pct: 37, h: 36, color: "#f59e0b" },
-          complete: { count: 130, revenue: "$ 1,128.20", pct: 38, h: 38, color: "#10b981" },
-        }
-      },
-      {
-        month: "Nov",
-        totalLabelUnits: "280 Units",
-        totalLabelRevenue: "$ 1,765.09",
-        stages: {
-          sample: { count: 60, revenue: "$ 480.00", pct: 21, h: 20, color: "#6366f1" },
-          partial: { count: 110, revenue: "$ 690.00", pct: 39, h: 30, color: "#f59e0b" },
-          complete: { count: 110, revenue: "$ 595.09", pct: 40, h: 30, color: "#10b981" },
-        }
-      },
-      {
-        month: "Dec",
-        totalLabelUnits: "460 Units",
-        totalLabelRevenue: "$ 4,504.22",
-        stages: {
-          sample: { count: 110, revenue: "$ 1,120.00", pct: 24, h: 34, color: "#6366f1" },
-          partial: { count: 180, revenue: "$ 1,780.00", pct: 39, h: 48, color: "#f59e0b" },
-          complete: { count: 170, revenue: "$ 1,604.22", pct: 37, h: 48, color: "#10b981" },
-        }
-      }
-    ];
-  }, []);
 
   // Weekly Order Velocity Data
   const weeklyVelocityData = [
@@ -1433,7 +1389,7 @@ function Dashboard() {
                   <span className="inv-pure-total-pill">
                     {invGraphMetric === "units"
                       ? `${inventoryStats.totalUnits.toLocaleString()} Units`
-                      : `$${Math.round(inventoryStats.totalValuation).toLocaleString()}`}
+                      : `₹${Math.round(inventoryStats.totalValuation).toLocaleString('en-IN')}`}
                   </span>
                 </div>
 
@@ -1464,7 +1420,7 @@ function Dashboard() {
                       className={invGraphMetric === "value" ? "active" : ""}
                       onClick={() => setInvGraphMetric("value")}
                     >
-                      $
+                      ₹
                     </button>
                   </div>
 
@@ -1622,7 +1578,7 @@ function Dashboard() {
                           >
                             {invGraphMetric === "units"
                               ? item.units.toLocaleString()
-                              : `$${Math.round(item.valuation).toLocaleString()}`}
+                              : `₹${Math.round(item.valuation).toLocaleString('en-IN')}`}
                           </text>
 
                           {/* Category / Stockroom Name */}
@@ -1658,7 +1614,7 @@ function Dashboard() {
                       <strong>
                         {invGraphMetric === "units"
                           ? `${hoveredStockItem.units.toLocaleString()} Units`
-                          : `$${Math.round(hoveredStockItem.valuation).toLocaleString()}`}
+                          : `₹${Math.round(hoveredStockItem.valuation).toLocaleString('en-IN')}`}
                       </strong>
                     </div>
                     <div className="inv-pure-tt-tags">
@@ -2078,7 +2034,7 @@ function Dashboard() {
                               <tr key={idx}>
                                 <td><strong>{lead.clientName || lead.companyName || lead.name || `Client #${idx + 1}`}</strong></td>
                                 <td style={{ textTransform: "capitalize" }}>{lead.orderStage || "Sample"}</td>
-                                <td>${lead.netAmount || lead.totalAmount || "1,200.00"}</td>
+                                <td>₹{lead.netAmount || lead.totalAmount || "1,200.00"}</td>
                                 <td><span className="repeat-tag yes">Yes</span></td>
                               </tr>
                             ))

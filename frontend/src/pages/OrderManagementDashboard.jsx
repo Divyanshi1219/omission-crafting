@@ -19,7 +19,7 @@ import {
   X,
   Plus,
   ReceiptText,
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   AlertTriangle,
   Calendar,
@@ -144,7 +144,11 @@ export default function OrderManagementDashboard() {
       const isOwner =
         (currentEmp.startsWith('divyansh') || currentId === 'sales') &&
         (leadEmp.startsWith('divyansh') || leadEmp === 'sales executive' || leadCreatedBy === 'sales');
-      return isOwner || (leadEmp && leadEmp === currentEmp);
+      return (
+        isOwner ||
+        (leadEmp && (leadEmp === currentEmp || currentEmp.startsWith(leadEmp) || leadEmp.startsWith(currentEmp))) ||
+        (currentId && leadCreatedBy && (leadCreatedBy === currentId || leadCreatedBy.includes(currentId)))
+      );
     });
   }, [leads, isSales, currentUser]);
 
