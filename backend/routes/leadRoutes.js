@@ -885,13 +885,13 @@ router.patch("/:id/approval", async (req, res) => {
         lead.approvalStatus = "Referred Back";
         lead.subStage = "order";
       } else if (status === "Approved") {
+        lead.approvalStatus = "Approved";
         const isEmb = isEmbroidery(lead);
         if (isEmb) {
           // For Embroidery: ONLY ONE TASK - Task 1: Stock Room (Elena Rostova). No Production task.
           lead.stockTaskStage = "verification";
           lead.stockApproval = { status: "Pending", note: "", author: "Elena Rostova", updatedAt: null };
           lead.productionApproval = { status: "Not Applicable", note: "Not required for Embroidery", author: "N/A", updatedAt: new Date() };
-          lead.approvalStatus = "Pending";
           if (!lead.subStage || lead.subStage === "order" || lead.subStage === "leads" || lead.subStage === "new") {
             lead.subStage = "order";
           }
@@ -908,7 +908,6 @@ router.patch("/:id/approval", async (req, res) => {
             ...(lead.productionTaskData || {}),
             printingSubmitted: false,
           };
-          lead.approvalStatus = "Pending";
         }
       }
     } else if (isStock) {
@@ -937,6 +936,7 @@ router.patch("/:id/approval", async (req, res) => {
         lead.approvalStatus = "Referred Back";
         lead.subStage = "order";
       } else if (status === "Approved") {
+        lead.approvalStatus = "Approved";
         if (!isEmbroidery(lead)) {
           if (!lead.subStage || lead.subStage === "order" || lead.subStage === "leads" || lead.subStage === "new") {
             lead.subStage = "dtf-pending";

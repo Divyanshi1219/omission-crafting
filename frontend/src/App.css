@@ -905,6 +905,10 @@
   padding: 16px 20px 38px 20px;
 }
 
+.main-content:has(.lead-approvals-page) {
+  padding: 16px 16px 38px 16px;
+}
+
 .main-content:has(.stock-room-page) {
   padding: 16px 14px 38px 14px;
 }
@@ -1013,6 +1017,10 @@
     padding: 30px;
   }
 
+  .main-content:has(.lead-approvals-page) {
+    padding: 24px 16px;
+  }
+
   .navbar {
     padding: 0 20px;
   }
@@ -1044,6 +1052,10 @@
 
   .main-content {
     padding: 25px 20px;
+  }
+
+  .main-content:has(.lead-approvals-page) {
+    padding: 20px 12px;
   }
 
   .user-details {

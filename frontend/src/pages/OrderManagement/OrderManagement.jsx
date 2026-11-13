@@ -591,8 +591,6 @@ function OrderManagement() {
     printingStatus: true,
     totalQuantity: true,
     clearanceStatus: true,
-    createdAt: true,
-    action: true,
     query: false,
     clientName: false,
     companyAddress: false,
@@ -7186,7 +7184,6 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     ...(!isPrintingListView ? [
       { key: 'totalQuantity', label: 'Quantity' },
       ...(!isReadyToPickListView && !isStagingRoomListView && !isCustomerApprovalListView ? [{ key: 'clearanceStatus', label: 'Clearance Status' }] : []),
-      { key: 'createdAt', label: 'Date' },
     ] : []),
     { key: 'query', label: 'Query' },
     { key: 'clientName', label: 'Client Name' },
@@ -7206,15 +7203,10 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     { key: 'deliveryDate', label: 'Delivery Date' },
     { key: 'modeOfDelivery', label: 'Mode of Delivery' },
     { key: 'items', label: 'Add Items' },
-    ...(!isPrintingListView && !isStagingRoomListView && !isCustomerApprovalListView ? [{ key: 'action', label: 'Action' }] : []),
   ];
 
   return (
     <div className="page-container">
-      <div className="dashboard-header">
-        <h2 style={{ textTransform: 'capitalize' }}>{currentSection || 'Order Management'}</h2>
-      </div>
-      
       <div className="chart-card hover-scale" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
         <div className="chart-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div className="chart-title-sec">
@@ -7346,7 +7338,6 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                   {!isReadyToPickListView && visibleColumns.stageStatus && <th style={{ padding: '10px 12px' }}>Stage Status</th>}
                   {!isPrintingListView && visibleColumns.totalQuantity && <th style={{ padding: '10px 12px' }}>Quantity</th>}
                   {!isPrintingListView && !isReadyToPickListView && !isStagingRoomListView && !isCustomerApprovalListView && visibleColumns.clearanceStatus && <th style={{ padding: '10px 12px' }}>Clearance Status</th>}
-                  {!isPrintingListView && visibleColumns.createdAt && <th style={{ padding: '10px 12px' }}>Date</th>}
                   {visibleColumns.query && <th style={{ padding: '10px 12px' }}>Query</th>}
                   {visibleColumns.clientName && <th style={{ padding: '10px 12px' }}>Client Name</th>}
                   {visibleColumns.companyAddress && <th style={{ padding: '10px 12px' }}>Company Address</th>}
@@ -7365,7 +7356,6 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                   {visibleColumns.deliveryDate && <th style={{ padding: '10px 12px' }}>Delivery Date</th>}
                   {visibleColumns.modeOfDelivery && <th style={{ padding: '10px 12px' }}>Mode of Delivery</th>}
                   {visibleColumns.items && <th style={{ padding: '10px 12px' }}>Add Items</th>}
-                  {!isPrintingListView && !isStagingRoomListView && !isCustomerApprovalListView && visibleColumns.action && <th style={{ padding: '10px 12px', textAlign: 'center' }}>Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -7444,11 +7434,6 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                               ? 'Referred Back'
                               : 'Pending'}
                           </span>
-                        </td>
-                      )}
-                      {!isPrintingListView && visibleColumns.createdAt && (
-                        <td style={{ padding: '12px', color: '#94a3b8', fontSize: '12px' }}>
-                          {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
                         </td>
                       )}
                       {visibleColumns.query && (
@@ -7541,36 +7526,6 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                           {Array.isArray(item.items) && item.items.length > 0
                             ? item.items.map((it) => `${it.item || it.enterItem || 'Item'} (${it.quantity || 0})`).join(', ')
                             : '—'}
-                        </td>
-                      )}
-                      {!isPrintingListView && !isStagingRoomListView && !isCustomerApprovalListView && visibleColumns.action && (
-                        <td style={{ padding: '12px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const editParam = isLeadManager ? 'false' : 'true';
-                              navigate(`/order/create-lead?id=${item._id}&edit=${editParam}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(item.orderStage || 'sample')}`);
-                            }}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '5px 12px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              background: '#eff6ff',
-                              color: '#2563eb',
-                              border: '1px solid #bfdbfe',
-                              cursor: 'pointer',
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#dbeafe')}
-                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#eff6ff')}
-                            title={isLeadManager ? "View this order" : "Edit this order"}
-                          >
-                            {isLeadManager ? <Eye size={13} /> : <Edit2 size={13} />}
-                            <span>{isLeadManager ? 'View' : 'Edit'}</span>
-                          </button>
                         </td>
                       )}
                     </tr>

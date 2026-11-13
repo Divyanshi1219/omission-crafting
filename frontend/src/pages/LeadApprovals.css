@@ -1,5 +1,5 @@
 .lead-approvals-page {
-  padding: 24px 32px;
+  padding: 24px 0;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -750,7 +750,7 @@
 
 @media (max-width: 768px) {
   .lead-approvals-page {
-    padding: 16px;
+    padding: 16px 0;
   }
   .approvals-header {
     flex-direction: column;

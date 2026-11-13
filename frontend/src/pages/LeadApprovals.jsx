@@ -104,6 +104,8 @@ export default function LeadApprovals() {
   // Status helper
   const getApprovalStatus = (order) => {
     if (!order) return 'Pending';
+    if (order.leadApproval?.status === 'Approved' || order.approvalStatus === 'Approved') return 'Approved';
+    if (order.leadApproval?.status === 'Referred Back' || order.approvalStatus === 'Referred Back') return 'Referred Back';
     return order.leadApproval?.status || order.approvalStatus || 'Pending';
   };
 
@@ -336,7 +338,6 @@ export default function LeadApprovals() {
                 <th>Repeat Customer</th>
                 <th>Sales Executive</th>
                 <th>Approval Status</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -424,44 +425,6 @@ export default function LeadApprovals() {
                         />
                         {status}
                       </span>
-                    </td>
-
-                    <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                      <div className="action-buttons-group">
-                        <button
-                          type="button"
-                          className="btn-action-view"
-                          onClick={(e) => handleViewOrder(order, e)}
-                          title="View order details (Read-only)"
-                        >
-                          <Eye size={14} />
-                          <span>View</span>
-                        </button>
-
-                        {status !== 'Approved' && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn-action-refer-back"
-                              onClick={(e) => openReferBack(order, e)}
-                              title="Refer back to sales executive (mandatory note)"
-                            >
-                              <RotateCcw size={14} />
-                              <span>Refer Back</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              className="btn-action-approve"
-                              onClick={(e) => openApprove(order, e)}
-                              title="Approve order and advance to DTF Pending"
-                            >
-                              <CheckCircle size={14} />
-                              <span>Submit</span>
-                            </button>
-                          </>
-                        )}
-                      </div>
                     </td>
                   </tr>
                 );
