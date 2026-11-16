@@ -1139,6 +1139,18 @@ function OrderManagement() {
         setReferBackReason('');
         setReferModalOpen(false);
         setTimeout(() => setActionSuccessMsg(''), 6000);
+
+        const target = searchParams.get('from')?.includes('/approvals')
+          ? searchParams.get('from')
+          : '/approvals';
+        navigate(target, {
+          state: {
+            toast: {
+              message: msg,
+              type: status === 'Approved' ? 'success' : 'info'
+            }
+          }
+        });
       }
     } catch (err) {
       console.error('Error submitting lead approval:', err);

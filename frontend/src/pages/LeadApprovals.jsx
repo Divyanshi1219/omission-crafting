@@ -101,6 +101,13 @@ export default function LeadApprovals() {
     fetchOrders();
   }, []);
 
+  useEffect(() => {
+    if (location.state?.toast) {
+      showToast(location.state.toast.message, location.state.toast.type || 'success');
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
   // Status helper
   const getApprovalStatus = (order) => {
     if (!order) return 'Pending';
