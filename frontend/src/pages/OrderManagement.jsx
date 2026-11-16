@@ -556,7 +556,7 @@ function OrderManagement() {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    } catch (_) {}
+    } catch (_) { }
     return [];
   });
 
@@ -564,7 +564,7 @@ function OrderManagement() {
     try {
       const cached = sessionStorage.getItem("omission_cached_leads");
       if (cached && JSON.parse(cached).length > 0) return false;
-    } catch (_) {}
+    } catch (_) { }
     return true;
   });
   const [orderApprovalData, setOrderApprovalData] = useState(null);
@@ -712,7 +712,7 @@ function OrderManagement() {
           setLeadsList(res.data.data);
           try {
             sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
-          } catch (_) {}
+          } catch (_) { }
         }
       })
       .catch((err) => console.error('Error fetching leads:', err));
@@ -1470,9 +1470,9 @@ function OrderManagement() {
         .then((res) => {
           if (res.data?.data) {
             setLeadsList(res.data.data);
-          try {
-            sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
-          } catch (_) {}
+            try {
+              sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
+            } catch (_) { }
           }
         })
         .catch((err) => console.error('Error fetching leads:', err))
@@ -1558,7 +1558,7 @@ function OrderManagement() {
       const os = orderStage.toLowerCase().trim();
       if (['sample', 'partial', 'complete'].includes(os)) return os;
     }
-if (location.pathname.startsWith('/order/embroidery/sample') || location.pathname.includes('/order/sample') || location.pathname.includes('/sample/')) return 'sample';
+    if (location.pathname.startsWith('/order/embroidery/sample') || location.pathname.includes('/order/sample') || location.pathname.includes('/sample/')) return 'sample';
     if (location.pathname.includes('/order/partial') || location.pathname.includes('/partial/')) return 'partial';
     if (location.pathname.includes('/order/complete') || location.pathname.includes('/complete/')) return 'complete';
     if (editId) return 'sample';
@@ -1926,7 +1926,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     return ['t-shirt', 't shirt', 'tshirt'].includes(t);
   };
 
-  
+
   const getSelectedItemConfig = (it) => {
     if (!it) return null;
     if (it.itemType === 'others') return null;
@@ -5509,145 +5509,145 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                   </select>
                 </div> */}
 
-                <div className="form-group">
-                  <label>Company Name {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <input
-                    type="text"
-                    required={(query || '').toLowerCase().trim() === 'order'}
-                    disabled={isReadOnly}
-                    value={formData.companyName}
-                    onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Client Name {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <input
-                    type="text"
-                    required={(query || '').toLowerCase().trim() === 'order'}
-                    disabled={isReadOnly}
-                    value={formData.clientName}
-                    onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Company Address {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <input
-                    type="text"
-                    required={(query || '').toLowerCase().trim() === 'order'}
-                    disabled={isReadOnly}
-                    value={formData.companyAddress}
-                    onChange={(e) => setFormData({ ...formData, companyAddress: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>State {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <select
-                    required={(query || '').toLowerCase().trim() === 'order'}
-                    disabled={isReadOnly}
-                    value={(formData.state || '').toUpperCase()}
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value.toUpperCase() })}
-                    style={{ textTransform: 'uppercase' }}
-                  >
-                    <option value="">SELECT STATE / UNION TERRITORY</option>
-                    {formData.state && !INDIAN_STATES.includes((formData.state || '').toUpperCase()) && (
-                      <option value={(formData.state || '').toUpperCase()}>
-                        {(formData.state || '').toUpperCase()}
-                      </option>
-                    )}
-                    {INDIAN_STATES.map((st) => (
-                      <option key={st} value={st}>
-                        {st}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Pincode {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <input
-                    type="text"
-                    required={(query || '').toLowerCase().trim() === 'order'}
-                    disabled={isReadOnly}
-                    value={formData.pincode}
-                    onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Phone Number *</label>
-                  <div>
+                  <div className="form-group">
+                    <label>Company Name {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
                     <input
-                      type="tel"
-                      required
+                      type="text"
+                      required={(query || '').toLowerCase().trim() === 'order'}
                       disabled={isReadOnly}
-                      value={formData.phoneNumber}
-                      onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-                      onBlur={() => setPhoneTouched(true)}
-                      placeholder="10-digit mobile number"
+                      value={formData.companyName}
+                      onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
                     />
-                    {phoneTouched && !/^\d{10}$/.test((formData.phoneNumber || '').trim()) && (
-                      <span style={{ color: '#ef4444', fontSize: '12px', display: 'block', marginTop: '4px' }}>
-                        Phone number must be of 10 digits
-                      </span>
-                    )}
                   </div>
-                </div>
 
-                <div className="form-group" style={{ gridColumn: 2 }}>
-                  <label>Repeated Order</label>
-                  <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'default' : 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
-                      <input
-                        type="radio"
-                        name="repeatedOrder"
-                        value="Yes"
-                        disabled={isReadOnly}
-                        checked={formData.repeatedOrder === 'Yes'}
-                        onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
-                        style={{ width: 'auto', margin: 0, cursor: isReadOnly ? 'default' : 'pointer', accentColor: '#2563eb' }}
-                      />
-                      Yes
-                    </label>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'default' : 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
-                      <input
-                        type="radio"
-                        name="repeatedOrder"
-                        value="No"
-                        disabled={isReadOnly}
-                        checked={formData.repeatedOrder === 'No' || !formData.repeatedOrder}
-                        onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
-                        style={{ width: 'auto', margin: 0, cursor: isReadOnly ? 'default' : 'pointer', accentColor: '#2563eb' }}
-                      />
-                      No
-                    </label>
+                  <div className="form-group">
+                    <label>Client Name {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
+                    <input
+                      type="text"
+                      required={(query || '').toLowerCase().trim() === 'order'}
+                      disabled={isReadOnly}
+                      value={formData.clientName}
+                      onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
+                    />
                   </div>
-                </div>
 
-                {(queryStatus === 'phone not pick' || queryStatus === 'call back') && (
-                  <div className="form-group" style={{ gridColumn: 1 }}>
-                    <label>Schedule</label>
-                    <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                  <div className="form-group">
+                    <label>Company Address {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
+                    <input
+                      type="text"
+                      required={(query || '').toLowerCase().trim() === 'order'}
+                      disabled={isReadOnly}
+                      value={formData.companyAddress}
+                      onChange={(e) => setFormData({ ...formData, companyAddress: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>State {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
+                    <select
+                      required={(query || '').toLowerCase().trim() === 'order'}
+                      disabled={isReadOnly}
+                      value={(formData.state || '').toUpperCase()}
+                      onChange={(e) => setFormData({ ...formData, state: e.target.value.toUpperCase() })}
+                      style={{ textTransform: 'uppercase' }}
+                    >
+                      <option value="">SELECT STATE / UNION TERRITORY</option>
+                      {formData.state && !INDIAN_STATES.includes((formData.state || '').toUpperCase()) && (
+                        <option value={(formData.state || '').toUpperCase()}>
+                          {(formData.state || '').toUpperCase()}
+                        </option>
+                      )}
+                      {INDIAN_STATES.map((st) => (
+                        <option key={st} value={st}>
+                          {st}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Pincode {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
+                    <input
+                      type="text"
+                      required={(query || '').toLowerCase().trim() === 'order'}
+                      disabled={isReadOnly}
+                      value={formData.pincode}
+                      onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Phone Number *</label>
+                    <div>
                       <input
-                        type="date"
+                        type="tel"
+                        required
                         disabled={isReadOnly}
-                        value={formData.scheduleDate}
-                        onChange={(e) => setFormData({ ...formData, scheduleDate: e.target.value })}
-                        style={{ flex: 1, padding: '10px' }}
+                        value={formData.phoneNumber}
+                        onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                        onBlur={() => setPhoneTouched(true)}
+                        placeholder="10-digit mobile number"
                       />
-                      <input
-                        type="time"
-                        disabled={isReadOnly}
-                        value={formData.scheduleTime}
-                        onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
-                        style={{ flex: 1, padding: '10px' }}
-                      />
+                      {phoneTouched && !/^\d{10}$/.test((formData.phoneNumber || '').trim()) && (
+                        <span style={{ color: '#ef4444', fontSize: '12px', display: 'block', marginTop: '4px' }}>
+                          Phone number must be of 10 digits
+                        </span>
+                      )}
                     </div>
                   </div>
-                )}
-              </div>
+
+                  <div className="form-group" style={{ gridColumn: 2 }}>
+                    <label>Repeated Order</label>
+                    <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'default' : 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
+                        <input
+                          type="radio"
+                          name="repeatedOrder"
+                          value="Yes"
+                          disabled={isReadOnly}
+                          checked={formData.repeatedOrder === 'Yes'}
+                          onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
+                          style={{ width: 'auto', margin: 0, cursor: isReadOnly ? 'default' : 'pointer', accentColor: '#2563eb' }}
+                        />
+                        Yes
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'default' : 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
+                        <input
+                          type="radio"
+                          name="repeatedOrder"
+                          value="No"
+                          disabled={isReadOnly}
+                          checked={formData.repeatedOrder === 'No' || !formData.repeatedOrder}
+                          onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
+                          style={{ width: 'auto', margin: 0, cursor: isReadOnly ? 'default' : 'pointer', accentColor: '#2563eb' }}
+                        />
+                        No
+                      </label>
+                    </div>
+                  </div>
+
+                  {(queryStatus === 'phone not pick' || queryStatus === 'call back') && (
+                    <div className="form-group" style={{ gridColumn: 1 }}>
+                      <label>Schedule</label>
+                      <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                        <input
+                          type="date"
+                          disabled={isReadOnly}
+                          value={formData.scheduleDate}
+                          onChange={(e) => setFormData({ ...formData, scheduleDate: e.target.value })}
+                          style={{ flex: 1, padding: '10px' }}
+                        />
+                        <input
+                          type="time"
+                          disabled={isReadOnly}
+                          value={formData.scheduleTime}
+                          onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
+                          style={{ flex: 1, padding: '10px' }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="form-group" style={{ display: 'block', marginTop: '24px' }}>
                   <label style={{ display: 'block', marginBottom: '8px' }}>Additional Note</label>
@@ -6626,13 +6626,12 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                         <div className="task-col-center">
                           <span className="task-status-label">Status</span>
                           <span
-                            className={`task-status-pill ${
-                              leadAppr.status === 'Approved'
-                                ? 'approved'
-                                : leadAppr.status === 'Referred Back'
+                            className={`task-status-pill ${leadAppr.status === 'Approved'
+                              ? 'approved'
+                              : leadAppr.status === 'Referred Back'
                                 ? 'referred'
                                 : 'pending'
-                            }`}
+                              }`}
                           >
                             {leadAppr.status || 'Pending'}
                           </span>
@@ -6642,9 +6641,8 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                           <span className="task-note-label">Lead Manager Notes</span>
                           {leadAppr.note ? (
                             <div
-                              className={`task-note-content ${
-                                leadAppr.status === 'Referred Back' ? 'referred' : ''
-                              }`}
+                              className={`task-note-content ${leadAppr.status === 'Referred Back' ? 'referred' : ''
+                                }`}
                             >
                               {leadAppr.note}
                             </div>
@@ -6668,13 +6666,12 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                         <div className="task-col-center">
                           <span className="task-status-label">Status</span>
                           <span
-                            className={`task-status-pill ${
-                              stockAppr.status === 'Approved'
-                                ? 'approved'
-                                : stockAppr.status === 'Referred Back'
+                            className={`task-status-pill ${stockAppr.status === 'Approved'
+                              ? 'approved'
+                              : stockAppr.status === 'Referred Back'
                                 ? 'referred'
                                 : 'pending'
-                            }`}
+                              }`}
                           >
                             {stockAppr.status || 'Pending'}
                           </span>
@@ -6684,9 +6681,8 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                           <span className="task-note-label">Stock Room Notes</span>
                           {stockAppr.note ? (
                             <div
-                              className={`task-note-content ${
-                                stockAppr.status === 'Referred Back' ? 'referred' : ''
-                              }`}
+                              className={`task-note-content ${stockAppr.status === 'Referred Back' ? 'referred' : ''
+                                }`}
                             >
                               {stockAppr.note}
                             </div>
@@ -6711,13 +6707,12 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                           <div className="task-col-center">
                             <span className="task-status-label">Status</span>
                             <span
-                              className={`task-status-pill ${
-                                prodAppr.status === 'Approved'
-                                  ? 'approved'
-                                  : prodAppr.status === 'Referred Back'
+                              className={`task-status-pill ${prodAppr.status === 'Approved'
+                                ? 'approved'
+                                : prodAppr.status === 'Referred Back'
                                   ? 'referred'
                                   : 'pending'
-                              }`}
+                                }`}
                             >
                               {prodAppr.status || 'Pending'}
                             </span>
@@ -6727,9 +6722,8 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                             <span className="task-note-label">Production Notes</span>
                             {prodAppr.note ? (
                               <div
-                                className={`task-note-content ${
-                                  prodAppr.status === 'Referred Back' ? 'referred' : ''
-                                }`}
+                                className={`task-note-content ${prodAppr.status === 'Referred Back' ? 'referred' : ''
+                                  }`}
                               >
                                 {prodAppr.note}
                               </div>

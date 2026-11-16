@@ -34,37 +34,44 @@ import "./OverviewDashboard.css";
 
 // Exact child side menu stages from Sidebar.jsx
 const SAMPLE_STAGES = [
-  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/orders/view/sample?sub=order' },
-  { key: 'dtf-pending', shortLabel: 'DTF', fullLabel: 'DTF Pending', path: '/orders/view/sample?sub=dtf-pending' },
-  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/orders/view/sample?sub=stock' },
-  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/orders/view/sample?sub=printing' },
-  { key: 'ready-to-pick-up', shortLabel: 'Pickup', fullLabel: 'Ready to Pick Up', path: '/orders/view/sample?sub=ready-to-pick-up' },
-  { key: 'staging-ground', shortLabel: 'Staging', fullLabel: 'Staging Ground', path: '/orders/view/sample?sub=staging-ground' },
-  { key: 'customer-approval-awaiting', shortLabel: 'Approved', fullLabel: 'Customer Approval Awaiting', path: '/orders/view/sample?sub=customer-approval-awaiting' },
+  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/order/sample/order' },
+  { key: 'dtf-pending', shortLabel: ['DTF', 'Pending'], fullLabel: 'DTF Pending', path: '/order/sample/dtf-pending' },
+  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/sample/stock' },
+  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/sample/printing' },
+  { key: 'ready-to-pick-up', shortLabel: ['Ready to', 'Pick Up'], fullLabel: 'Ready to Pick Up', path: '/order/sample/ready-to-pick-up' },
+  { key: 'staging-room', shortLabel: ['Staging', 'Room'], fullLabel: 'Staging Room', path: '/order/sample/staging-room' },
+  { key: 'customer-approval-awaiting', shortLabel: ['Approval', 'Awaiting'], fullLabel: 'Customer Approval Awaiting', path: '/order/sample/customer-approval-awaiting' },
 ];
 
 const PARTIAL_STAGES = [
-  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/orders/view/partial?sub=order' },
-  { key: 'dtf-pending', shortLabel: 'DTF', fullLabel: 'DTF Pending', path: '/orders/view/partial?sub=dtf-pending' },
-  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/orders/view/partial?sub=stock' },
-  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/orders/view/partial?sub=printing' },
-  { key: 'quality-check', shortLabel: 'QC', fullLabel: 'Quality Check', path: '/orders/view/partial?sub=quality-check' },
-  { key: 'packaging', shortLabel: 'Package', fullLabel: 'Packaging', path: '/orders/view/partial?sub=packaging' },
-  { key: 'staging-room', shortLabel: 'Staging', fullLabel: 'Staging Room', path: '/orders/view/partial?sub=staging-room' },
-  { key: 'payment-confirmation', shortLabel: 'Payment', fullLabel: 'Payment Confirmation', path: '/orders/view/partial?sub=payment-confirmation' },
+  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/order/partial/order' },
+  { key: 'dtf-pending', shortLabel: ['DTF', 'Pending'], fullLabel: 'DTF Pending', path: '/order/partial/dtf-pending' },
+  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/partial/stock' },
+  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/partial/printing' },
+  { key: 'quality-check', shortLabel: ['Quality', 'Check'], fullLabel: 'Quality Check', path: '/order/partial/quality-check' },
+  { key: 'packaging', shortLabel: 'Packaging', fullLabel: 'Packaging', path: '/order/partial/packaging' },
+  { key: 'staging-room', shortLabel: ['Staging', 'Room'], fullLabel: 'Staging Room', path: '/order/partial/staging-room' },
+  { key: 'payment-confirmation', shortLabel: ['Payment', 'Confirm'], fullLabel: 'Payment Confirmation', path: '/order/partial/payment-confirmation' },
 ];
 
 const COMPLETE_STAGES = [
-  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/orders/view/complete?sub=order' },
-  { key: 'dtf-pending', shortLabel: 'DTF', fullLabel: 'DTF Pending', path: '/orders/view/complete?sub=dtf-pending' },
-  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/orders/view/complete?sub=stock' },
-  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/orders/view/complete?sub=printing' },
-  { key: 'quality-check', shortLabel: 'QC', fullLabel: 'Quality Check', path: '/orders/view/complete?sub=quality-check' },
-  { key: 'packaging', shortLabel: 'Package', fullLabel: 'Packaging', path: '/orders/view/complete?sub=packaging' },
-  { key: 'delivery-pending', shortLabel: 'Pending', fullLabel: 'Delivery Pending', path: '/orders/view/complete?sub=delivery-pending' },
-  { key: 'delivered', shortLabel: 'Delivered', fullLabel: 'Delivered', path: '/orders/view/complete?sub=delivered' },
-  { key: 'customer-support', shortLabel: 'Support', fullLabel: 'Customer Support', path: '/orders/view/complete?sub=customer-support' },
+  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/order/complete/order' },
+  { key: 'dtf-pending', shortLabel: ['DTF', 'Pending'], fullLabel: 'DTF Pending', path: '/order/complete/dtf-pending' },
+  { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/complete/stock' },
+  { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/complete/printing' },
+  { key: 'quality-check', shortLabel: ['Quality', 'Check'], fullLabel: 'Quality Check', path: '/order/complete/quality-check' },
+  { key: 'packaging', shortLabel: 'Packaging', fullLabel: 'Packaging', path: '/order/complete/packaging' },
+  { key: 'delivery-pending', shortLabel: ['Delivery', 'Pending'], fullLabel: 'Delivery Pending', path: '/order/complete/delivery-pending' },
+  { key: 'delivered', shortLabel: 'Delivered', fullLabel: 'Delivered', path: '/order/complete/delivered' },
 ];
+
+// Helper to identify Embroidery orders (excluded from DTF stage views)
+const isOrderEmbroidery = (order) => {
+  if (!order) return false;
+  if (String(order.printingType || '').toLowerCase().trim() === 'embroidery') return true;
+  if (Array.isArray(order.items) && order.items.some((it) => String(it?.printingType || '').toLowerCase().trim() === 'embroidery')) return true;
+  return false;
+};
 
 // Helper to normalize stage and subStage from database records
 const normalizeRecord = (lead) => {
@@ -76,11 +83,17 @@ const normalizeRecord = (lead) => {
   if (sub === 'new' || sub === 'leads' || !sub) {
     sub = 'order';
   }
+  if (sub === 'dtf' || sub === 'dtf-pending-workspace') {
+    sub = 'dtf-pending';
+  }
+  if (sub === 'staging-ground') {
+    sub = 'staging-room';
+  }
+  if (sub === 'pickup' || sub === 'ready-to-pickup') {
+    sub = 'ready-to-pick-up';
+  }
   if (stage === 'sample') {
-    if (sub === 'staging-room') sub = 'staging-ground';
     if (sub === 'customer-approved' || sub === 'approved') sub = 'customer-approval-awaiting';
-  } else if (stage === 'partial') {
-    if (sub === 'payment-status') sub = 'payment-confirmation';
   } else if (stage === 'complete') {
     if (sub === 'delivery') sub = 'delivered';
     if (sub === 'support' || sub === 'archived') sub = 'customer-support';
@@ -133,29 +146,37 @@ export default function OrderManagementDashboard() {
     fetchLeads();
   }, []);
 
-  // Filter leads by sales executive ownership
+  // Filter leads by sales executive ownership matching OrderManagement.jsx
   const salesAllLeads = useMemo(() => {
     if (!isSales) return leads;
     const currentEmp = (currentUser?.name || '').toLowerCase().trim();
-    const currentId = (currentUser?.id || '').toLowerCase();
+    const currentId = (currentUser?.id || '').toLowerCase().trim();
     return leads.filter(l => {
       const leadEmp = (l.employeeName || '').toLowerCase().trim();
-      const leadCreatedBy = (l.createdBy || '').toLowerCase();
-      const isOwner =
+      const leadCreatedBy = (l.createdBy || '').toLowerCase().trim();
+
+      if (leadEmp && currentEmp && (leadEmp === currentEmp || leadEmp.includes(currentEmp) || currentEmp.includes(leadEmp))) {
+        return true;
+      }
+      if (leadCreatedBy && currentId && leadCreatedBy === currentId) {
+        return true;
+      }
+      if (
         (currentEmp.startsWith('divyansh') || currentId === 'sales') &&
-        (leadEmp.startsWith('divyansh') || leadEmp === 'sales executive' || leadCreatedBy === 'sales');
-      return (
-        isOwner ||
-        (leadEmp && (leadEmp === currentEmp || currentEmp.startsWith(leadEmp) || leadEmp.startsWith(currentEmp))) ||
-        (currentId && leadCreatedBy && (leadCreatedBy === currentId || leadCreatedBy.includes(currentId)))
-      );
+        (leadEmp.startsWith('divyansh') || leadEmp === 'sales executive' || leadCreatedBy === 'sales')
+      ) {
+        return true;
+      }
+      return false;
     });
   }, [leads, isSales, currentUser]);
 
-  // Orders
+  // Orders (DTF orders, excluding pure leads and embroidery)
   const orders = useMemo(() => {
     const list = isSales ? salesAllLeads : leads;
-    const valid = list.filter(l => l.query === 'order' || l.orderStage || l.totalQuantity);
+    const valid = list
+      .filter(l => (l.query || '').toLowerCase().trim() !== 'lead')
+      .filter(l => !isOrderEmbroidery(l));
     return valid.map(normalizeRecord);
   }, [leads, salesAllLeads, isSales]);
 
@@ -232,6 +253,35 @@ export default function OrderManagementDashboard() {
   const partialCardOrders = partialOrders;
   const completeCardOrders = completeOrders;
 
+  // Helper matching exact side menu DTF Stage > All items (sample -> all, partial -> all, complete -> all)
+  const isStageAllItem = (item, targetStage) => {
+    const rawStage = (item.orderStage || 'sample').toLowerCase().trim();
+    const itemStage = ['sample', 'partial', 'complete'].includes(rawStage) ? rawStage : 'sample';
+    const isLead = (item.query || '').toLowerCase().trim() === 'lead';
+
+    if (targetStage === 'sample') {
+      return isLead || itemStage === 'sample';
+    }
+    if (isLead) return false;
+    return itemStage === targetStage;
+  };
+
+  // Side menu exact matching: sample -> all, partial -> all, complete -> all
+  const sampleStageAllItems = useMemo(() => {
+    const list = isSales ? salesAllLeads : leads;
+    return list.filter(item => isStageAllItem(item, 'sample'));
+  }, [isSales, salesAllLeads, leads]);
+
+  const partialStageAllItems = useMemo(() => {
+    const list = isSales ? salesAllLeads : leads;
+    return list.filter(item => isStageAllItem(item, 'partial'));
+  }, [isSales, salesAllLeads, leads]);
+
+  const completeStageAllItems = useMemo(() => {
+    const list = isSales ? salesAllLeads : leads;
+    return list.filter(item => isStageAllItem(item, 'complete'));
+  }, [isSales, salesAllLeads, leads]);
+
   // Time-filtered orders for the 3 visual stage charts
   const timeFilteredOrders = useMemo(() => {
     if (stageTimeFrame === "all") return orders;
@@ -277,13 +327,8 @@ export default function OrderManagementDashboard() {
 
   // Stage counts for each pipeline with quantity sums
   const sampleCounts = useMemo(() => {
-    const keys = SAMPLE_STAGES.map(s => s.key);
     return SAMPLE_STAGES.map(s => {
-      const matched = stageSampleOrders.filter(o => {
-        if (o.normSub === s.key) return true;
-        if (s.key === 'order' && !keys.includes(o.normSub)) return true;
-        return false;
-      });
+      const matched = stageSampleOrders.filter(o => o.normSub === s.key);
       return {
         ...s,
         count: matched.length,
@@ -293,13 +338,8 @@ export default function OrderManagementDashboard() {
   }, [stageSampleOrders]);
 
   const partialCounts = useMemo(() => {
-    const keys = PARTIAL_STAGES.map(s => s.key);
     return PARTIAL_STAGES.map(s => {
-      const matched = stagePartialOrders.filter(o => {
-        if (o.normSub === s.key) return true;
-        if (s.key === 'order' && !keys.includes(o.normSub)) return true;
-        return false;
-      });
+      const matched = stagePartialOrders.filter(o => o.normSub === s.key);
       return {
         ...s,
         count: matched.length,
@@ -309,13 +349,8 @@ export default function OrderManagementDashboard() {
   }, [stagePartialOrders]);
 
   const completeCounts = useMemo(() => {
-    const keys = COMPLETE_STAGES.map(s => s.key);
     return COMPLETE_STAGES.map(s => {
-      const matched = stageCompleteOrders.filter(o => {
-        if (o.normSub === s.key) return true;
-        if (s.key === 'order' && !keys.includes(o.normSub)) return true;
-        return false;
-      });
+      const matched = stageCompleteOrders.filter(o => o.normSub === s.key);
       return {
         ...s,
         count: matched.length,
@@ -325,16 +360,16 @@ export default function OrderManagementDashboard() {
   }, [stageCompleteOrders]);
 
   // Clean Reusable Bar Chart
-  const renderBarChart = (data, barColor, pipelineKey, totalWidth = 360, colWidth = 28) => {
+  const renderBarChart = (data, barColor, pipelineKey, totalWidth = 380, colWidth = 26) => {
     const maxVal = Math.max(...data.map(d => d.count), 1);
-    const chartHeight = 85;
-    const baselineY = 105;
+    const chartHeight = 72;
+    const baselineY = 92;
     const count = data.length;
     const spacing = (totalWidth - (count * colWidth)) / (count + 1);
 
     return (
       <div className="bar-chart-svg-container">
-        <svg viewBox={`0 0 ${totalWidth} 135`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+        <svg viewBox={`0 0 ${totalWidth} 132`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
           {data.map((item, i) => {
             const hasData = item.count > 0;
             const barH = hasData ? Math.max((item.count / maxVal) * chartHeight, 14) : 4;
@@ -357,7 +392,7 @@ export default function OrderManagementDashboard() {
                   x={x - 2}
                   y={0}
                   width={colWidth + 4}
-                  height={135}
+                  height={132}
                   fill="transparent"
                   style={{ pointerEvents: 'all' }}
                 />
@@ -391,17 +426,39 @@ export default function OrderManagementDashboard() {
                   }}
                 />
 
+                {/* Baseline tick */}
+                <line
+                  x1={x}
+                  x2={x + colWidth}
+                  y1={baselineY}
+                  y2={baselineY}
+                  stroke="#cbd5e1"
+                  strokeWidth="1"
+                />
+
                 {/* Label under the bar */}
                 <text
                   x={x + colWidth / 2}
-                  y="126"
+                  y={baselineY + 16}
                   textAnchor="middle"
-                  fontSize="11"
+                  fontSize={count > 8 ? "9" : "9.5"}
                   fontWeight={isHovered || hasData ? "600" : "500"}
                   fill={isHovered ? barColor : (hasData ? "#334155" : "#94a3b8")}
                   style={{ pointerEvents: 'none' }}
                 >
-                  {item.shortLabel}
+                  {Array.isArray(item.shortLabel) ? (
+                    item.shortLabel.map((line, lineIdx) => (
+                      <tspan
+                        key={lineIdx}
+                        x={x + colWidth / 2}
+                        dy={lineIdx === 0 ? 0 : 10.5}
+                      >
+                        {line}
+                      </tspan>
+                    ))
+                  ) : (
+                    item.shortLabel
+                  )}
                 </text>
               </g>
             );
@@ -423,8 +480,8 @@ export default function OrderManagementDashboard() {
         {/* Sample Card */}
         <div
           className="order-tile tile-sample"
-          onClick={() => navigate('/orders/view/sample')}
-          title="Click to view Sample Orders Table"
+          onClick={() => navigate('/order/sample/all')}
+          title="Click to view Sample > All"
         >
           <div className="order-tile-header">
             <span className="order-tile-title">
@@ -434,10 +491,10 @@ export default function OrderManagementDashboard() {
             <span className="order-tile-badge sample">7 Stages</span>
           </div>
           <div className="order-tile-count" style={{ color: '#0284c7' }}>
-            {sampleCardOrders.length}
+            {sampleStageAllItems.length}
           </div>
           <div className="order-tile-sub">
-            <span>{sampleCardOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs in pipeline</span>
+            <span>{sampleStageAllItems.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs in pipeline</span>
             <span className="tile-action-hint">View table <ArrowRight size={13} /></span>
           </div>
         </div>
@@ -445,8 +502,8 @@ export default function OrderManagementDashboard() {
         {/* Partial Card */}
         <div
           className="order-tile tile-partial"
-          onClick={() => navigate('/orders/view/partial')}
-          title="Click to view Partial Orders Table"
+          onClick={() => navigate('/order/partial/all')}
+          title="Click to view Partial > All"
         >
           <div className="order-tile-header">
             <span className="order-tile-title">
@@ -456,10 +513,10 @@ export default function OrderManagementDashboard() {
             <span className="order-tile-badge partial">8 Stages</span>
           </div>
           <div className="order-tile-count" style={{ color: '#7c3aed' }}>
-            {partialCardOrders.length}
+            {partialStageAllItems.length}
           </div>
           <div className="order-tile-sub">
-            <span>{partialCardOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs in production</span>
+            <span>{partialStageAllItems.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs in production</span>
             <span className="tile-action-hint">View table <ArrowRight size={13} /></span>
           </div>
         </div>
@@ -467,21 +524,21 @@ export default function OrderManagementDashboard() {
         {/* Complete Card */}
         <div
           className="order-tile tile-complete"
-          onClick={() => navigate('/orders/view/complete')}
-          title="Click to view Complete Orders Table"
+          onClick={() => navigate('/order/complete/all')}
+          title="Click to view Complete > All"
         >
           <div className="order-tile-header">
             <span className="order-tile-title">
               <span className="donut-dot-marker" style={{ background: '#059669' }}></span>
               Complete Orders
             </span>
-            <span className="order-tile-badge complete">9 Stages</span>
+            <span className="order-tile-badge complete">8 Stages</span>
           </div>
           <div className="order-tile-count" style={{ color: '#059669' }}>
-            {completeCardOrders.length}
+            {completeStageAllItems.length}
           </div>
           <div className="order-tile-sub">
-            <span>{completeCardOrders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs fulfilled</span>
+            <span>{completeStageAllItems.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0)} pcs fulfilled</span>
             <span className="tile-action-hint">View table <ArrowRight size={13} /></span>
           </div>
         </div>
@@ -564,13 +621,13 @@ export default function OrderManagementDashboard() {
                 )}
               </p>
             </div>
-            <span className="order-chart-badge">{stageSampleOrders.length} total</span>
+            <span className="order-chart-badge">{sampleCounts.reduce((s, x) => s + x.count, 0)} total</span>
           </div>
 
           {renderBarChart(sampleCounts, '#0284c7', 'sample', 380, 26)}
 
           <div className="order-chart-footer">
-            <button className="order-open-link" onClick={() => navigate('/orders/view/sample')}>
+            <button className="order-open-link" onClick={() => navigate('/order/sample/all')}>
               <span>Open Sample</span> <ChevronRight size={14} />
             </button>
           </div>
@@ -594,13 +651,13 @@ export default function OrderManagementDashboard() {
                 )}
               </p>
             </div>
-            <span className="order-chart-badge">{stagePartialOrders.length} total</span>
+            <span className="order-chart-badge">{partialCounts.reduce((s, x) => s + x.count, 0)} total</span>
           </div>
 
           {renderBarChart(partialCounts, '#7c3aed', 'partial', 400, 24)}
 
           <div className="order-chart-footer">
-            <button className="order-open-link" onClick={() => navigate('/orders/view/partial')}>
+            <button className="order-open-link" onClick={() => navigate('/order/partial/all')}>
               <span>Open Partial</span> <ChevronRight size={14} />
             </button>
           </div>
@@ -620,17 +677,17 @@ export default function OrderManagementDashboard() {
                     {hoveredBar.fullLabel}: {hoveredBar.count || 0} order{(hoveredBar.count || 0) === 1 ? '' : 's'} ({hoveredBar.quantity || 0} pcs)
                   </span>
                 ) : (
-                  'Orders across 9 stages'
+                  'Orders across 8 stages'
                 )}
               </p>
             </div>
-            <span className="order-chart-badge">{stageCompleteOrders.length} total</span>
+            <span className="order-chart-badge">{completeCounts.reduce((s, x) => s + x.count, 0)} total</span>
           </div>
 
-          {renderBarChart(completeCounts, '#059669', 'complete', 440, 22)}
+          {renderBarChart(completeCounts, '#059669', 'complete', 400, 24)}
 
           <div className="order-chart-footer">
-            <button className="order-open-link" onClick={() => navigate('/orders/view/complete')}>
+            <button className="order-open-link" onClick={() => navigate('/order/complete/all')}>
               <span>Open Complete</span> <ChevronRight size={14} />
             </button>
           </div>
