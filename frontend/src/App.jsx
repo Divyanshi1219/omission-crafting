@@ -14,6 +14,7 @@ import LeadApprovals from "./pages/LeadApprovals";
 import ItemConsole from "./pages/ItemConsole";
 import StockRoom from "./pages/StockRoom/StockRoom";
 import OrderTableView from "./pages/OrderTableView";
+import SalesOrdersBreakdown from "./pages/SalesOrdersBreakdown";
 import Login from "./pages/Login";
 import DemoIdeasPage from "./pages/DemoIdeasPage"; // TEMP demo page ideas (delete after client approves)
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -116,6 +117,21 @@ function AppContent({ darkMode, setDarkMode }) {
             <Route
               path="/dashboard/orders/view/:stage"
               element={<OrderTableView />}
+            />
+
+            <Route
+              path="/sales/orders"
+              element={<SalesOrdersBreakdown />}
+            />
+
+            <Route
+              path="/sales-breakdown"
+              element={<SalesOrdersBreakdown />}
+            />
+
+            <Route
+              path="/dashboard/sales-breakdown"
+              element={<SalesOrdersBreakdown />}
             />
 
             <Route

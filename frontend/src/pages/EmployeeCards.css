@@ -81,6 +81,10 @@
   background-color: #f59e0b;
 }
 
+.emp-status.inactive {
+  background-color: #ef4444;
+}
+
 .emp-name {
   font-size: 16px;
   font-weight: 700;
@@ -410,6 +414,7 @@
 }
 .sp-dot.online { background: #10b981; }
 .sp-dot.away { background: #f59e0b; }
+.sp-dot.inactive { background: #ef4444; }
 
 .sp-stats-row {
   display: flex;

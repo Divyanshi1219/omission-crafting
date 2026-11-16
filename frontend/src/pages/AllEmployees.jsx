@@ -53,23 +53,35 @@ const formatDate = (value) => {
 };
 
 
+const isInactiveStatus = (statusStr) => {
+  if (!statusStr) return false;
+  const s = String(statusStr).toLowerCase().trim();
+  return (
+    s.includes("inactive") ||
+    s.includes("disabled") ||
+    s === "suspended" ||
+    s === "offboarding" ||
+    s === "terminated"
+  );
+};
+
+const isOffboarded = (e) => {
+  return isInactiveStatus(e.accountStatus);
+};
+
 const isTraining = (e) => {
+  if (isOffboarded(e)) return false;
   const s = (e.accountStatus || "").toLowerCase();
   const t = (e.employeeType || "").toLowerCase();
   return s === "probation" || s === "training" || t === "intern";
 };
 
 const isVerification = (e) => {
-  return !isTraining(e) && (!e.email || !e.email.includes("@"));
+  return !isOffboarded(e) && !isTraining(e) && (!e.email || !e.email.includes("@"));
 };
 
 const isCompleted = (e) => {
-  return !isTraining(e) && !isVerification(e) && (e.accountStatus || "active").toLowerCase() !== "inactive" && (e.accountStatus || "").toLowerCase() !== "terminated";
-};
-
-const isOffboarded = (e) => {
-  const s = (e.accountStatus || "").toLowerCase();
-  return s === "inactive" || s === "suspended" || s === "offboarding" || s === "terminated";
+  return !isOffboarded(e) && !isTraining(e) && !isVerification(e);
 };
 
 const isHandover = (e) => isOffboarded(e) && (e.authorizationInfo || "").toLowerCase().includes("handover");
@@ -172,7 +184,7 @@ function AllEmployees() {
     if (currentFilter === "training" && !isTraining(emp)) return false;
     if (currentFilter === "verification" && !isVerification(emp)) return false;
     if (currentFilter === "completed" && !isCompleted(emp)) return false;
-    if (currentFilter === "offboarding" && !isOffboarded(emp)) return false;
+    if ((currentFilter === "offboarding" || currentFilter === "inactive") && !isOffboarded(emp)) return false;
     if (currentFilter === "handover" && !isHandover(emp)) return false;
     if (currentFilter === "clearance" && !isClearance(emp)) return false;
     if (currentFilter === "deprovisioned" && !isDeprovisioned(emp)) return false;
@@ -443,15 +455,15 @@ function AllEmployees() {
                   <span style={{
                     fontSize: '12px',
                     fontWeight: '600',
-                    background: currentFilter === 'verification' ? '#d1fae5' : currentFilter === 'completed' ? '#fef3c7' : currentFilter === 'training' ? '#dbeafe' : '#fee2e2',
-                    color: currentFilter === 'verification' ? '#047857' : currentFilter === 'completed' ? '#b45309' : currentFilter === 'training' ? '#1d4ed8' : '#dc2626',
+                    background: (currentFilter === 'inactive' || currentFilter === 'offboarding') ? '#fee2e2' : currentFilter === 'verification' ? '#d1fae5' : currentFilter === 'completed' ? '#fef3c7' : currentFilter === 'training' ? '#dbeafe' : '#fee2e2',
+                    color: (currentFilter === 'inactive' || currentFilter === 'offboarding') ? '#dc2626' : currentFilter === 'verification' ? '#047857' : currentFilter === 'completed' ? '#b45309' : currentFilter === 'training' ? '#1d4ed8' : '#dc2626',
                     padding: '3px 10px',
                     borderRadius: '12px',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px'
                   }}>
-                    Filtered by: {currentFilter.charAt(0).toUpperCase() + currentFilter.slice(1)}
+                    Filtered by: {currentFilter === 'inactive' ? 'Inactive' : currentFilter.charAt(0).toUpperCase() + currentFilter.slice(1)}
                     <button
                       onClick={() => setSearchParams({})}
                       style={{
@@ -555,7 +567,23 @@ function AllEmployees() {
             >
               Training ({trainingCount})
             </button>
-            {(currentFilter === 'offboarding' || currentFilter === 'handover' || currentFilter === 'clearance' || currentFilter === 'deprovisioned') && (
+            <button
+              onClick={() => setSearchParams({ filter: 'inactive' })}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                border: (currentFilter === 'inactive' || currentFilter === 'offboarding') ? '2px solid #ef4444' : '1px solid #e2e8f0',
+                background: (currentFilter === 'inactive' || currentFilter === 'offboarding') ? '#fee2e2' : '#fff',
+                color: (currentFilter === 'inactive' || currentFilter === 'offboarding') ? '#dc2626' : '#64748b',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Inactive ({offboardingCount})
+            </button>
+            {(currentFilter === 'handover' || currentFilter === 'clearance' || currentFilter === 'deprovisioned') && (
               <button
                 onClick={() => setSearchParams({ filter: currentFilter })}
                 style={{
@@ -604,6 +632,11 @@ function AllEmployees() {
                             <div>
                               <div style={{ fontWeight: '600', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 {emp.displayName}
+                                {isOffboarded(emp) && (
+                                  <span style={{ fontSize: '11px', background: '#fef2f2', color: '#dc2626', padding: '1px 6px', borderRadius: '4px', border: '1px solid #fecaca' }}>
+                                    Inactive
+                                  </span>
+                                )}
                                 {isVerification(emp) && (
                                   <span style={{ fontSize: '11px', background: '#ecfdf5', color: '#059669', padding: '1px 6px', borderRadius: '4px', border: '1px solid #a7f3d0' }}>
                                     Verification

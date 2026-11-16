@@ -1,20 +1,32 @@
 import axios from "axios";
 
-const isLocalhost =
-  typeof window !== "undefined" &&
-  (window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1" ||
-    window.location.hostname === "::1" ||
-    window.location.hostname === "[::1]" ||
-    window.location.port === "5173" ||
-    window.location.port === "5174" ||
-    window.location.hostname.startsWith("192.168.") ||
-    window.location.hostname.startsWith("10."));
+const getBaseURL = () => {
+  if (typeof window === "undefined") {
+    return process.env.VITE_API_URL || "http://localhost:5001";
+  }
+
+  const hostname = window.location.hostname;
+  const isLocal =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]" ||
+    hostname === "0.0.0.0" ||
+    hostname.startsWith("192.168.") ||
+    hostname.startsWith("10.") ||
+    hostname.startsWith("172.") ||
+    hostname.endsWith(".local");
+
+  if (isLocal) {
+    const targetHost = (hostname === "::1" || hostname === "[::1]") ? "localhost" : hostname;
+    return `http://${targetHost}:5001`;
+  }
+
+  return import.meta.env.VITE_API_URL || "https://omission-crafting-backend.onrender.com";
+};
 
 const api = axios.create({
-  baseURL: isLocalhost
-    ? "http://localhost:5001"
-    : import.meta.env.VITE_API_URL || "https://omission-crafting-backend.onrender.com",
+  baseURL: getBaseURL(),
 });
 
 export default api;
