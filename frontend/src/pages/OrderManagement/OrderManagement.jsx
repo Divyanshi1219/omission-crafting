@@ -959,9 +959,20 @@ function OrderManagement() {
         employeeName: currentEmpName,
         orderId: formData.orderId,
         items,
+        approvalStatus: isLeadQuery ? 'Lead' : ((wasLeadBefore && !isLeadQuery) ? 'Pending' : (orderApprovalData?.approvalStatus || 'Pending')),
+        leadApproval: isLeadQuery ? {
+          status: 'Not Applicable',
+          note: '',
+          author: '',
+        } : ((wasLeadBefore && !isLeadQuery) ? {
+          status: 'Pending',
+          note: '',
+          author: '',
+          resubmittedAt: new Date(),
+        } : (orderApprovalData?.leadApproval || { status: 'Pending', note: '', author: '' })),
       };
       const res = await api.post('/api/leads', payload);
-      alert(isLeadQuery ? 'Lead updated successfully!' : 'Order updated successfully!');
+      alert(isLeadQuery ? 'Lead updated successfully!' : ((wasLeadBefore && !isLeadQuery) ? 'Order submitted successfully!\nSent to Lead Manager for approval.' : 'Order updated successfully!'));
       if (res.data?.data) {
         setOrderApprovalData(res.data.data);
       }
@@ -1688,12 +1699,14 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
           queryStatus,
           orderStage: isLeadQuery ? '' : orderStage,
           subStage: isLeadQuery ? 'leads' : subStage,
+          approvalStatus: isLeadQuery ? 'Lead' : 'Pending',
+          leadApproval: isLeadQuery ? { status: 'Not Applicable', note: '', author: '' } : { status: 'Pending', note: '', author: '' },
           ...formData,
           items,
         };
         if (editId) payload._id = editId;
         await api.post('/api/leads', payload);
-        alert('Lead saved successfully!');
+        alert(isLeadQuery ? 'Lead saved successfully!' : 'Order saved successfully!');
         const from = searchParams.get('from');
         if (from) {
           navigate(from);
@@ -1725,6 +1738,8 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
             queryStatus,
             orderStage: '',
             subStage: 'leads',
+            approvalStatus: 'Lead',
+            leadApproval: { status: 'Not Applicable', note: '', author: '' },
             ...formData,
             items,
           };

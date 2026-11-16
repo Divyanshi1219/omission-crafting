@@ -10,10 +10,15 @@ router.get("/", async (req, res) => {
     const q = req.query.query || req.query.status;
     if (q) {
       if (q === "order") {
-        filter.$or = [
-          { query: "order" },
-          { orderId: { $exists: true, $ne: "" } },
-          { orderStage: { $exists: true, $ne: "" } }
+        filter.$and = [
+          { query: { $nin: ["lead", "leads"] } },
+          {
+            $or: [
+              { query: "order" },
+              { orderStage: { $in: ["sample", "partial", "complete"] } },
+              { orderId: { $exists: true, $ne: "" } }
+            ]
+          }
         ];
       } else if (q === "lead" || q === "leads") {
         filter.query = { $ne: "order" };
@@ -720,6 +725,23 @@ router.post("/", async (req, res) => {
         const isNowOrder = (leadData.query || existing.query || "lead").toLowerCase().trim() === "order";
         const isConvertedToOrder = wasLead && isNowOrder;
 
+        if (!isNowOrder) {
+          leadData.approvalStatus = "Lead";
+          leadData.leadApproval = { status: "Not Applicable", note: "", author: "" };
+          leadData.stockApproval = { status: "Not Applicable", note: "", author: "" };
+          leadData.productionApproval = { status: "Not Applicable", note: "", author: "" };
+          leadData.orderStage = "";
+          leadData.subStage = "leads";
+        } else if (isConvertedToOrder) {
+          leadData.approvalStatus = "Pending";
+          leadData.leadApproval = {
+            status: "Pending",
+            note: "",
+            author: "",
+            resubmittedAt: new Date(),
+          };
+        }
+
         const currentStageStr = isNowOrder
           ? `${formatStageLabel(leadData.orderStage || existing.orderStage || "sample")} → ${formatSubStageLabel(leadData.subStage || existing.subStage || "order")}`
           : "Leads";
@@ -784,6 +806,15 @@ router.post("/", async (req, res) => {
         timestamp: new Date(),
       },
     ];
+
+    if (!isOrder) {
+      leadData.approvalStatus = "Lead";
+      leadData.leadApproval = { status: "Not Applicable", note: "", author: "" };
+      leadData.stockApproval = { status: "Not Applicable", note: "", author: "" };
+      leadData.productionApproval = { status: "Not Applicable", note: "", author: "" };
+      leadData.orderStage = "";
+      leadData.subStage = "leads";
+    }
 
     deduplicateAndSanitizeAttachments(leadData);
     const newLead = new Lead(leadData);

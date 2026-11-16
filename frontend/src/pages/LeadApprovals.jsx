@@ -80,11 +80,15 @@ export default function LeadApprovals() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/api/leads');
+      const res = await api.get('/api/leads?query=order');
       if (res.data?.data) {
-        // Matches exact orders filter & normalization as Dashboard Recent Orders
+        // Only orders (query === 'order') go to Lead Manager for approval. Leads (query === 'lead') are strictly excluded.
         const list = res.data.data
-          .filter(item => item.query === 'order' || item.orderStage || item.totalQuantity || item.orderId)
+          .filter(item => {
+            const q = (item.query || '').toLowerCase().trim();
+            if (q === 'lead' || q === 'leads') return false;
+            return q === 'order' || (!q && (item.orderStage || item.totalQuantity || item.orderId));
+          })
           .map(normalizeRecord)
           .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         setOrders(list);
