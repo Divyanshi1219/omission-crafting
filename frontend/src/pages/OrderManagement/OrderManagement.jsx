@@ -304,7 +304,7 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
     }
   } else if (normTargetStage === 'partial') {
     if (normTargetSub === 'order' || normTargetSub === 'new' || normTargetSub === 'leads') {
-      isApprovedAtThisStage = item.approvalStatus === 'Approved' || item.leadApproval?.status === 'Approved';
+      isApprovedAtThisStage = item.approvalStatus === 'Approved';
     } else if (normTargetSub === 'dtf-pending') {
       isApprovedAtThisStage = item.productionApproval?.status === 'Approved';
     } else if (normTargetSub === 'stock') {
@@ -322,7 +322,7 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
     }
   } else if (normTargetStage === 'complete') {
     if (normTargetSub === 'order' || normTargetSub === 'new' || normTargetSub === 'leads') {
-      isApprovedAtThisStage = item.approvalStatus === 'Approved' || item.leadApproval?.status === 'Approved';
+      isApprovedAtThisStage = item.approvalStatus === 'Approved';
     } else if (normTargetSub === 'dtf-pending') {
       isApprovedAtThisStage = item.productionApproval?.status === 'Approved';
     } else if (normTargetSub === 'stock') {
@@ -344,7 +344,7 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
 
   return {
     matches: true,
-    status: isApprovedAtThisStage ? 'approved' : 'in_progress',
+    status: isApprovedAtThisStage ? 'approved' : (normTargetSub === 'order' || normTargetSub === 'new' || normTargetSub === 'leads' ? 'pending' : 'in_progress'),
     isCompleted: isApprovedAtThisStage,
   };
 };
@@ -7449,9 +7449,28 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                       )}
                       {!isReadyToPickListView && visibleColumns.stageStatus && (
                         <td style={{ padding: '12px' }}>
-                          <span style={{ color: stageInfo.status === 'approved' ? '#059669' : '#b45309', fontWeight: 600, fontSize: '13px' }}>
-                            {stageInfo.status === 'approved' ? 'Approved & Advanced' : 'In Progress'}
-                          </span>
+                          {(() => {
+                            const isReferred = item.leadApproval?.status === 'Referred Back' || item.approvalStatus === 'Referred Back';
+                            const isApproved = !isReferred && stageInfo.status === 'approved';
+                            const displayStatus = isReferred
+                              ? 'Referred Back'
+                              : isApproved
+                                ? 'Approved'
+                                : (stageInfo.status === 'pending' || currentSubStage === 'order' || currentSubStage === 'new' || currentSubStage === 'leads')
+                                  ? 'Pending'
+                                  : 'In Progress';
+                            return (
+                              <span
+                                style={{
+                                  color: isReferred ? '#dc2626' : isApproved ? '#059669' : '#d97706',
+                                  fontWeight: 600,
+                                  fontSize: '13px',
+                                }}
+                              >
+                                {displayStatus}
+                              </span>
+                            );
+                          })()}
                         </td>
                       )}
                       {!isPrintingListView && visibleColumns.totalQuantity && (
