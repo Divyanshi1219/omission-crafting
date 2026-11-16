@@ -436,6 +436,10 @@ function OrderManagement() {
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
 
+  const [query, setQuery] = useState('lead');
+  const [queryStatus, setQueryStatus] = useState('');
+  const [orderApprovalData, setOrderApprovalData] = useState(null);
+
   const isOrderQuery = ((orderApprovalData?.query || query || 'order').toLowerCase().trim() === 'order');
 
   const isApprovalReview = Boolean(
@@ -463,8 +467,6 @@ function OrderManagement() {
 
   const isCustomerSupport = location.pathname === '/order/customer-support';
 
-  const [query, setQuery] = useState('lead');
-  const [queryStatus, setQueryStatus] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isEditing, setIsEditing] = useState(searchParams.get('edit') === 'true');
   const [items, setItems] = useState([]);
@@ -570,7 +572,6 @@ function OrderManagement() {
     } catch (_) { }
     return true;
   });
-  const [orderApprovalData, setOrderApprovalData] = useState(null);
   const [orderReservations, setOrderReservations] = useState([]);
 
   useEffect(() => {
