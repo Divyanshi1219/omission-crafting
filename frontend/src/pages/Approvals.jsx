@@ -1581,16 +1581,28 @@ export default function Approvals({ defaultTab = "all" }) {
   // Helper to get role-specific task approval status
   const getOrderTaskStatus = (order) => {
     if (!order) return "Pending";
-    if (roleView === "production" || isProdProfile) {
+    if (
+      currentTaskTab === "logo-printing" ||
+      currentTaskTab === "logo-cutting" ||
+      roleView === "production" ||
+      isProdProfile
+    ) {
       if (order.productionApproval?.status === "Referred Back") return "Referred Back";
-      // Production is ONLY approved once productionTaskStage is completed
-      if (order.productionTaskStage === "completed") return "Approved";
+      // Production is ONLY approved once productionTaskStage is completed or productionApproval is Approved
+      if (order.productionApproval?.status === "Approved" || order.productionTaskStage === "completed") return "Approved";
       return "Pending";
     }
-    if (roleView === "stock" || isStockProfile) {
+    if (
+      currentTaskTab === "verification" ||
+      currentTaskTab === "ready-to-pick" ||
+      currentTaskTab === "staging-room" ||
+      currentTaskTab?.startsWith("embroidery-") ||
+      roleView === "stock" ||
+      isStockProfile
+    ) {
       if (order.stockApproval?.status === "Referred Back") return "Referred Back";
-      // Stock is ONLY approved once stockTaskStage is completed
-      if (order.stockTaskStage === "completed") return "Approved";
+      // Stock is ONLY approved once stockTaskStage is completed or stockApproval is Approved
+      if (order.stockApproval?.status === "Approved" || order.stockTaskStage === "completed") return "Approved";
       return "Pending";
     }
     return order.approvalStatus || "Pending";
@@ -1999,7 +2011,7 @@ export default function Approvals({ defaultTab = "all" }) {
                     </tr>
                   ) : (
                     filteredOrders.map((order) => {
-                      const st = order.approvalStatus || "Pending";
+                      const st = getOrderTaskStatus(order);
                       const dateStr = formatLeadDate(order.createdAt);
                       const itemsList = Array.isArray(order.items) ? order.items : [];
                       const totalItemsCount = itemsList.length;
