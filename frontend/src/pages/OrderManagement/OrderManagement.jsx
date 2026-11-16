@@ -3807,10 +3807,10 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
               </div>
 
               {/* Form Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', alignItems: 'start' }}>
                 {/* Q1: Has customer approved sample? */}
                 <div className="form-field">
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', minHeight: '20px', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
                     Has Customer Approved Sample?
                   </label>
                   <select
@@ -3819,6 +3819,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                     onChange={(e) => handleCustomerApprovedChange(e.target.value)}
                     style={{
                       width: '100%',
+                      height: '42px',
                       padding: '9px 12px',
                       borderRadius: '8px',
                       border: '1px solid #cbd5e1',
@@ -3845,7 +3846,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                 {/* Q2: If Yes -> Payment Status */}
                 {stageForm.customerApproved === 'yes' && (
                   <div className="form-field">
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', minHeight: '20px', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
                       Payment Status
                     </label>
                     <select
@@ -3854,6 +3855,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                       onChange={(e) => handleCustomerPaymentStatusChange(e.target.value)}
                       style={{
                         width: '100%',
+                        height: '42px',
                         padding: '9px 12px',
                         borderRadius: '8px',
                         border: '1px solid #cbd5e1',
@@ -3878,10 +3880,10 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
               {/* If Yes and paymentStatus selected: show payment & quantity fields */}
               {stageForm.customerApproved === 'yes' && stageForm.paymentStatus && (
                 <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', alignItems: 'start' }}>
                     {stageForm.paymentStatus === 'partial_received' && (
                       <div className="form-field">
-                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#0369a1', marginBottom: '6px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', minHeight: '20px', fontSize: '13px', fontWeight: 600, color: '#0369a1', marginBottom: '6px' }}>
                           Partial Quantity to Produce (pcs) *
                         </label>
                         <input
@@ -3893,6 +3895,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                           onChange={(e) => setStageForm({ ...stageForm, partialQuantity: e.target.value })}
                           style={{
                             width: '100%',
+                            height: '42px',
                             padding: '9px 12px',
                             borderRadius: '8px',
                             border: '1.5px solid #0284c7',
@@ -3910,7 +3913,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                     )}
 
                     <div className="form-field">
-                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', minHeight: '20px', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
                         {stageForm.paymentStatus === 'partial_received' ? 'Partial Amount Received (₹)' : 'Full Amount Received (₹)'}
                       </label>
                       <input
@@ -3922,6 +3925,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                         readOnly={stageForm.paymentStatus === 'not_received'}
                         style={{
                           width: '100%',
+                          height: '42px',
                           padding: '9px 12px',
                           borderRadius: '8px',
                           border: '1px solid #cbd5e1',
@@ -3934,7 +3938,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                     </div>
 
                     <div className="form-field">
-                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', minHeight: '20px', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
                         Balance Remaining (₹)
                       </label>
                       <input
@@ -3945,6 +3949,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                         onChange={(e) => setStageForm({ ...stageForm, balanceRemaining: e.target.value })}
                         style={{
                           width: '100%',
+                          height: '42px',
                           padding: '9px 12px',
                           borderRadius: '8px',
                           border: '1px solid #cbd5e1',
@@ -3959,7 +3964,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                     {stageForm.paymentStatus !== 'not_received' && (
                       <>
                         <div className="form-field">
-                          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', minHeight: '20px', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
                             Payment Mode *
                           </label>
                           <select
@@ -3967,6 +3972,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                             onChange={(e) => setStageForm({ ...stageForm, paymentMode: e.target.value })}
                             style={{
                               width: '100%',
+                              height: '42px',
                               padding: '9px 12px',
                               borderRadius: '8px',
                               border: '1px solid #cbd5e1',
@@ -3987,16 +3993,17 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                         </div>
 
                         <div className="form-field">
-                          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                            Transaction / Reference ID or Invoice No
+                          <label style={{ display: 'flex', alignItems: 'center', minHeight: '20px', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                            Invoice Number
                           </label>
                           <input
                             type="text"
-                            placeholder="e.g. TXN-78192 or INV-001"
+                            placeholder="e.g. INV-001"
                             value={stageForm.paymentReferenceId || ''}
                             onChange={(e) => setStageForm({ ...stageForm, paymentReferenceId: e.target.value })}
                             style={{
                               width: '100%',
+                              height: '42px',
                               padding: '9px 12px',
                               borderRadius: '8px',
                               border: '1px solid #cbd5e1',
