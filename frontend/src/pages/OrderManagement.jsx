@@ -7577,7 +7577,7 @@ function OrderManagement() {
                         <td style={{ padding: '12px' }}>
                           {(() => {
                             const isReferred = item.leadApproval?.status === 'Referred Back' || item.approvalStatus === 'Referred Back';
-                            const isApproved = !isReferred && (stageInfo.status === 'approved' || item.leadApproval?.status === 'Approved' || item.approvalStatus === 'Approved');
+                            const isApproved = !isReferred && stageInfo.status === 'approved';
                             return (
                               <span
                                 style={{
