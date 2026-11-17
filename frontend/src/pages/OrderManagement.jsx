@@ -1517,14 +1517,14 @@ function OrderManagement() {
             if (res.data?.nextOrderId) {
               setFormData((prev) => ({
                 ...prev,
-                orderId: prev.orderId || res.data.nextOrderId,
+                orderId: res.data.nextOrderId,
               }));
             }
           })
           .catch(() => { });
       }
     }
-  }, [location.pathname, editId]);
+  }, [location.pathname, editId, searchParams.get('mode')]);
 
   // Fetch leads list for stage and sub-stage table visibility
   useEffect(() => {
@@ -1742,7 +1742,23 @@ function OrderManagement() {
     setOrderStage('sample');
     setSubStage('order');
     setPhoneTouched(false);
+
+    let maxNumber = 0;
+    leadsList.forEach((l) => {
+      if (l.orderId) {
+        const match = l.orderId.match(/^ORD(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxNumber) {
+            maxNumber = num;
+          }
+        }
+      }
+    });
+    const calculatedId = maxNumber > 0 ? `ORD${String(maxNumber + 1).padStart(5, '0')}` : '';
+
     setFormData({
+      employeeName: currentUser?.name || '',
       companyName: '',
       clientName: '',
       companyAddress: '',
@@ -1753,7 +1769,7 @@ function OrderManagement() {
       scheduleDate: '',
       scheduleTime: '',
       additionalNote: '',
-      orderId: '',
+      orderId: calculatedId,
       logoDesign: '',
       logoDesignName: '',
       logoDesignFiles: [],
@@ -1770,7 +1786,7 @@ function OrderManagement() {
       advanceAmount: '',
       pendingAmount: '',
       urgency: '',
-      deliveryDate: '',
+      deliveryDate: getDefaultDeliveryDate(),
       modeOfDelivery: '',
       totalQuantity: '',
       printingType: '',
@@ -1781,6 +1797,18 @@ function OrderManagement() {
       notes: '',
       unit: 'pcs',
     });
+
+    api.get('/api/leads/next-order-id')
+      .then((res) => {
+        if (res.data?.nextOrderId) {
+          setFormData((prev) => ({
+            ...prev,
+            orderId: res.data.nextOrderId,
+          }));
+        }
+      })
+      .catch(() => {});
+
     setShowCreateForm(true);
     navigate('/order/create-lead?mode=new');
   };
@@ -5629,7 +5657,7 @@ function OrderManagement() {
                       disabled={isReadOnly}
                       value={formData.orderId}
                       onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
-                      placeholder="ORD00001"
+                      placeholder="Auto-generated"
                       style={{ background: 'rgba(0,0,0,0.02)', fontWeight: 600, color: '#1e40af' }}
                     />
                   </div>
