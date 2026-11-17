@@ -278,33 +278,6 @@ function Sidebar() {
                       All
                     </NavLink>
 
-                    {/* Lead */}
-                    <div className="sidebar-nested-accordion">
-                      <div
-                        className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/leads') ? 'active' : ''}`}
-                        onClick={() => toggleSubMenu('leads')}
-                      >
-                        <div className="submenu-header-content">
-                          <span className="submenu-dot"></span>
-                          <span>Lead</span>
-                        </div>
-                        {openSubMenus.leads ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                      </div>
-                      {openSubMenus.leads && (
-                        <div className="sidebar-childmenu">
-                          <NavLink
-                            to="/order/leads"
-                            className={({ isActive }) =>
-                              `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === '/order/leads')) ? "active" : ""}`
-                            }
-                          >
-                            <span className="childmenu-dot"></span>
-                            Leads
-                          </NavLink>
-                        </div>
-                      )}
-                    </div>
-
                     {/* Sample */}
                     <div className="sidebar-nested-accordion">
                       <div

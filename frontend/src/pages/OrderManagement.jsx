@@ -236,7 +236,7 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
       }
       return { matches: false, status: 'none', isCompleted: false };
     }
-    if ((normTargetSub === 'leads' || normTargetSub === 'new') && (item.query || '').toLowerCase().trim() === 'lead') {
+    if ((normTargetSub === 'leads' || normTargetSub === 'new' || normTargetSub === 'create-lead') && (item.query || '').toLowerCase().trim() === 'lead') {
       return { matches: true, status: 'in_progress', isCompleted: false };
     }
     // Excluded from DTF Pending, Stock, Printing, etc. under normal order management
@@ -257,7 +257,7 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
   }
 
   // If viewing Leads tab
-  if (normTargetSub === 'leads' || normTargetSub === 'new') {
+  if (normTargetSub === 'leads' || normTargetSub === 'new' || normTargetSub === 'create-lead') {
     const isLead = (item.query || '').toLowerCase().trim() === 'lead';
     return { matches: isLead, status: 'in_progress', isCompleted: false };
   }
@@ -625,7 +625,8 @@ function OrderManagement() {
     }
   }, [formData?.orderId, orderApprovalData?.orderId]);
 
-  const [loadingLeads, setLoadingLeads] = useState(() => location.pathname !== '/order/create-lead');
+  const [loadingLeads, setLoadingLeads] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [activeActivityTab, setActiveActivityTab] = useState('department');
   const [tableSearch, setTableSearch] = useState('');
   const [showColumnSettings, setShowColumnSettings] = useState(false);
@@ -1527,21 +1528,25 @@ function OrderManagement() {
 
   // Fetch leads list for stage and sub-stage table visibility
   useEffect(() => {
-    if (location.pathname !== '/order/create-lead') {
-      setLoadingLeads((prev) => (leadsList.length === 0 ? true : prev));
-      api.get('/api/leads')
-        .then((res) => {
-          if (res.data?.data) {
-            setLeadsList(res.data.data);
-            try {
-              sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
-            } catch (_) { }
-          }
-        })
-        .catch((err) => console.error('Error fetching leads:', err))
-        .finally(() => { setLoadingLeads(false); setIsLeadsLoading(false); });
-    }
+    setLoadingLeads((prev) => (leadsList.length === 0 ? true : prev));
+    api.get('/api/leads')
+      .then((res) => {
+        if (res.data?.data) {
+          setLeadsList(res.data.data);
+          try {
+            sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
+          } catch (_) { }
+        }
+      })
+      .catch((err) => console.error('Error fetching leads:', err))
+      .finally(() => { setLoadingLeads(false); setIsLeadsLoading(false); });
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname === '/order/create-lead' && !searchParams.get('mode') && !editId) {
+      setShowCreateForm(false);
+    }
+  }, [location.pathname, searchParams, editId]);
 
   // Auto-calculate Total Amount = Total Quantity * Price Per Piece
   useEffect(() => {
@@ -1722,12 +1727,71 @@ function OrderManagement() {
     );
   };
 
+  const handleBackToLeadsList = () => {
+    setShowCreateForm(false);
+    navigate('/order/create-lead');
+  };
+
+  const handleOpenCreateLead = () => {
+    setIsSubmitted(false);
+    setIsEditing(false);
+    setOrderApprovalData(null);
+    setItems([]);
+    setQuery('lead');
+    setQueryStatus('');
+    setOrderStage('sample');
+    setSubStage('order');
+    setPhoneTouched(false);
+    setFormData({
+      companyName: '',
+      clientName: '',
+      companyAddress: '',
+      state: '',
+      pincode: '',
+      phoneNumber: '',
+      repeatedOrder: 'No',
+      scheduleDate: '',
+      scheduleTime: '',
+      additionalNote: '',
+      orderId: '',
+      logoDesign: '',
+      logoDesignName: '',
+      logoDesignFiles: [],
+      digitalDesign: '',
+      digitalDesignName: '',
+      digitalDesignFiles: [],
+      attachment: '',
+      attachmentName: '',
+      logoName: '',
+      pricePerPiece: '',
+      totalAmount: '',
+      gst: '',
+      netAmount: '',
+      advanceAmount: '',
+      pendingAmount: '',
+      urgency: '',
+      deliveryDate: '',
+      modeOfDelivery: '',
+      totalQuantity: '',
+      printingType: '',
+      fabric: '',
+      size: '',
+      color: '',
+      colorHex: '#3b82f6',
+      notes: '',
+      unit: 'pcs',
+    });
+    setShowCreateForm(true);
+    navigate('/order/create-lead?mode=new');
+  };
+
   const handleBackToOrder = () => {
     const from = searchParams.get('from');
     if (from) {
       navigate(from);
     } else if ((query || '').toLowerCase().trim() === 'lead') {
-      navigate('/order/leads');
+      setShowCreateForm(false);
+      navigate('/order/create-lead');
     } else if (isLeadManager) {
       navigate('/approvals');
     } else if (subStage === 'customer-support') {
@@ -1736,7 +1800,8 @@ function OrderManagement() {
       const target = subStage ? subStage.replace(/\s+/g, '-') : 'order';
       navigate(`/order/${orderStage}/${target}`);
     } else {
-      navigate(-1);
+      setShowCreateForm(false);
+      navigate('/order/create-lead');
     }
   };
 
@@ -1780,12 +1845,14 @@ function OrderManagement() {
         if (from) {
           navigate(from);
         } else if (isLeadQuery) {
-          navigate('/order/leads');
+          setShowCreateForm(false);
+          navigate('/order/create-lead');
         } else if (orderStage) {
           const target = !subStage || subStage === 'new' || subStage === 'leads' ? 'order' : subStage.replace(/\s+/g, '-');
           navigate(`/order/${orderStage}/${target}`);
         } else {
-          navigate('/order/leads');
+          setShowCreateForm(false);
+          navigate('/order/create-lead');
         }
       } catch (err) {
         console.error('Error saving lead:', err);
@@ -1815,7 +1882,8 @@ function OrderManagement() {
           if (editId) payload._id = editId;
           await api.post('/api/leads', payload);
           alert('Lead saved successfully!');
-          navigate('/order/leads');
+          setShowCreateForm(false);
+          navigate('/order/create-lead');
         } catch (err) {
           console.error('Error saving lead:', err);
           alert('Failed to save lead: ' + (err.response?.data?.message || err.message));
@@ -5020,6 +5088,9 @@ function OrderManagement() {
     } else if (only === 'customer-support') {
       currentStage = 'complete';
       currentSubStage = 'customer-support';
+    } else if (only === 'create-lead') {
+      currentStage = '';
+      currentSubStage = 'leads';
     } else {
       currentSubStage = only;
     }
@@ -5077,7 +5148,9 @@ function OrderManagement() {
     }
   }, [editId, location.pathname, currentStage]);
 
-  if (location.pathname === '/order/create-lead') {
+  const isFormActive = Boolean(editId || showCreateForm || searchParams.get('mode') === 'new');
+
+  if (location.pathname === '/order/create-lead' && isFormActive) {
     const fromUrl = searchParams.get('from') || '';
     let fromSub = '';
     if (fromUrl) {
@@ -5462,8 +5535,17 @@ function OrderManagement() {
             )}
           </div>
         ) : (
-          <div className="page-header">
+          <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <div>
+              <button
+                type="button"
+                onClick={handleBackToLeadsList}
+                className="back-to-order-btn"
+                style={{ marginBottom: '12px' }}
+              >
+                <ArrowLeft size={18} />
+                <span>Back to Leads</span>
+              </button>
               <h1>Create Lead</h1>
               <p>Fill out the form below to create a new lead.</p>
             </div>
@@ -7415,12 +7497,38 @@ function OrderManagement() {
           <div className="chart-title-sec">
             <div>
               <h3 style={{ textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <LayoutGrid size={16} color="#64748b" /> {currentSection || 'Order Management'}
+                <LayoutGrid size={16} color="#64748b" /> {location.pathname === '/order/create-lead' ? 'Leads' : (currentSection || 'Order Management')}
               </h3>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative' }} ref={columnSettingsRef}>
+            {(location.pathname === '/order/create-lead' || location.pathname === '/order/leads') && (
+              <button
+                type="button"
+                onClick={handleOpenCreateLead}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 16px',
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                  transition: 'background-color 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#1d4ed8')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#2563eb')}
+              >
+                <Plus size={16} /> Create Lead
+              </button>
+            )}
+
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <Search size={15} color="#64748b" style={{ position: 'absolute', left: '10px', pointerEvents: 'none' }} />
               <input
@@ -7524,7 +7632,7 @@ function OrderManagement() {
         ) : matchingLeads.length === 0 ? (
           <div className="chart-body centered empty-chart" style={{ flex: 1 }}>
             <p style={{ color: '#64748b', fontSize: '15px' }}>
-              No data available for {currentSection || 'Order Management'} yet.
+              No data available for {location.pathname === '/order/create-lead' ? 'Leads' : (currentSection || 'Order Management')} yet.
             </p>
           </div>
         ) : (
