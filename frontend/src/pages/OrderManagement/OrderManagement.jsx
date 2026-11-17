@@ -208,7 +208,23 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
   if (isEmb) {
     if (normTargetSub === 'all') {
       const isLead = (item.query || '').toLowerCase().trim() === 'lead';
-      if (!normTargetStage || normTargetStage === 'sample') {
+      if (!normTargetStage) {
+        if (isLead || (itemSub === 'order' && ['sample', 'partial', 'complete'].includes(itemStage))) {
+          let isItemApproved = false;
+          if (itemStage === 'sample') {
+            isItemApproved = item.leadApproval?.status === 'Approved' || item.approvalStatus === 'Approved';
+          } else {
+            isItemApproved = item.approvalStatus === 'Approved';
+          }
+          return {
+            matches: true,
+            status: isItemApproved ? 'approved' : 'pending',
+            isCompleted: isItemApproved,
+          };
+        }
+        return { matches: false, status: 'none', isCompleted: false };
+      }
+      if (normTargetStage === 'sample') {
         if (isLead || itemStage === 'sample') {
           return { matches: true, status: 'in_progress', isCompleted: false };
         }
@@ -249,7 +265,23 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
   // If viewing All tab (/order/all or /order/sample/all, /order/partial/all, /order/complete/all)
   if (normTargetSub === 'all') {
     const isLead = (item.query || '').toLowerCase().trim() === 'lead';
-    if (!normTargetStage || normTargetStage === 'sample') {
+    if (!normTargetStage) {
+      if (isLead || (itemSub === 'order' && ['sample', 'partial', 'complete'].includes(itemStage))) {
+        let isItemApproved = false;
+        if (itemStage === 'sample') {
+          isItemApproved = item.leadApproval?.status === 'Approved' || item.approvalStatus === 'Approved';
+        } else {
+          isItemApproved = item.approvalStatus === 'Approved';
+        }
+        return {
+          matches: true,
+          status: isItemApproved ? 'approved' : 'pending',
+          isCompleted: isItemApproved,
+        };
+      }
+      return { matches: false, status: 'none', isCompleted: false };
+    }
+    if (normTargetStage === 'sample') {
       if (isLead || itemStage === 'sample') {
         return { matches: true, status: 'in_progress', isCompleted: false };
       }
@@ -350,6 +382,7 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
 };
 
 const STAGE_ROUTE_MAP = {
+  '/order/all': 'All',
   '/order/create-lead': 'New',
   '/order/leads': 'New',
   '/order/order': 'Order',
@@ -364,6 +397,7 @@ const STAGE_ROUTE_MAP = {
 
   // Sample child routes
   '/order/sample': 'Order',
+  '/order/sample/all': 'All',
   '/order/sample/leads': 'Order',
   '/order/sample/order': 'Order',
   '/order/sample/dtf-pending': 'DTF Pending',
@@ -376,6 +410,7 @@ const STAGE_ROUTE_MAP = {
 
   // Partial child routes
   '/order/partial': 'Order',
+  '/order/partial/all': 'All',
   '/order/partial/leads': 'Order',
   '/order/partial/order': 'Order',
   '/order/partial/dtf-pending': 'DTF Pending',
@@ -388,6 +423,7 @@ const STAGE_ROUTE_MAP = {
 
   // Complete child routes
   '/order/complete': 'Order',
+  '/order/complete/all': 'All',
   '/order/complete/leads': 'Order',
   '/order/complete/order': 'Order',
   '/order/complete/dtf-pending': 'DTF Pending',
