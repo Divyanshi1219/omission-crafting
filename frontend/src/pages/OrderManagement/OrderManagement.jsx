@@ -327,7 +327,7 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
       isApprovedAtThisStage = item.stockApproval?.status === 'Approved';
     } else if (normTargetSub === 'printing') {
       isApprovedAtThisStage = item.printingStageData?.printingStatus === 'Complete';
-    } else if (normTargetSub === 'ready-to-pick-up') {
+    } else if (normTargetSub === 'ready-to-pick-up' || normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup') {
       isApprovedAtThisStage = Boolean(item.sampleReadyToPickUpData?.verifiedPickupCount || item.sampleReadyToPickUpData?.readyToPickupCount);
     } else if (normTargetSub === 'staging-ground' || normTargetSub === 'staging-room') {
       isApprovedAtThisStage = Boolean(item.sampleStagingGroundData?.orderRequirementMatch);
@@ -341,6 +341,8 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
       isApprovedAtThisStage = item.productionApproval?.status === 'Approved';
     } else if (normTargetSub === 'stock') {
       isApprovedAtThisStage = item.stockApproval?.status === 'Approved';
+    } else if (normTargetSub === 'ready-to-pick-up' || normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup') {
+      isApprovedAtThisStage = Boolean(item.partialReadyToPickUpData?.verifiedPickupCount || item.partialReadyToPickUpData?.readyToPickupCount);
     } else if (normTargetSub === 'printing') {
       isApprovedAtThisStage = item.partialPrintingData?.printingStatus === 'Complete';
     } else if (normTargetSub === 'quality-check') {
@@ -359,6 +361,8 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
       isApprovedAtThisStage = item.productionApproval?.status === 'Approved';
     } else if (normTargetSub === 'stock') {
       isApprovedAtThisStage = item.stockApproval?.status === 'Approved';
+    } else if (normTargetSub === 'ready-to-pick-up' || normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup') {
+      isApprovedAtThisStage = Boolean(item.completeReadyToPickUpData?.verifiedPickupCount || item.completeReadyToPickUpData?.readyToPickupCount);
     } else if (normTargetSub === 'printing') {
       isApprovedAtThisStage = item.completePrintingData?.printingStatus === 'Complete';
     } else if (normTargetSub === 'quality-check') {
@@ -402,6 +406,8 @@ const STAGE_ROUTE_MAP = {
   '/order/sample/order': 'Order',
   '/order/sample/dtf-pending': 'DTF Pending',
   '/order/sample/stock': 'Stock',
+  '/order/sample/ready-to-pick': 'Ready to Pick Up',
+  '/order/sample/ready-to-pickup': 'Ready to Pick Up',
   '/order/sample/printing': 'Printing',
   '/order/sample/ready-to-pick-up': 'Ready to Pick Up',
   '/order/sample/staging-room': 'Staging Room',
@@ -415,9 +421,12 @@ const STAGE_ROUTE_MAP = {
   '/order/partial/order': 'Order',
   '/order/partial/dtf-pending': 'DTF Pending',
   '/order/partial/stock': 'Stock',
+  '/order/partial/ready-to-pick': 'Ready to Pick Up',
+  '/order/partial/ready-to-pickup': 'Ready to Pick Up',
   '/order/partial/printing': 'Printing',
   '/order/partial/quality-check': 'Quality Check',
   '/order/partial/packaging': 'Packaging',
+  '/order/partial/ready-to-pick-up': 'Ready to Pick Up',
   '/order/partial/staging-room': 'Staging Room',
   '/order/partial/payment-confirmation': 'Payment Confirmation',
 
@@ -428,10 +437,13 @@ const STAGE_ROUTE_MAP = {
   '/order/complete/order': 'Order',
   '/order/complete/dtf-pending': 'DTF Pending',
   '/order/complete/stock': 'Stock',
+  '/order/complete/ready-to-pick': 'Ready to Pick Up',
+  '/order/complete/ready-to-pickup': 'Ready to Pick Up',
   '/order/complete/printing': 'Printing',
   '/order/complete/quality-check': 'Quality Check',
   '/order/complete/packaging': 'Packaging',
-  '/order/complete/delivery-pending': 'Delivery Pending',
+  '/order/complete/ready-to-pick-up': 'Ready to Pick Up',
+  '/order/complete/delivery-pending': 'Ready to Deliver',
   '/order/complete/delivered': 'Delivered',
   '/order/complete/customer-support': 'Customer Support',
 
@@ -445,7 +457,7 @@ const STAGE_ROUTE_MAP = {
   '/order/embroidery/sample/vendor-dispatch-at-staging-room': 'Vendor Dispatch at Staging Room',
   '/order/embroidery/sample/vendor-dispatch': 'Vendor Dispatch at Staging Room',
   '/order/embroidery/sample/staging-room': 'Vendor Dispatch at Staging Room',
-  '/order/embroidery/sample/delivery-pending': 'Delivery Pending',
+  '/order/embroidery/sample/delivery-pending': 'Ready to Deliver',
   '/order/embroidery/sample/delivered': 'Delivered',
   '/order/embroidery/sample/customer-support': 'Customer Support',
 };
@@ -477,7 +489,7 @@ function OrderManagement() {
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
 
   const pathParts = location.pathname.split('/').filter(Boolean);
-  const currentSection = pathParts[pathParts.length - 1]?.replace(/-/g, ' ') || 'Order Management';
+  const currentSection = STAGE_ROUTE_MAP[location.pathname] || pathParts[pathParts.length - 1]?.replace(/-/g, ' ') || 'Order Management';
 
   const formRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -540,7 +552,7 @@ function OrderManagement() {
     setIsEditing(searchParams.get('edit') === 'true');
   }, [searchParams]);
 
-  const isReadOnly = isLeadManager ? true : Boolean(editId && !isEditing);
+  let isReadOnly = isLeadManager ? true : Boolean(editId && !isEditing);
 
   const [formData, setFormData] = useState({
     companyName: '',
@@ -613,6 +625,11 @@ function OrderManagement() {
 
   const [loadingLeads, setLoadingLeads] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [executionActiveTab, setExecutionActiveTab] = useState('stage');
+
+  useEffect(() => {
+    setExecutionActiveTab('stage');
+  }, [editId, location.pathname, location.search]);
   const [activeActivityTab, setActiveActivityTab] = useState('department');
   const [tableSearch, setTableSearch] = useState('');
   const [showColumnSettings, setShowColumnSettings] = useState(false);
@@ -2128,6 +2145,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     if (fromUrl.includes('/customer-approval-awaiting')) currentSub = 'customer-approval-awaiting';
     else if (fromUrl.includes('/sample/staging-room') || fromUrl.includes('/staging-ground')) currentSub = 'staging-ground';
     else if (fromUrl.includes('/ready-to-pick-up')) currentSub = 'ready-to-pick-up';
+    else if (fromUrl.includes('/ready-to-pick')) currentSub = 'ready-to-pick';
     else if (fromUrl.includes('/partial/payment-confirmation') || fromUrl.includes('/payment-confirmation')) currentSub = 'payment-confirmation';
     else if (fromUrl.includes('/partial/staging-room') || fromUrl.includes('/staging-room')) currentSub = currentOrderStage === 'sample' ? 'staging-ground' : 'staging-room';
     else if (fromUrl.includes('/quality-check')) currentSub = 'quality-check';
@@ -2888,6 +2906,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     else if (fromUrl.includes('/sample/staging-room') || fromUrl.includes('/staging-ground')) activeSub = 'staging-ground';
     else if (fromUrl.includes('/partial/staging-room') || fromUrl.includes('/staging-room')) activeSub = currentOrderStage === 'sample' ? 'staging-ground' : 'staging-room';
     else if (fromUrl.includes('/ready-to-pick-up')) activeSub = 'ready-to-pick-up';
+    else if (fromUrl.includes('/ready-to-pick')) activeSub = 'ready-to-pick';
     else if (fromUrl.includes('/quality-check')) activeSub = 'quality-check';
     else if (fromUrl.includes('/packaging')) activeSub = 'packaging';
     else if (fromUrl.includes('/payment-confirmation')) activeSub = 'payment-confirmation';
@@ -2972,13 +2991,13 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     if (activeSub === 'dtf-pending') stageTitle = 'DTF Pending';
     else if (activeSub === 'stock') stageTitle = 'Stock';
     else if (activeSub === 'printing') stageTitle = 'Printing';
-    else if (activeSub === 'ready-to-pick-up') stageTitle = 'Ready to Pick Up';
+    else if (activeSub === 'ready-to-pick-up' || activeSub === 'ready-to-pick' || activeSub === 'ready-to-pickup') stageTitle = 'Ready to Pick Up';
     else if (activeSub === 'staging-ground' || activeSub === 'staging-room') stageTitle = 'Staging Room';
     else if (activeSub === 'customer-approval-awaiting') stageTitle = 'Customer Approval';
     else if (activeSub === 'quality-check') stageTitle = 'Quality Check';
     else if (activeSub === 'packaging') stageTitle = 'Packaging';
     else if (activeSub === 'payment-confirmation') stageTitle = 'Payment Confirmation';
-    else if (activeSub === 'delivery-pending') stageTitle = 'Delivery Pending';
+    else if (activeSub === 'delivery-pending') stageTitle = 'Ready to Deliver';
     else if (activeSub === 'delivered') stageTitle = 'Delivered';
     else if (activeSub === 'customer-support') stageTitle = 'Customer Support';
 
@@ -5161,6 +5180,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     else if (fromUrl.includes('/sample/staging-room') || fromUrl.includes('/staging-ground')) activeSub = 'staging-ground';
     else if (fromUrl.includes('/partial/staging-room') || fromUrl.includes('/staging-room')) activeSub = resolvedOrderStage === 'sample' ? 'staging-ground' : 'staging-room';
     else if (fromUrl.includes('/ready-to-pick-up')) activeSub = 'ready-to-pick-up';
+    else if (fromUrl.includes('/ready-to-pick')) activeSub = 'ready-to-pick';
     else if (fromUrl.includes('/quality-check')) activeSub = 'quality-check';
     else if (fromUrl.includes('/packaging')) activeSub = 'packaging';
     else if (fromUrl.includes('/payment-confirmation')) activeSub = 'payment-confirmation';
@@ -5177,6 +5197,8 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
         activeSub === 'stock' ||
         activeSub === 'printing' ||
         activeSub === 'ready-to-pick-up' ||
+        activeSub === 'ready-to-pick' ||
+        activeSub === 'ready-to-pickup' ||
         activeSub === 'staging-ground' ||
         activeSub === 'customer-approval-awaiting' ||
         activeSub === 'quality-check' ||
@@ -5188,6 +5210,31 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
         activeSub === 'customer-support'
       )
     );
+
+    const hasExecutionStageTabs = Boolean(
+      isExecutionStageView &&
+      activeSub !== 'dtf-pending' &&
+      activeSub !== 'stock'
+    );
+
+    if (isExecutionStageView) {
+      isReadOnly = true;
+    }
+
+    const getStageTabLabel = (sub) => {
+      const s = (sub || '').toLowerCase().trim();
+      if (s === 'printing') return 'Printing';
+      if (s === 'ready-to-pick-up' || s === 'ready-to-pick' || s === 'ready-to-pickup') return 'Ready to Pick Up';
+      if (s === 'staging-ground' || s === 'staging-room') return 'Staging Room';
+      if (s === 'customer-approval-awaiting' || s === 'customer-approval') return 'Customer Approval Awaiting';
+      if (s === 'quality-check') return 'Quality Check';
+      if (s === 'packaging') return 'Packaging';
+      if (s === 'payment-confirmation') return 'Payment Confirmation';
+      if (s === 'delivery-pending') return 'Ready to Deliver';
+      if (s === 'delivered') return 'Delivered';
+      if (s === 'customer-support') return 'Customer Support';
+      return s ? s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Stage Form';
+    };
 
     const isSamplePrinting = resolvedOrderStage === 'sample' && activeSub === 'printing';
     const isSampleReadyToPickup = resolvedOrderStage === 'sample' && activeSub === 'ready-to-pick-up';
@@ -5546,14 +5593,50 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
             </div>
           )}
 
+          {/* Execution Stage Tabs: [ Stage Name ] and [ Order Form ] */}
+          {hasExecutionStageTabs && (
+            <div style={{ marginBottom: '16px' }}>
+              <div className="stage-tabs-pill-group" style={{ background: '#f1f5f9', padding: '4px', borderRadius: '10px', display: 'inline-flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className={`stage-tab-pill ${executionActiveTab === 'stage' ? 'active' : ''}`}
+                  onClick={() => setExecutionActiveTab('stage')}
+                  style={{
+                    padding: '8px 20px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {getStageTabLabel(activeSub)}
+                </button>
+                <button
+                  type="button"
+                  className={`stage-tab-pill ${executionActiveTab === 'order' ? 'active' : ''}`}
+                  onClick={() => setExecutionActiveTab('order')}
+                  style={{
+                    padding: '8px 20px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Order Form
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Stage Clearance & Execution Workflow Card (Directly on the page) */}
-          {editId && !orderApprovalData && isExecutionStageView && (
+          {editId && !orderApprovalData && isExecutionStageView && (!hasExecutionStageTabs || executionActiveTab === 'stage') && (
             <div style={{ padding: '40px 20px', textAlign: 'center', color: '#64748b', fontSize: '14px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
               <Clock size={22} style={{ animation: 'spin 1.5s linear infinite', marginBottom: '8px' }} />
               <div>Loading order stage details...</div>
             </div>
           )}
-          {editId && orderApprovalData && renderStageWorkflowCard()}
+          {editId && orderApprovalData && isExecutionStageView && (!hasExecutionStageTabs || executionActiveTab === 'stage') && renderStageWorkflowCard()}
 
 
 
@@ -5582,8 +5665,9 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
             </div>
           )}
 
-          {!isExecutionStageView && (
+          {(!isExecutionStageView || (hasExecutionStageTabs && executionActiveTab === 'order')) && (
             <form className="form-container" onSubmit={handleFormSubmit} ref={formRef}>
+              <fieldset disabled={isExecutionStageView} style={{ border: 'none', padding: 0, margin: 0, width: '100%' }}>
             <div className="form-section">
               <div className="form-section-title">Lead Form</div>
               
@@ -5805,7 +5889,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
             </div>
 
             {/* MORE INFORMATION FORM */}
-            {isSubmitted && (query || '').toLowerCase().trim() === 'order' && (
+            {(isSubmitted || editId || hasExecutionStageTabs) && (query || '').toLowerCase().trim() === 'order' && (
               <div className="form-section" style={{ marginTop: '24px' }}>
                 <div className="form-section-title">Order Information</div>
                 
@@ -6425,7 +6509,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                   )}
                 </div>
                 
-                {!isLeadManager && (
+                {!isExecutionStageView && !isLeadManager && !isApprovalReview && (
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px' }}>
                     {editId && isReadOnly && (
                       <button
@@ -6549,6 +6633,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
               </div>
             )}
             
+              </fieldset>
             </form>
           )}
 

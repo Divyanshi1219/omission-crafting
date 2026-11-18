@@ -149,6 +149,7 @@ function Sidebar() {
     { name: 'Order', path: '/order/sample/order' },
     { name: 'DTF Pending', path: '/order/sample/dtf-pending' },
     { name: 'Stock', path: '/order/sample/stock' },
+    { name: 'Ready to Pick Up', path: '/order/sample/ready-to-pick' },
     { name: 'Printing', path: '/order/sample/printing' },
     { name: 'Ready to Pick Up', path: '/order/sample/ready-to-pick-up' },
     { name: 'Staging Room', path: '/order/sample/staging-room' },
@@ -160,9 +161,11 @@ function Sidebar() {
     { name: 'Order', path: '/order/partial/order' },
     { name: 'DTF Pending', path: '/order/partial/dtf-pending' },
     { name: 'Stock', path: '/order/partial/stock' },
+    { name: 'Ready to Pick Up', path: '/order/partial/ready-to-pick' },
     { name: 'Printing', path: '/order/partial/printing' },
     { name: 'Quality Check', path: '/order/partial/quality-check' },
     { name: 'Packaging', path: '/order/partial/packaging' },
+    { name: 'Ready to Pick Up', path: '/order/partial/ready-to-pick-up' },
     { name: 'Staging Room', path: '/order/partial/staging-room' },
     { name: 'Payment Confirmation', path: '/order/partial/payment-confirmation' },
   ];
@@ -172,10 +175,12 @@ function Sidebar() {
     { name: 'Order', path: '/order/complete/order' },
     { name: 'DTF Pending', path: '/order/complete/dtf-pending' },
     { name: 'Stock', path: '/order/complete/stock' },
+    { name: 'Ready to Pick Up', path: '/order/complete/ready-to-pick' },
     { name: 'Printing', path: '/order/complete/printing' },
     { name: 'Quality Check', path: '/order/complete/quality-check' },
     { name: 'Packaging', path: '/order/complete/packaging' },
-    { name: 'Delivery Pending', path: '/order/complete/delivery-pending' },
+    { name: 'Ready to Pick Up', path: '/order/complete/ready-to-pick-up' },
+    { name: 'Ready to Deliver', path: '/order/complete/delivery-pending' },
     { name: 'Delivered', path: '/order/complete/delivered' },
   ];
 
@@ -185,7 +190,7 @@ function Sidebar() {
     { name: 'Stock Dispatch', path: '/order/embroidery/sample/stock-dispatch' },
     { name: 'Vendor Received', path: '/order/embroidery/sample/vendor-received' },
     { name: 'Vendor Dispatch at Staging Room', path: '/order/embroidery/sample/vendor-dispatch-at-staging-room' },
-    { name: 'Delivery Pending', path: '/order/embroidery/sample/delivery-pending' },
+    { name: 'Ready to Deliver', path: '/order/embroidery/sample/delivery-pending' },
     { name: 'Delivered', path: '/order/embroidery/sample/delivered' },
     { name: 'Customer Support', path: '/order/embroidery/sample/customer-support' },
   ];
@@ -406,33 +411,6 @@ function Sidebar() {
                       <span className="childmenu-dot"></span>
                       All
                     </NavLink>
-
-                    {/* Lead */}
-                    <div className="sidebar-nested-accordion">
-                      <div
-                        className={`sidebar-submenu-header ${isOrderRoute && activePath.startsWith('/order/embroidery/leads') ? 'active' : ''}`}
-                        onClick={() => toggleSubMenu('embroideryLeads')}
-                      >
-                        <div className="submenu-header-content">
-                          <span className="submenu-dot"></span>
-                          <span>Lead</span>
-                        </div>
-                        {openSubMenus.embroideryLeads ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                      </div>
-                      {openSubMenus.embroideryLeads && (
-                        <div className="sidebar-childmenu">
-                          <NavLink
-                            to="/order/embroidery/leads"
-                            className={({ isActive }) =>
-                              `sidebar-childmenu-item ${(isActive || (isOrderRoute && activePath === '/order/embroidery/leads')) ? "active" : ""}`
-                            }
-                          >
-                            <span className="childmenu-dot"></span>
-                            Leads
-                          </NavLink>
-                        </div>
-                      )}
-                    </div>
 
                     {/* Sample */}
                     <div className="sidebar-nested-accordion">
