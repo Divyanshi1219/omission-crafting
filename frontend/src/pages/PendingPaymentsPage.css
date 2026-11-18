@@ -1,0 +1,455 @@
+/* ==========================================================================
+   PendingPaymentsPage.css
+   Ultra-clean, modern, minimalist layout with zero clutter
+   ========================================================================== */
+
+.pending-payments-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: fadeIn 0.25s ease-out;
+  width: 100%;
+}
+
+/* Header */
+.pending-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 4px;
+}
+
+.pending-page-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pending-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pending-back-btn:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+.app.dark .pending-back-btn {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #cbd5e1;
+}
+
+.app.dark .pending-back-btn:hover {
+  color: #ffffff;
+  background: #3f3f46;
+}
+
+.pending-page-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.app.dark .pending-page-title {
+  color: #f8fafc;
+}
+
+.pending-header-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pending-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.app.dark .pending-stat-pill {
+  background: #18181b;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+.pending-stat-pill strong {
+  color: #d97706;
+  font-size: 14px;
+}
+
+.app.dark .pending-stat-pill strong {
+  color: #fbbf24;
+}
+
+/* Main Container Card */
+.pending-main-card {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 8px 24px -4px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app.dark .pending-main-card {
+  background: #18181b;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Toolbar */
+.pending-toolbar {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.app.dark .pending-toolbar {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.pending-filters-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pending-toggle-switch {
+  display: flex;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 10px;
+  gap: 3px;
+}
+
+.app.dark .pending-toggle-switch {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pending-switch-btn {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pending-switch-btn:hover {
+  color: #0f172a;
+}
+
+.app.dark .pending-switch-btn:hover {
+  color: #f8fafc;
+}
+
+.pending-switch-btn.active {
+  background: #ffffff;
+  color: #2563eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.app.dark .pending-switch-btn.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.pending-age-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pending-age-btn {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pending-age-btn:hover {
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.app.dark .pending-age-btn {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #a1a1aa;
+}
+
+.pending-age-btn.active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #2563eb;
+}
+
+.app.dark .pending-age-btn.active {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+}
+
+.pending-age-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.pending-search-box {
+  position: relative;
+  width: 260px;
+}
+
+.pending-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+
+.pending-search-input {
+  width: 100%;
+  padding: 7px 12px 7px 32px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  font-size: 12.5px;
+  background: #ffffff;
+  color: #0f172a;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.pending-search-input:focus {
+  border-color: #2563eb;
+}
+
+.app.dark .pending-search-input {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #f8fafc;
+}
+
+/* Table */
+.pending-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.pending-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+
+.pending-table th {
+  background: #f8fafc;
+  padding: 12px 18px;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.app.dark .pending-table th {
+  background: rgba(255, 255, 255, 0.03);
+  color: #94a3b8;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.pending-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.app.dark .pending-table td {
+  border-bottom-color: rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+}
+
+.pending-table tr:hover td {
+  background: #f8fafc;
+}
+
+.app.dark .pending-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.pending-order-link {
+  font-weight: 700;
+  color: #2563eb;
+  font-family: monospace;
+  font-size: 13.5px;
+}
+
+.pending-client-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.app.dark .pending-client-name {
+  color: #f8fafc;
+}
+
+.pending-company-name {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.pending-amount-text {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pending-amount-bold {
+  font-weight: 700;
+  color: #d97706;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+}
+
+.app.dark .pending-amount-bold {
+  color: #fbbf24;
+}
+
+.pending-age-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pending-age-badge.recent {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.pending-age-badge.warning {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.pending-age-badge.overdue {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.app.dark .pending-age-badge.recent { background: rgba(5, 150, 105, 0.18); color: #34d399; }
+.app.dark .pending-age-badge.warning { background: rgba(217, 119, 6, 0.18); color: #fbbf24; }
+.app.dark .pending-age-badge.overdue { background: rgba(220, 38, 38, 0.18); color: #f87171; }
+
+.pending-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #2563eb;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.pending-action-btn:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.app.dark .pending-action-btn {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #60a5fa;
+}
+
+.app.dark .pending-action-btn:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.pending-empty-state {
+  text-align: center;
+  padding: 48px 16px;
+  color: #64748b;
+  font-size: 13.5px;
+}
+
+.pending-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 16px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.pending-spinner-icon {
+  animation: pendingSpin 0.9s linear infinite;
+  color: #2563eb;
+}
+
+@keyframes pendingSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

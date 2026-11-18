@@ -16,7 +16,8 @@ import {
   Sparkles,
   ChevronRight,
   RefreshCw,
-  ArrowUpRight
+  ArrowUpRight,
+  ArrowLeft
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -283,7 +284,24 @@ export default function LeadApprovals() {
 
       {/* Header */}
       <div className="approvals-header">
-        <h1 className="approvals-title">Lead Approval</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <button
+            type="button"
+            className="back-to-order-btn"
+            onClick={() => {
+              if (window.history.state && window.history.state.idx > 0) {
+                navigate(-1);
+              } else {
+                navigate('/');
+              }
+            }}
+            title="Go to previous page"
+          >
+            <ArrowLeft size={16} />
+            <span>Back</span>
+          </button>
+          <h1 className="approvals-title" style={{ margin: 0 }}>Lead Approval</h1>
+        </div>
         <div className="header-right">
           <div className="search-input-wrapper">
             <Search size={16} className="search-icon" />

@@ -414,8 +414,23 @@ function CreateInvoice() {
     <div className="create-invoice-page">
       {/* Top Header Row */}
       <div className="create-inv-header-row">
-        <div>
-          <h1 className="create-inv-title">Create Invoice</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          <button
+            type="button"
+            className="back-to-order-btn"
+            onClick={() => {
+              if (window.history.state && window.history.state.idx > 0) {
+                navigate(-1);
+              } else {
+                navigate("/invoices");
+              }
+            }}
+            title="Go to previous page"
+          >
+            <ArrowLeft size={16} />
+            <span>Back</span>
+          </button>
+          <h1 className="create-inv-title" style={{ margin: 0 }}>Create Invoice</h1>
         </div>
 
         <div className="create-inv-header-actions">

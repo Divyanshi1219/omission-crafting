@@ -507,7 +507,7 @@ export default function Approvals({ defaultTab = "all" }) {
             sampleCount = idx === 0 ? Math.min(qty, targetBatch) : 0;
           }
         } else {
-          sampleCount = saved.sampleDeduction !== undefined ? Number(saved.sampleDeduction) : (idx === 0 ? 5 : 0);
+          sampleCount = saved.sampleDeduction !== undefined ? Number(saved.sampleDeduction) : (idx === 0 ? 1 : 0);
         }
 
         const deficitCount = saved.notInStockCount !== undefined ? saved.notInStockCount : (selectedOrder.stockTaskData?.notInStockCount || "");
@@ -1235,7 +1235,7 @@ export default function Approvals({ defaultTab = "all" }) {
           productionTaskData: {
             logosPrinted: Number(logosPrinted) || order.totalQuantity || 100,
             logosCutGiven: Number(logosCutGiven) || order.totalQuantity || 100,
-            sampleLogosCount: Number(sampleLogosCount) || 5,
+            sampleLogosCount: Number(sampleLogosCount) || 1,
           }
         };
         const res = await api.patch(`/api/leads/${orderId}/production-task`, payload);
@@ -2128,7 +2128,7 @@ export default function Approvals({ defaultTab = "all" }) {
                             ? (Number(order.customerApprovalData?.partialQuantity) || Math.floor((order.totalQuantity || 100) / 2))
                             : order.orderStage === "complete"
                             ? Math.max(0, (order.totalQuantity || 100) - (Number(order.customerApprovalData?.partialQuantity) || 0))
-                            : (order.stockTaskData?.sampleDeduction || 5));
+                            : (order.stockTaskData?.sampleDeduction || 1));
                         const sampleDeduction = isPartialOrComplete ? targetBatch : (order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0);
 
                         return (
@@ -2233,7 +2233,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                             ? (Number(order.customerApprovalData?.partialQuantity) || Math.floor((order.totalQuantity || 100) / 2))
                             : order.orderStage === "complete"
                             ? Math.max(0, (order.totalQuantity || 100) - (Number(order.customerApprovalData?.partialQuantity) || 0))
-                            : (order.stockTaskData?.sampleDeduction || 5));
+                            : (order.stockTaskData?.sampleDeduction || 1));
                         const sampleDeduction = isPartialOrComplete ? targetBatch : (order.stockTaskData?.sampleDeduction !== undefined ? Number(order.stockTaskData.sampleDeduction) : 0);
                         const sampleReceived = order.stockTaskData?.readyToPickReceived !== false;
                         const isOrderPartial = order.orderStage === "partial" || String(order.currentStageId || order.stageId || "").startsWith("PRT");
@@ -5927,7 +5927,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                     <label>Stock Notes / Items Taken Out</label>
                     <input
                       type="text"
-                      placeholder="e.g. 5 pcs taken from stock for sample"
+                      placeholder="e.g. 1 pcs taken from stock for sample"
                       value={taskActionModal.stockDepreciation}
                       onChange={(e) =>
                         setTaskActionModal({

@@ -9,6 +9,7 @@ import {
   Trash2,
   Calendar,
   ArrowRight,
+  ArrowLeft,
   Receipt,
   Eye,
   AlertCircle
@@ -88,8 +89,23 @@ function InvoicesList() {
   return (
     <div className="invoices-page-container">
       {/* Top Header */}
-      <div className="invoices-header">
-        <h1 className="invoices-title">Invoice</h1>
+      <div className="invoices-header" style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+        <button
+          type="button"
+          className="back-to-order-btn"
+          onClick={() => {
+            if (window.history.state && window.history.state.idx > 0) {
+              navigate(-1);
+            } else {
+              navigate("/");
+            }
+          }}
+          title="Go to previous page"
+        >
+          <ArrowLeft size={16} />
+          <span>Back</span>
+        </button>
+        <h1 className="invoices-title" style={{ margin: 0 }}>Invoice</h1>
       </div>
 
       {/* Controls & Table Container */}

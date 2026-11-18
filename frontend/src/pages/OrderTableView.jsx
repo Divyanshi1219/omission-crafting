@@ -241,13 +241,22 @@ export default function OrderTableView() {
     };
   }, [stage]);
 
+  const handleBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
+  };
+
   return (
     <div className="order-simple-dashboard" style={{ padding: '4px 0 24px 0' }}>
       {/* Top Header with Back to Dashboard button */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginBottom: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <button
-            onClick={() => navigate('/')}
+            onClick={handleBack}
+            title="Go to previous page"
             style={{
               display: 'inline-flex',
               alignItems: 'center',

@@ -920,9 +920,9 @@
 
 .dashboard-page {
   width: 100%;
-
   max-width: 1600px;
-
+  min-width: 0;
+  overflow-x: clip;
   margin: 0 auto;
 }
 
@@ -1071,6 +1071,45 @@
   }
 
 }
+
+/* =========================================================
+   UNIVERSAL BACK BUTTON (Matches Order Management styling)
+   ========================================================= */
+.back-to-order-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.back-to-order-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.app.dark .back-to-order-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #ffffff;
+}
+
+.app.dark .back-to-order-btn:hover {
+  background: #334155;
+  border-color: #475569;
+  color: #ffffff;
+}
+
 /* Force ALL text to be white in dark mode */
 .app.dark,
 .app.dark * {

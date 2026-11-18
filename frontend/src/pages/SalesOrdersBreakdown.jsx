@@ -5,15 +5,13 @@ import {
   ArrowLeft,
   Layers,
   Package,
-  TrendingUp,
   Search,
   Download,
   Filter,
   ArrowUpRight,
   Clock,
-  X,
-  FileText,
-  DollarSign
+  Calendar,
+  X
 } from "lucide-react";
 import "./SalesOrdersBreakdown.css";
 
@@ -49,10 +47,10 @@ export default function SalesOrdersBreakdown() {
   const [ageingTierFilter, setAgeingTierFilter] = useState(() => paramAgeingTier || "all");
   const [ageingStatusFilter, setAgeingStatusFilter] = useState(() => paramAgeingStatus || "all");
   const [filterPreset, setFilterPreset] = useState(() => {
+    if (paramStart && paramEnd) return "custom_param";
     if (paramPeriod === "monthly" && paramMonth === "9") return "october";
     if (paramPeriod === "monthly" && paramMonth === "10") return "this_month";
     if (paramPeriod === "daily") return "custom_param";
-    if (paramStart && paramEnd) return "custom_param";
     return "all";
   });
 
@@ -419,12 +417,20 @@ export default function SalesOrdersBreakdown() {
     setSearchParams({});
   };
 
+  const handleBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  };
+
   return (
     <div className="sales-breakdown-page">
       {/* Top Header Card */}
       <div className="sbd-header-card">
         <div className="sbd-top-nav-row">
-          <button className="sbd-back-btn" onClick={() => navigate("/")}>
+          <button className="sbd-back-btn" onClick={handleBack} title="Go to previous page">
             <ArrowLeft size={16} /> Back to Dashboard
           </button>
 
@@ -446,40 +452,7 @@ export default function SalesOrdersBreakdown() {
           <h1>
             <Layers size={24} color="#6366f1" /> Sales & Orders Breakdown
           </h1>
-          <p>
-            Detailed ledger of each order number with exact units sold, gross revenue, product specifications, and stage.
-          </p>
         </div>
-
-        {/* Active Filter Banner if arrived via specific bar click or ageing click */}
-        {(activeFilterLabel || ageingTierFilter !== "all" || ageingStatusFilter !== "all") && (
-          <div className="sbd-active-filter-banner">
-            <div className="sbd-banner-left">
-              <span className="sbd-banner-tag">Filtered Selection</span>
-              <span>
-                {ageingTierFilter !== "all" || ageingStatusFilter !== "all" ? (
-                  <>
-                    Ageing Filter: <strong>{
-                      ageingTierFilter === "under5" ? "🟢 Under 5 Days (<5d)" :
-                      ageingTierFilter === "fiveTo7" ? "🟡 5 to 7 Days" :
-                      ageingTierFilter === "over7" ? "🔴 Over 7 Days (Aged)" : "All Tiers"
-                    }</strong> • Status: <strong>{
-                      ageingStatusFilter === "completed" ? "Completed Orders (Packaging & Beyond)" :
-                      ageingStatusFilter === "pending" ? "Pending Orders (Pre-Packaging)" : "All Statuses"
-                    }</strong> ({metrics.totalOrders} {metrics.totalOrders === 1 ? 'Order' : 'Orders'} found)
-                  </>
-                ) : (
-                  <>
-                    Showing orders specifically for: <strong>{activeFilterLabel}</strong> ({metrics.totalOrders} {metrics.totalOrders === 1 ? 'Order' : 'Orders'} found)
-                  </>
-                )}
-              </span>
-            </div>
-            <button className="sbd-clear-pill-btn" onClick={clearSpecificFilter}>
-              ✕ View All Orders
-            </button>
-          </div>
-        )}
 
         {/* Time Period Filter Chips Strip */}
         <div className="sbd-period-chips">
@@ -543,6 +516,12 @@ export default function SalesOrdersBreakdown() {
             October 2026
           </button>
 
+          {filterPreset === "custom_param" && (
+            <button className="sbd-chip active" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Calendar size={12} /> {activeFilterLabel || "Selected Period"}
+            </button>
+          )}
+
           <button
             className={`sbd-chip ${filterPreset === "custom" ? "active" : ""}`}
             onClick={() => {
@@ -574,53 +553,6 @@ export default function SalesOrdersBreakdown() {
         </div>
       </div>
 
-      {/* KPI Metric Cards */}
-      <div className="sbd-kpi-grid">
-        <div className="sbd-kpi-card">
-          <div className="sbd-kpi-icon indigo">
-            <Package size={24} />
-          </div>
-          <div className="sbd-kpi-content">
-            <span className="sbd-kpi-label">Total Units Sold</span>
-            <span className="sbd-kpi-value">{metrics.totalUnits.toLocaleString("en-IN")} pcs</span>
-            <span className="sbd-kpi-sub">Avg {metrics.avgUnitsPerOrder} pcs per order</span>
-          </div>
-        </div>
-
-        <div className="sbd-kpi-card">
-          <div className="sbd-kpi-icon emerald">
-            <TrendingUp size={24} />
-          </div>
-          <div className="sbd-kpi-content">
-            <span className="sbd-kpi-label">Total Revenue</span>
-            <span className="sbd-kpi-value">{metrics.formattedRevenue}</span>
-            <span className="sbd-kpi-sub">{metrics.compactRevenue} company total</span>
-          </div>
-        </div>
-
-        <div className="sbd-kpi-card">
-          <div className="sbd-kpi-icon blue">
-            <FileText size={24} />
-          </div>
-          <div className="sbd-kpi-content">
-            <span className="sbd-kpi-label">Orders Count</span>
-            <span className="sbd-kpi-value">{metrics.totalOrders} Orders</span>
-            <span className="sbd-kpi-sub">Across active selection</span>
-          </div>
-        </div>
-
-        <div className="sbd-kpi-card">
-          <div className="sbd-kpi-icon amber">
-            <DollarSign size={24} />
-          </div>
-          <div className="sbd-kpi-content">
-            <span className="sbd-kpi-label">Avg Order Value</span>
-            <span className="sbd-kpi-value">{metrics.avgRevenuePerOrder}</span>
-            <span className="sbd-kpi-sub">Realized per invoice</span>
-          </div>
-        </div>
-      </div>
-
       {/* Filter & Search Controls Bar */}
       <div className="sbd-controls-bar">
         <div className="sbd-search-wrapper">
@@ -638,40 +570,6 @@ export default function SalesOrdersBreakdown() {
         </div>
 
         <div className="sbd-dropdowns-group">
-          <select
-            value={ageingStatusFilter}
-            onChange={(e) => setAgeingStatusFilter(e.target.value)}
-            className="sbd-select"
-            title="Filter by fulfillment status (Packaging stage and beyond)"
-          >
-            <option value="all">All Statuses (Comp & Pend)</option>
-            <option value="completed">Completed (Packaging+)</option>
-            <option value="pending">Pending (Pre-Packaging)</option>
-          </select>
-
-          <select
-            value={ageingTierFilter}
-            onChange={(e) => setAgeingTierFilter(e.target.value)}
-            className="sbd-select"
-            title="Filter by Order Ageing Tier"
-          >
-            <option value="all">All Ageing Tiers</option>
-            <option value="under5">🟢 Under 5 Days (&lt; 5d)</option>
-            <option value="fiveTo7">🟡 5 to 7 Days</option>
-            <option value="over7">🔴 Over 7 Days (Aged)</option>
-          </select>
-
-          <select
-            value={stageFilter}
-            onChange={(e) => setStageFilter(e.target.value)}
-            className="sbd-select"
-          >
-            <option value="all">All Stages</option>
-            <option value="sample">Sample Orders</option>
-            <option value="partial">Partial Orders</option>
-            <option value="complete">Complete Orders</option>
-          </select>
-
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}

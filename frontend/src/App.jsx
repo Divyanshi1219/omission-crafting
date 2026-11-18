@@ -15,6 +15,7 @@ import ItemConsole from "./pages/ItemConsole";
 import StockRoom from "./pages/StockRoom/StockRoom";
 import OrderTableView from "./pages/OrderTableView";
 import SalesOrdersBreakdown from "./pages/SalesOrdersBreakdown";
+import PendingPaymentsPage from "./pages/PendingPaymentsPage";
 import Login from "./pages/Login";
 import DemoIdeasPage from "./pages/DemoIdeasPage"; // TEMP demo page ideas (delete after client approves)
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -132,6 +133,11 @@ function AppContent({ darkMode, setDarkMode }) {
             <Route
               path="/dashboard/sales-breakdown"
               element={<SalesOrdersBreakdown />}
+            />
+
+            <Route
+              path="/pending-payments"
+              element={<PendingPaymentsPage />}
             />
 
             <Route

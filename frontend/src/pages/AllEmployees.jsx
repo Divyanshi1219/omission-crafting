@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Search, Plus, ArrowLeft, Users, Filter, ArrowUpDown, Calendar as CalendarIcon, Trash2, RefreshCw, X } from "lucide-react";
 import api from "../api";
 import "./EmployeeCards.css";
@@ -89,6 +89,7 @@ const isClearance = (e) => isOffboarded(e) && (e.authorizationInfo || "").toLowe
 const isDeprovisioned = (e) => isOffboarded(e) && !isHandover(e) && !isClearance(e);
 
 function AllEmployees() {
+  const navigate = useNavigate();
   const [isAdding, setIsAdding] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(initialForm);
@@ -173,6 +174,7 @@ function AllEmployees() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const currentFilter = (searchParams.get("filter") || "all").toLowerCase().trim();
+  const isInactiveView = currentFilter === "inactive";
 
   const trainingCount = useMemo(() => employees.filter(isTraining).length, [employees]);
   const verificationCount = useMemo(() => employees.filter(isVerification).length, [employees]);
@@ -428,17 +430,48 @@ function AllEmployees() {
   return (
     <div className="dashboard-page">
 
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1>Employee</h1>
-          <p>View and manage employee</p>
+          <p style={{ margin: '0 0 12px 0' }}>View and manage employee</p>
+          {isInactiveView && (
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                if (window.history.state && window.history.state.idx > 0) {
+                  navigate(-1);
+                } else {
+                  navigate('/');
+                }
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#334155',
+                fontSize: '13px',
+                fontWeight: 600,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <ArrowLeft size={16} /> Back to Dashboard
+            </button>
+          )}
         </div>
 
         <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button className="btn-primary" onClick={openNewForm}>
-            <Plus size={16} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
-            Add Employee
-          </button>
+          {!isInactiveView && (
+            <button className="btn-primary" onClick={openNewForm}>
+              <Plus size={16} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
+              Add Employee
+            </button>
+          )}
         </div>
       </div>
 
@@ -451,19 +484,19 @@ function AllEmployees() {
               </div>
               <h2 style={{ fontSize: '18px', margin: 0, color: '#475569', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span>Total Employee : <strong style={{ color: '#0f172a' }}>{filteredEmployees.length} {filteredEmployees.length === 1 ? 'person' : 'persons'}</strong></span>
-                {currentFilter !== 'all' && (
+                {currentFilter !== 'all' && currentFilter !== 'inactive' && (
                   <span style={{
                     fontSize: '12px',
                     fontWeight: '600',
-                    background: (currentFilter === 'inactive' || currentFilter === 'offboarding') ? '#fee2e2' : currentFilter === 'verification' ? '#d1fae5' : currentFilter === 'completed' ? '#fef3c7' : currentFilter === 'training' ? '#dbeafe' : '#fee2e2',
-                    color: (currentFilter === 'inactive' || currentFilter === 'offboarding') ? '#dc2626' : currentFilter === 'verification' ? '#047857' : currentFilter === 'completed' ? '#b45309' : currentFilter === 'training' ? '#1d4ed8' : '#dc2626',
+                    background: currentFilter === 'offboarding' ? '#fee2e2' : currentFilter === 'verification' ? '#d1fae5' : currentFilter === 'completed' ? '#fef3c7' : currentFilter === 'training' ? '#dbeafe' : '#fee2e2',
+                    color: currentFilter === 'offboarding' ? '#dc2626' : currentFilter === 'verification' ? '#047857' : currentFilter === 'completed' ? '#b45309' : currentFilter === 'training' ? '#1d4ed8' : '#dc2626',
                     padding: '3px 10px',
                     borderRadius: '12px',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px'
                   }}>
-                    Filtered by: {currentFilter === 'inactive' ? 'Inactive' : currentFilter.charAt(0).toUpperCase() + currentFilter.slice(1)}
+                    Filtered by: {currentFilter.charAt(0).toUpperCase() + currentFilter.slice(1)}
                     <button
                       onClick={() => setSearchParams({})}
                       style={{
@@ -487,86 +520,94 @@ function AllEmployees() {
             <div className="eth-right" style={{ display: 'flex', gap: '12px' }}>
               <div className="search-box" style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', minWidth: '250px' }}>
                 <Search size={16} color="#94a3b8" />
-                <input type="text" placeholder="Search payroll or name" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ border: 'none', outline: 'none', width: '100%' }} />
+                <input type="text" placeholder="Search employee by name or ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ border: 'none', outline: 'none', width: '100%' }} />
               </div>
               <button className="btn-filter" onClick={fetchEmployees} title="Refresh" style={{ border: '1px solid #e2e8f0', backgroundColor: '#fff', borderRadius: '8px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#0f172a' }}>
                 <RefreshCw size={16} />
               </button>
-              <button className="btn-filter" style={{ border: '1px solid #e2e8f0', backgroundColor: '#fff', borderRadius: '8px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#0f172a' }}>
-                <Filter size={16} /> Filter
-              </button>
-              <button className="btn-sort" style={{ border: '1px solid #e2e8f0', backgroundColor: '#fff', borderRadius: '8px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#0f172a' }}>
-                <ArrowUpDown size={16} /> Sort
-              </button>
+              {!isInactiveView && (
+                <>
+                  <button className="btn-filter" style={{ border: '1px solid #e2e8f0', backgroundColor: '#fff', borderRadius: '8px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#0f172a' }}>
+                    <Filter size={16} /> Filter
+                  </button>
+                  <button className="btn-sort" style={{ border: '1px solid #e2e8f0', backgroundColor: '#fff', borderRadius: '8px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#0f172a' }}>
+                    <ArrowUpDown size={16} /> Sort
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
           {/* Quick Lifecycle Filter Tabs */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-            <button
-              onClick={() => setSearchParams({})}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '20px',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                border: currentFilter === 'all' ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                background: currentFilter === 'all' ? '#eff6ff' : '#fff',
-                color: currentFilter === 'all' ? '#2563eb' : '#64748b',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              All ({employees.length})
-            </button>
-            <button
-              onClick={() => setSearchParams({ filter: 'completed' })}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '20px',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                border: currentFilter === 'completed' ? '2px solid #f59e0b' : '1px solid #e2e8f0',
-                background: currentFilter === 'completed' ? '#fef3c7' : '#fff',
-                color: currentFilter === 'completed' ? '#d97706' : '#64748b',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              Completed ({completedCount})
-            </button>
-            <button
-              onClick={() => setSearchParams({ filter: 'verification' })}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '20px',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                border: currentFilter === 'verification' ? '2px solid #10b981' : '1px solid #e2e8f0',
-                background: currentFilter === 'verification' ? '#d1fae5' : '#fff',
-                color: currentFilter === 'verification' ? '#059669' : '#64748b',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              Verification ({verificationCount})
-            </button>
-            <button
-              onClick={() => setSearchParams({ filter: 'training' })}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '20px',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                border: currentFilter === 'training' ? '2px solid #3b82f6' : '1px solid #e2e8f0',
-                background: currentFilter === 'training' ? '#dbeafe' : '#fff',
-                color: currentFilter === 'training' ? '#1d4ed8' : '#64748b',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              Training ({trainingCount})
-            </button>
+            {!isInactiveView && (
+              <>
+                <button
+                  onClick={() => setSearchParams({})}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    border: currentFilter === 'all' ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                    background: currentFilter === 'all' ? '#eff6ff' : '#fff',
+                    color: currentFilter === 'all' ? '#2563eb' : '#64748b',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  All ({employees.length})
+                </button>
+                <button
+                  onClick={() => setSearchParams({ filter: 'completed' })}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    border: currentFilter === 'completed' ? '2px solid #f59e0b' : '1px solid #e2e8f0',
+                    background: currentFilter === 'completed' ? '#fef3c7' : '#fff',
+                    color: currentFilter === 'completed' ? '#d97706' : '#64748b',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Completed ({completedCount})
+                </button>
+                <button
+                  onClick={() => setSearchParams({ filter: 'verification' })}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    border: currentFilter === 'verification' ? '2px solid #10b981' : '1px solid #e2e8f0',
+                    background: currentFilter === 'verification' ? '#d1fae5' : '#fff',
+                    color: currentFilter === 'verification' ? '#059669' : '#64748b',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Verification ({verificationCount})
+                </button>
+                <button
+                  onClick={() => setSearchParams({ filter: 'training' })}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    border: currentFilter === 'training' ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                    background: currentFilter === 'training' ? '#dbeafe' : '#fff',
+                    color: currentFilter === 'training' ? '#1d4ed8' : '#64748b',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Training ({trainingCount})
+                </button>
+              </>
+            )}
             <button
               onClick={() => setSearchParams({ filter: 'inactive' })}
               style={{
@@ -574,7 +615,7 @@ function AllEmployees() {
                 borderRadius: '20px',
                 fontSize: '13px',
                 fontWeight: '600',
-                cursor: 'pointer',
+                cursor: isInactiveView ? 'default' : 'pointer',
                 border: (currentFilter === 'inactive' || currentFilter === 'offboarding') ? '2px solid #ef4444' : '1px solid #e2e8f0',
                 background: (currentFilter === 'inactive' || currentFilter === 'offboarding') ? '#fee2e2' : '#fff',
                 color: (currentFilter === 'inactive' || currentFilter === 'offboarding') ? '#dc2626' : '#64748b',
@@ -583,7 +624,7 @@ function AllEmployees() {
             >
               Inactive ({offboardingCount})
             </button>
-            {(currentFilter === 'handover' || currentFilter === 'clearance' || currentFilter === 'deprovisioned') && (
+            {!isInactiveView && (currentFilter === 'handover' || currentFilter === 'clearance' || currentFilter === 'deprovisioned') && (
               <button
                 onClick={() => setSearchParams({ filter: currentFilter })}
                 style={{
@@ -613,16 +654,18 @@ function AllEmployees() {
                     <th style={{ textAlign: 'left', padding: '16px 8px', color: '#64748b', fontWeight: '500', fontSize: '14px' }}>Role</th>
                     <th style={{ textAlign: 'left', padding: '16px 8px', color: '#64748b', fontWeight: '500', fontSize: '14px' }}>Joining Date</th>
                     <th style={{ textAlign: 'left', padding: '16px 8px', color: '#64748b', fontWeight: '500', fontSize: '14px' }}>Contract Type</th>
-                    <th style={{ textAlign: 'center', padding: '16px 8px', color: '#64748b', fontWeight: '500', fontSize: '14px' }}>Action</th>
+                    {!isInactiveView && (
+                      <th style={{ textAlign: 'center', padding: '16px 8px', color: '#64748b', fontWeight: '500', fontSize: '14px' }}>Action</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {isLoading ? (
-                    <tr><td colSpan="7" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>Loading employees...</td></tr>
+                    <tr><td colSpan={isInactiveView ? 6 : 7} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>Loading employees...</td></tr>
                   ) : fetchError ? (
-                    <tr><td colSpan="7" style={{ padding: '32px', textAlign: 'center', color: '#ef4444' }}>{fetchError}</td></tr>
+                    <tr><td colSpan={isInactiveView ? 6 : 7} style={{ padding: '32px', textAlign: 'center', color: '#ef4444' }}>{fetchError}</td></tr>
                   ) : filteredEmployees.length === 0 ? (
-                    <tr><td colSpan="7" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>No employees found. Click "Add Employee" to create one.</td></tr>
+                    <tr><td colSpan={isInactiveView ? 6 : 7} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>No employees found. Click "Add Employee" to create one.</td></tr>
                   ) : (
                     filteredEmployees.map(emp => (
                       <tr key={emp._id} onClick={() => openEditForm(emp)} title="Click to view & edit" style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}>
@@ -669,11 +712,13 @@ function AllEmployees() {
                             {emp.employeeType || '-'}
                           </span>
                         </td>
-                        <td style={{ padding: '16px 8px', textAlign: 'center' }}>
-                          <button onClick={(e) => handleDelete(e, emp._id)} title="Delete" style={{ background: 'transparent', border: '1px solid #fecaca', color: '#ef4444', borderRadius: '6px', padding: '6px 8px', cursor: 'pointer' }}>
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
+                        {!isInactiveView && (
+                          <td style={{ padding: '16px 8px', textAlign: 'center' }}>
+                            <button onClick={(e) => handleDelete(e, emp._id)} title="Delete" style={{ background: 'transparent', border: '1px solid #fecaca', color: '#ef4444', borderRadius: '6px', padding: '6px 8px', cursor: 'pointer' }}>
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))
                   )}

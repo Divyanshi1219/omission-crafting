@@ -1238,7 +1238,7 @@ function OrderManagement() {
             if (res.data?.data) {
               const d = res.data.data;
               setOrderApprovalData(d);
-              const sampleCount = d.stockTaskData?.sampleDeduction || d.productionTaskData?.sampleLogosCount || 5;
+              const sampleCount = d.stockTaskData?.sampleDeduction || d.productionTaskData?.sampleLogosCount || 1;
               const totalQty = d.totalQuantity || 100;
               const fromUrl = searchParams.get('from') || '';
               let stageNote = '';
@@ -1847,6 +1847,19 @@ function OrderManagement() {
     } else {
       setShowCreateForm(false);
       navigate('/order/create-lead');
+    }
+  };
+
+  const handlePreviousPage = () => {
+    const from = searchParams.get('from');
+    if (from) {
+      navigate(from);
+      return;
+    }
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/');
     }
   };
 
@@ -5610,19 +5623,19 @@ function OrderManagement() {
             )}
           </div>
         ) : (
-          <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <button
+              type="button"
+              onClick={handlePreviousPage}
+              className="back-to-order-btn"
+              title="Go to previous page"
+            >
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
             <div>
-              <button
-                type="button"
-                onClick={handleBackToLeadsList}
-                className="back-to-order-btn"
-                style={{ marginBottom: '12px' }}
-              >
-                <ArrowLeft size={18} />
-                <span>Back to Leads</span>
-              </button>
-              <h1>Create Lead</h1>
-              <p>Fill out the form below to create a new lead.</p>
+              <h1 style={{ margin: 0 }}>Create Lead</h1>
+              <p style={{ margin: '4px 0 0 0' }}>Fill out the form below to create a new lead.</p>
             </div>
             <div className="header-actions">
               {/* Save Lead button removed from top header */}
@@ -7607,10 +7620,19 @@ function OrderManagement() {
     <div className="page-container">
       <div className="chart-card hover-scale" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
         <div className="chart-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div className="chart-title-sec">
+          <div className="chart-title-sec" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={handlePreviousPage}
+              className="back-to-order-btn"
+              title="Go to previous page"
+            >
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
             <div>
-              <h3 style={{ textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <LayoutGrid size={16} color="#64748b" /> {location.pathname === '/order/create-lead' ? 'Leads' : (currentSection || 'Order Management')}
+              <h3 style={{ textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <LayoutGrid size={16} color="#64748b" /> {currentSection || 'Order Management'}
               </h3>
             </div>
           </div>

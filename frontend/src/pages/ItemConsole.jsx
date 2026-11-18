@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   SlidersHorizontal,
   Plus,
@@ -11,6 +12,7 @@ import {
   Edit3,
   CheckCircle2,
   AlertCircle,
+  ArrowLeft,
 } from "lucide-react";
 import api from "../api";
 import "./ItemConsole.css";
@@ -83,6 +85,7 @@ function ChipInput({ chips = [], onChange, placeholder, chipColor = "blue", disa
 const DEFAULT_STANDARD_SIZES = ["S", "M", "L", "XL", "XXL", "XXXL"];
 
 export default function ItemConsole() {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -227,7 +230,22 @@ export default function ItemConsole() {
   return (
     <div className="item-console-page">
       {/* Header */}
-      <div className="console-header-container">
+      <div className="console-header-container" style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+        <button
+          type="button"
+          className="back-to-order-btn"
+          onClick={() => {
+            if (window.history.state && window.history.state.idx > 0) {
+              navigate(-1);
+            } else {
+              navigate("/");
+            }
+          }}
+          title="Go to previous page"
+        >
+          <ArrowLeft size={16} />
+          <span>Back</span>
+        </button>
         <div className="console-title-group">
           <h1>
             <SlidersHorizontal size={24} color="#2563eb" />

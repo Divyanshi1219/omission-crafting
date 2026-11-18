@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import './InventoryAnalyticsPanel.css';
+import StagingRoomAgeingChart from './StagingRoomAgeingChart';
 
 export default function InventoryAnalyticsPanel({
   stocks: propStocks,
@@ -433,6 +434,10 @@ export default function InventoryAnalyticsPanel({
         </div>
       </div>
 
+      {/* ============================================================== */}
+      {/* 2. ORDERS > PARTIAL > STAGING ROOM AGEING & RETURN MONITOR     */}
+      {/* ============================================================== */}
+      <StagingRoomAgeingChart leads={leads} />
 
       {/* ============================================================== */}
       {/* 3. SIZE AVAILABILITY & RESERVATION (Individual Standalone Card) */}

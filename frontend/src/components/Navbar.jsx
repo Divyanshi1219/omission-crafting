@@ -36,12 +36,18 @@ function Navbar({ darkMode, setDarkMode }) {
   }, []);
 
   const handleProfileSwitch = (profileId) => {
+    try {
+      sessionStorage.removeItem("dashboard_active_tab");
+    } catch (_) {}
     switchProfile(profileId);
     setShowDropdown(false);
     navigate("/");
   };
 
   const handleLogout = () => {
+    try {
+      sessionStorage.removeItem("dashboard_active_tab");
+    } catch (_) {}
     logout();
     setShowDropdown(false);
     navigate("/login");

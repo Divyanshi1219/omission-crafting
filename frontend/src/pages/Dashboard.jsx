@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api";
 import { 
   LayoutGrid, 
@@ -11,6 +11,8 @@ import {
   Clock, 
   Calendar as CalendarIcon, 
   ChevronDown, 
+  ChevronLeft,
+  ChevronRight, 
   ArrowRight, 
   X, 
   MapPin, 
@@ -32,7 +34,11 @@ import {
   Archive,
   BookmarkCheck,
   Filter,
-  Timer
+  Timer,
+  Search,
+  Truck,
+  ShieldCheck,
+  CreditCard
 } from "lucide-react";
 import "./EmployeeCards.css";
 import "./OverviewDashboard.css";
@@ -40,6 +46,8 @@ import "./StockRoom/StockRoom.css";
 import OrderManagementDashboard from "./OrderManagementDashboard";
 import InventoryManagement from "./InventoryManagement";
 import StockRoom from "./StockRoom/StockRoom";
+import DeliveryDashboard from "./DeliveryDashboard";
+import ComplianceDashboard from "./ComplianceDashboard";
 import { useAuth } from "../context/AuthContext";
 
 const defaultEmployees = [
@@ -91,10 +99,47 @@ function Dashboard() {
     Boolean(currentUser?.role && currentUser.role.toLowerCase() === "lead manager");
   const isOnlyOrderManagement = isSales || isProduction || isLeadManager;
   const isOnlyInventory = isStock;
-  const [activeTab, setActiveTab] = useState(
-    isOnlyInventory ? "inventory" : isOnlyOrderManagement ? "case" : "overview"
-  );
+
+  const [searchParams] = useSearchParams();
+  const queryTab = searchParams.get("tab");
+
+  const getValidDashboardTab = (targetTab) => {
+    if (isOnlyInventory) return "inventory";
+    if (isOnlyOrderManagement) return "case";
+    const validTabs = ["overview", "case", "inventory", "leave", "delivery", "compliance"];
+    if (isAdmin) validTabs.push("employee");
+    if (targetTab && validTabs.includes(targetTab)) {
+      return targetTab;
+    }
+    return null;
+  };
+
+  const [activeTab, setActiveTab] = useState(() => {
+    if (isOnlyInventory) return "inventory";
+    if (isOnlyOrderManagement) return "case";
+    if (queryTab) {
+      const valid = getValidDashboardTab(queryTab);
+      if (valid) return valid;
+    }
+    try {
+      const saved = sessionStorage.getItem("dashboard_active_tab");
+      const valid = getValidDashboardTab(saved);
+      if (valid) return valid;
+    } catch (_) {}
+    return "overview";
+  });
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [employeeSearchInput, setEmployeeSearchInput] = useState("");
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState("");
+
+  // Persist active tab so returning to Dashboard restores the last visited tab (e.g. Order Management)
+  useEffect(() => {
+    if (activeTab) {
+      try {
+        sessionStorage.setItem("dashboard_active_tab", activeTab);
+      } catch (_) {}
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (isOnlyInventory) {
@@ -102,9 +147,24 @@ function Dashboard() {
     } else if (isOnlyOrderManagement) {
       setActiveTab("case");
     } else {
+      if (queryTab) {
+        const valid = getValidDashboardTab(queryTab);
+        if (valid) {
+          setActiveTab(valid);
+          return;
+        }
+      }
+      try {
+        const saved = sessionStorage.getItem("dashboard_active_tab");
+        const valid = getValidDashboardTab(saved);
+        if (valid) {
+          setActiveTab(valid);
+          return;
+        }
+      } catch (_) {}
       setActiveTab("overview");
     }
-  }, [currentUser?.id, isOnlyInventory, isOnlyOrderManagement]);
+  }, [currentUser?.id, isOnlyInventory, isOnlyOrderManagement, isAdmin, queryTab]);
 
   // Fetch live Stock Room metrics for Stock Room Manager dashboard
   useEffect(() => {
@@ -161,13 +221,24 @@ function Dashboard() {
   const [customStartDate, setCustomStartDate] = useState("2026-10-01");
   const [customEndDate, setCustomEndDate] = useState("2026-11-30");
   const [hoveredSalesPoint, setHoveredSalesPoint] = useState(null);
+  const chartScrollRef = useRef(null);
+
+  useEffect(() => {
+    if (chartScrollRef.current) {
+      const timer = setTimeout(() => {
+        if (chartScrollRef.current) {
+          chartScrollRef.current.scrollLeft = chartScrollRef.current.scrollWidth;
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [salesTimeFrame, customStartDate, customEndDate, chartViewMode]);
   const [selectedStageFilter, setSelectedStageFilter] = useState("all"); // "all" | "sample" | "partial" | "complete"
   const [hoveredStack, setHoveredStack] = useState(null); // tooltip data for main chart
   const [hoveredDay, setHoveredDay] = useState(null); // tooltip data for velocity chart
   const [showRepeatDetailsModal, setShowRepeatDetailsModal] = useState(false);
-  const [activeDonutHover, setActiveDonutHover] = useState({ onboarding: null, offboarding: null });
-  const [orderAgeingFilter, setOrderAgeingFilter] = useState("completed"); // "completed" | "pending" | "all"
-  const [hoveredAgeingSegment, setHoveredAgeingSegment] = useState(null);
+  const [hoveredCompletedSegment, setHoveredCompletedSegment] = useState(null);
+  const [hoveredPendingSegment, setHoveredPendingSegment] = useState(null);
 
   // Live Inventory Overview State & Synchronization
   const [inventoryItems, setInventoryItems] = useState([]);
@@ -615,37 +686,36 @@ function Dashboard() {
     const completedOrders = categorized.filter(o => o.isCompleted);
     const pendingOrders = categorized.filter(o => !o.isCompleted);
 
-    const activeList = orderAgeingFilter === "completed"
-      ? completedOrders
-      : orderAgeingFilter === "pending"
-        ? pendingOrders
-        : categorized;
+    const calcTierStats = (list) => {
+      const total = list.length;
+      const under5Count = list.filter(o => o.tier === "under5").length;
+      const fiveTo7Count = list.filter(o => o.tier === "fiveTo7").length;
+      const over7Count = list.filter(o => o.tier === "over7").length;
 
-    const total = activeList.length;
-    const under5Count = activeList.filter(o => o.tier === "under5").length;
-    const fiveTo7Count = activeList.filter(o => o.tier === "fiveTo7").length;
-    const over7Count = activeList.filter(o => o.tier === "over7").length;
+      const under5Pct = total > 0 ? Math.round((under5Count / total) * 100) : 0;
+      const fiveTo7Pct = total > 0 ? Math.round((fiveTo7Count / total) * 100) : 0;
+      const over7Pct = total > 0 ? Math.max(0, 100 - under5Pct - fiveTo7Pct) : 0;
 
-    const under5Pct = total > 0 ? Math.round((under5Count / total) * 100) : 0;
-    const fiveTo7Pct = total > 0 ? Math.round((fiveTo7Count / total) * 100) : 0;
-    const over7Pct = total > 0 ? Math.max(0, 100 - under5Pct - fiveTo7Pct) : 0;
+      const avgDays = total > 0
+        ? (list.reduce((sum, o) => sum + o.days, 0) / total).toFixed(1)
+        : "0.0";
 
-    const avgDays = total > 0
-      ? (activeList.reduce((sum, o) => sum + o.days, 0) / total).toFixed(1)
-      : 0;
+      return {
+        total,
+        under5: { count: under5Count, pct: under5Pct, label: "Under 5 Days" },
+        fiveTo7: { count: fiveTo7Count, pct: fiveTo7Pct, label: "5 to 7 Days" },
+        over7: { count: over7Count, pct: over7Pct, label: "Over 7 Days (Aged)" },
+        avgDays,
+        list
+      };
+    };
 
     return {
-      total,
-      completedTotal: completedOrders.length,
-      pendingTotal: pendingOrders.length,
-      allTotal: categorized.length,
-      under5: { count: under5Count, pct: under5Pct, label: "Under 5 Days" },
-      fiveTo7: { count: fiveTo7Count, pct: fiveTo7Pct, label: "5 to 7 Days" },
-      over7: { count: over7Count, pct: over7Pct, label: "Over 7 Days (Aged)" },
-      avgDays,
-      activeList
+      completed: calcTierStats(completedOrders),
+      pending: calcTierStats(pendingOrders),
+      allTotal: categorized.length
     };
-  }, [rawLeads, leads, orderAgeingFilter]);
+  }, [rawLeads, leads]);
 
   // Currency formatter for INR
   const formatINR = (val, compact = false) => {
@@ -666,10 +736,11 @@ function Dashboard() {
       return;
     }
     let url = `/sales/orders?label=${encodeURIComponent(col.label || col.shortLabel || "")}`;
-    if (salesTimeFrame === "daily" && col.start && col.end) {
-      url += `&period=daily&start=${col.start.toISOString()}&end=${col.end.toISOString()}`;
-    } else if (salesTimeFrame === "weekly" && col.start && col.end) {
-      url += `&period=weekly&start=${col.start.toISOString()}&end=${col.end.toISOString()}`;
+    if (col.start && col.end) {
+      url += `&period=${salesTimeFrame}&start=${col.start.toISOString()}&end=${col.end.toISOString()}`;
+      if (salesTimeFrame === "monthly") {
+        url += `&month=${col.monthIdx}&year=${col.year}`;
+      }
     } else if (salesTimeFrame === "monthly") {
       url += `&period=monthly&month=${col.monthIdx}&year=${col.year}`;
     } else if (salesTimeFrame === "custom") {
@@ -679,15 +750,15 @@ function Dashboard() {
   };
 
   // Open Sales Orders Ledger breakdown filtered by Order Ageing
-  const handleOpenAgeingOrders = (tier = "all") => {
+  const handleOpenAgeingOrders = (tier = "all", status = "all") => {
     const params = new URLSearchParams();
-    if (orderAgeingFilter && orderAgeingFilter !== "all") {
-      params.set("ageingStatus", orderAgeingFilter);
+    if (status && status !== "all") {
+      params.set("ageingStatus", status);
     }
     if (tier && tier !== "all") {
       params.set("ageingTier", tier);
     }
-    const statusLabel = orderAgeingFilter === "completed" ? "Completed Orders" : orderAgeingFilter === "pending" ? "Pending Orders" : "All Orders";
+    const statusLabel = status === "completed" ? "Completed Orders" : status === "pending" ? "Pending Orders" : "All Orders";
     const tierLabel = tier === "under5" ? "Under 5 Days" : tier === "fiveTo7" ? "5 to 7 Days" : tier === "over7" ? "Over 7 Days (Aged)" : "All Tiers";
     params.set("label", `${tierLabel} • ${statusLabel}`);
     navigate(`/sales/orders?${params.toString()}`);
@@ -725,11 +796,13 @@ function Dashboard() {
     const cleanLeads = leadsList.map(sanitizeLead);
     let periodBuckets = [];
 
+    // Dynamic reference date ending on today or latest order date
+    const now = new Date();
+    const latestLeadTs = cleanLeads.length > 0 ? Math.max(...cleanLeads.map(x => x.date.getTime())) : now.getTime();
+    const refDate = new Date(Math.max(now.getTime(), latestLeadTs));
+
     if (salesTimeFrame === "daily") {
       // Dynamic recent 7 days ending on today (or latest order date)
-      const now = new Date();
-      const latestLeadTs = cleanLeads.length > 0 ? Math.max(...cleanLeads.map(x => x.date.getTime())) : now.getTime();
-      const refDate = new Date(Math.max(now.getTime(), latestLeadTs));
       const baseDate = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
 
       periodBuckets = [];
@@ -758,57 +831,107 @@ function Dashboard() {
         });
       }
     } else if (salesTimeFrame === "weekly") {
-      periodBuckets = [
-        { label: "Oct W3 (18-24)", shortLabel: "Oct W3", start: new Date("2026-10-18T00:00:00"), end: new Date("2026-10-24T23:59:59") },
-        { label: "Oct W4 (25-31)", shortLabel: "Oct W4", start: new Date("2026-10-25T00:00:00"), end: new Date("2026-10-31T23:59:59") },
-        { label: "Nov W1 (01-07)", shortLabel: "Nov W1", start: new Date("2026-11-01T00:00:00"), end: new Date("2026-11-07T23:59:59") },
-        { label: "Nov W2 (08-14)", shortLabel: "Nov W2", start: new Date("2026-11-08T00:00:00"), end: new Date("2026-11-14T23:59:59") },
-      ];
-      periodBuckets.forEach(b => {
-        const inBucket = cleanLeads.filter(x => x.date >= b.start && x.date <= b.end);
-        b.units = inBucket.reduce((s, x) => s + x.units, 0);
-        b.revenue = inBucket.reduce((s, x) => s + x.revenue, 0);
-        b.orders = inBucket.length;
-      });
-    } else if (salesTimeFrame === "custom") {
-      const s = new Date(customStartDate || "2026-10-01");
-      const e = new Date((customEndDate || "2026-11-30") + "T23:59:59");
-      const inRange = cleanLeads.filter(x => x.date >= s && x.date <= e);
+      // 6 weeks of weekly data ending on current week (no scrolling needed)
+      const dayOfWeek = refDate.getDay();
+      const daysUntilEndOfWeek = (7 - dayOfWeek) % 7;
+      const endOfCurrentWeek = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate() + daysUntilEndOfWeek, 23, 59, 59, 999);
 
-      const timeSpan = Math.max(e.getTime() - s.getTime(), 86400000 * 4);
-      const step = timeSpan / 4;
-      for (let i = 0; i < 4; i++) {
-        const bStart = new Date(s.getTime() + i * step);
-        const bEnd = new Date(s.getTime() + (i + 1) * step);
-        const label = `${bStart.toLocaleDateString('default', { month: 'short', day: 'numeric' })} - ${bEnd.toLocaleDateString('default', { month: 'short', day: 'numeric' })}`;
-        const shortLabel = `${bStart.toLocaleDateString('default', { month: 'numeric', day: 'numeric' })}`;
-        const inB = inRange.filter(x => x.date >= bStart && (i === 3 ? x.date <= bEnd : x.date < bEnd));
+      periodBuckets = [];
+      for (let i = 5; i >= 0; i--) {
+        const wEnd = new Date(endOfCurrentWeek.getTime() - i * 7 * 86400000);
+        wEnd.setHours(23, 59, 59, 999);
+        const wStart = new Date(wEnd.getTime() - 6 * 86400000);
+        wStart.setHours(0, 0, 0, 0);
+
+        const startM = wStart.toLocaleDateString("en-US", { month: "short" });
+        const endM = wEnd.toLocaleDateString("en-US", { month: "short" });
+        const startD = wStart.getDate();
+        const endD = wEnd.getDate();
+
+        const label = `Week: ${startM} ${startD} – ${startM === endM ? "" : endM + " "}${endD}, ${wEnd.getFullYear()}`;
+        const weekNum = Math.min(5, Math.ceil(startD / 7));
+        const shortLabel = `${startM} W${weekNum}`;
+        const subLabel = `${startD}-${endD} ${startM === endM ? "" : endM}`;
+
+        const inBucket = cleanLeads.filter(x => x.date >= wStart && x.date <= wEnd);
         periodBuckets.push({
           label,
           shortLabel,
-          units: inB.reduce((acc, x) => acc + x.units, 0),
-          revenue: inB.reduce((acc, x) => acc + x.revenue, 0),
-          orders: inB.length
+          subLabel,
+          start: wStart,
+          end: wEnd,
+          units: inBucket.reduce((s, x) => s + x.units, 0),
+          revenue: inBucket.reduce((s, x) => s + x.revenue, 0),
+          orders: inBucket.length,
         });
       }
-    } else {
-      // Monthly default (Sep, Oct, Nov, Dec)
-      const months = [
-        { label: "Sep 2026", shortLabel: "Sep", monthIdx: 8, year: 2026 },
-        { label: "Oct 2026", shortLabel: "Oct", monthIdx: 9, year: 2026 },
-        { label: "Nov 2026", shortLabel: "Nov", monthIdx: 10, year: 2026 },
-        { label: "Dec 2026", shortLabel: "Dec", monthIdx: 11, year: 2026 },
-      ];
-      periodBuckets = months.map(m => {
-        const inMonth = cleanLeads.filter(x => x.date.getMonth() === m.monthIdx && x.date.getFullYear() === m.year);
-        return {
-          label: m.label,
-          shortLabel: m.shortLabel,
+    } else if (salesTimeFrame === "monthly") {
+      // 6 months of monthly data ending on refDate month
+      periodBuckets = [];
+      for (let i = 5; i >= 0; i--) {
+        const targetDate = new Date(refDate.getFullYear(), refDate.getMonth() - i, 1);
+        const y = targetDate.getFullYear();
+        const m = targetDate.getMonth();
+        const mStart = new Date(y, m, 1, 0, 0, 0, 0);
+        const mEnd = new Date(y, m + 1, 0, 23, 59, 59, 999);
+
+        const monthShort = mStart.toLocaleDateString("en-US", { month: "short" });
+        const monthFull = mStart.toLocaleDateString("en-US", { month: "long" });
+
+        const inMonth = cleanLeads.filter(x => x.date >= mStart && x.date <= mEnd);
+        periodBuckets.push({
+          label: `${monthFull} ${y}`,
+          shortLabel: monthShort,
+          subLabel: `${y}`,
+          monthIdx: m,
+          year: y,
+          start: mStart,
+          end: mEnd,
           units: inMonth.reduce((s, x) => s + x.units, 0),
           revenue: inMonth.reduce((s, x) => s + x.revenue, 0),
-          orders: inMonth.length
-        };
-      });
+          orders: inMonth.length,
+        });
+      }
+    } else if (salesTimeFrame === "custom") {
+      // In custom data: show every single day in detail
+      const s = new Date(customStartDate || "2026-10-01");
+      const e = new Date((customEndDate || "2026-11-30") + "T23:59:59.999");
+
+      const startMs = isNaN(s.getTime()) ? new Date("2026-10-01").getTime() : s.getTime();
+      const endMs = isNaN(e.getTime()) ? new Date("2026-11-30T23:59:59.999").getTime() : e.getTime();
+      const actualStart = new Date(Math.min(startMs, endMs));
+      const actualEnd = new Date(Math.max(startMs, endMs));
+      actualStart.setHours(0, 0, 0, 0);
+      actualEnd.setHours(23, 59, 59, 999);
+
+      periodBuckets = [];
+      const curr = new Date(actualStart);
+      let dayCount = 0;
+      while (curr <= actualEnd && dayCount < 366) {
+        const dStart = new Date(curr);
+        dStart.setHours(0, 0, 0, 0);
+        const dEnd = new Date(curr);
+        dEnd.setHours(23, 59, 59, 999);
+
+        const shortDay = dStart.toLocaleDateString("en-US", { weekday: "short" });
+        const shortDate = dStart.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const fullDate = dStart.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+
+        const inDay = cleanLeads.filter(x => x.date >= dStart && x.date <= dEnd);
+        periodBuckets.push({
+          label: fullDate,
+          shortLabel: shortDate,
+          subLabel: shortDay,
+          start: dStart,
+          end: dEnd,
+          units: inDay.reduce((acc, x) => acc + x.units, 0),
+          revenue: inDay.reduce((acc, x) => acc + x.revenue, 0),
+          orders: inDay.length,
+        });
+
+        curr.setDate(curr.getDate() + 1);
+        dayCount++;
+      }
     }
 
     const totalUnits = periodBuckets.reduce((s, b) => s + b.units, 0);
@@ -821,29 +944,71 @@ function Dashboard() {
     );
 
     const numCols = periodBuckets.length;
-    const colWidth = numCols > 5 ? 44 : 74;
-    const paddingX = numCols > 5 ? 55 : 85;
-    const usableWidth = 600 - paddingX * 2;
+    // Only scroll in Custom Range when there are multiple days (> 7). Day (7), Week (6), Month (6) fit cleanly without scrolling.
+    const isScrollable = salesTimeFrame === "custom" && numCols > 7;
+    const pointSpacing = numCols > 25 ? 52 : numCols > 12 ? 60 : 70;
+    const paddingX = isScrollable ? 44 : (numCols > 5 ? 50 : 80);
+    const chartSvgWidth = isScrollable
+      ? Math.max(680, paddingX * 2 + (numCols - 1) * pointSpacing)
+      : 600;
+
+    const usableWidth = chartSvgWidth - paddingX * 2;
     const xStep = numCols > 1 ? usableWidth / (numCols - 1) : 0;
     const xCenters = periodBuckets.map((_, i) => Math.round(paddingX + i * xStep));
 
     const columns = periodBuckets.map((b, i) => {
       const val = chartViewMode === "volume" ? b.units : b.revenue;
-      const h = val > 0 ? Math.max(14, Math.round((val / maxVal) * 125)) : 10;
+      const y = val > 0 ? Math.round(190 - (val / maxVal) * 135) : 190;
+      const x = xCenters[i];
       return {
         ...b,
-        colWidth,
-        xCenter: xCenters[i],
+        xCenter: x,
+        x,
+        y,
         val,
-        h,
         totalLabelUnits: `${b.units.toLocaleString('en-IN')} Units`,
         totalLabelRevenue: formatINR(b.revenue, true),
         fullRevenue: formatINR(b.revenue, false)
       };
     });
 
+    const buildSmoothSpline = (pts) => {
+      if (!pts || pts.length === 0) return "";
+      if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+      let d = `M ${pts[0].x} ${pts[0].y}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = i > 0 ? pts[i - 1] : pts[i];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = i + 2 < pts.length ? pts[i + 2] : p2;
+
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        let cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        let cp2y = p2.y - (p3.y - p1.y) / 6;
+
+        cp1y = Math.min(190, Math.max(45, cp1y));
+        cp2y = Math.min(190, Math.max(45, cp2y));
+
+        d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+      }
+      return d;
+    };
+
+    const linePath = buildSmoothSpline(columns);
+    const areaPath = columns.length > 0
+      ? `${linePath} L ${columns[columns.length - 1].x} 190 L ${columns[0].x} 190 Z`
+      : "";
+
+    const peakPeriod = columns.reduce((p, c) => (c.val > (p?.val || 0) ? c : p), columns[0]);
+
     return {
       columns,
+      linePath,
+      areaPath,
+      chartSvgWidth,
+      isScrollable,
+      maxVal,
       totalUnits,
       totalRevenue,
       formattedTotalRevenue: formatINR(totalRevenue, false),
@@ -851,7 +1016,8 @@ function Dashboard() {
       avgUnits: periodBuckets.length ? Math.round(totalUnits / periodBuckets.length) : 0,
       avgRevenue: periodBuckets.length ? Math.round(totalRevenue / periodBuckets.length) : 0,
       formattedAvgRevenue: formatINR(periodBuckets.length ? Math.round(totalRevenue / periodBuckets.length) : 0, false),
-      peakPeriod: columns.reduce((p, c) => (c.val > (p?.val || 0) ? c : p), columns[0])
+      peakPeriod,
+      peakVal: peakPeriod ? peakPeriod.val : 0
     };
   }, [rawLeads, leads, salesTimeFrame, customStartDate, customEndDate, chartViewMode]);
 
@@ -879,6 +1045,50 @@ function Dashboard() {
     );
   };
 
+  // Deterministic dummy info generator for leaves and salary deduction
+  const getDummyEmployeeData = (emp, idx = 0) => {
+    const nameStr = emp.displayName || emp.name || `emp-${idx}`;
+    let hash = 0;
+    for (let i = 0; i < nameStr.length; i++) {
+      hash = (hash << 5) - hash + nameStr.charCodeAt(i);
+      hash |= 0;
+    }
+    const seed = Math.abs(hash) + idx;
+
+    // Total leaves taken between 1 and 6 days
+    const totalLeavesTaken = (seed % 6) + 1;
+    const annualLeaveAllowance = 18;
+    const remainingLeaves = Math.max(0, annualLeaveAllowance - totalLeavesTaken);
+
+    // Casual and sick leaves breakdown
+    const sickLeaves = Math.min(totalLeavesTaken, (seed % 3) + 1);
+    const casualLeaves = totalLeavesTaken - sickLeaves;
+
+    // Salary deduction: approx 1 in 3 has a deduction
+    const hasDeduction = seed % 3 === 0;
+    const deductionDays = hasDeduction ? (seed % 2) + 1 : 0;
+    const salaryDeduction = deductionDays * 1250; // ₹1,250 or ₹2,500
+
+    const baseSalary = 32000 + (seed % 5) * 4500; // ₹32,000 to ₹50,000
+    const netSalary = baseSalary - salaryDeduction;
+
+    return {
+      totalLeavesTaken,
+      annualLeaveAllowance,
+      remainingLeaves,
+      sickLeaves,
+      casualLeaves,
+      hasDeduction,
+      deductionDays,
+      salaryDeduction,
+      baseSalary,
+      netSalary,
+      deductionReason: hasDeduction
+        ? `${deductionDays} day(s) Unpaid / LOP deduction`
+        : "None (All leaves within paid allowance)",
+    };
+  };
+
   // Real MongoDB Workforce Normalization
   const normalizedEmployees = useMemo(() => {
     return employeesList.map((emp, idx) => {
@@ -890,6 +1100,7 @@ function Dashboard() {
       const avatarBg = emp.avatarBg || avatarColors[idx % avatarColors.length];
       const isInactive = isEmployeeInactive(emp);
       const status = isInactive ? 'inactive' : (emp.accountStatus || 'Active').toLowerCase() === 'active' ? 'online' : 'away';
+      const dummy = getDummyEmployeeData(emp, idx);
 
       return {
         ...emp,
@@ -904,9 +1115,29 @@ function Dashboard() {
         openTasks: emp.openTasks ?? (leads.filter(l => (l.employeeName || '').toLowerCase().includes(displayName.toLowerCase())).length),
         completedTasks: emp.completedTasks ?? 12,
         workload: emp.workload ?? 65,
+        dummy,
       };
     });
   }, [employeesList, leads]);
+
+  const filteredEmployeeCards = useMemo(() => {
+    const q = (employeeSearchQuery || "").toLowerCase().trim();
+    if (!q) return normalizedEmployees;
+    return normalizedEmployees.filter((emp) => {
+      const name = (emp.name || "").toLowerCase();
+      const role = (emp.role || "").toLowerCase();
+      const dept = (emp.department || "").toLowerCase();
+      const empId = (emp.employeeId || "").toLowerCase();
+      const email = (emp.email || "").toLowerCase();
+      return (
+        name.includes(q) ||
+        role.includes(q) ||
+        dept.includes(q) ||
+        empId.includes(q) ||
+        email.includes(q)
+      );
+    });
+  }, [normalizedEmployees, employeeSearchQuery]);
 
   // Workforce stats from real MongoDB employees
   const totalEmployees = normalizedEmployees.length;
@@ -916,69 +1147,333 @@ function Dashboard() {
   const activePct = totalEmployees > 0 ? Math.round((activeEmployees / totalEmployees) * 100) : 0;
   const inactivePct = totalEmployees > 0 ? Math.round((inactiveEmployees / totalEmployees) * 100) : 0;
 
-  // Real Database Employee Lifecycle: Onboarding Breakdown
-  const onboardingStats = useMemo(() => {
-    const activeStaff = employeesList.filter(e => !isEmployeeInactive(e));
-    const total = activeStaff.length;
-    const training = activeStaff.filter(e => {
-      const s = (e.accountStatus || '').toLowerCase();
-      const t = (e.employeeType || '').toLowerCase();
-      return s === 'probation' || s === 'training' || t === 'intern';
-    });
-    const verification = activeStaff.filter(e => {
-      return !training.includes(e) && (!e.email || !e.email.includes('@'));
-    });
-    const completed = activeStaff.filter(e => !training.includes(e) && !verification.includes(e));
+  // Pending Payment Ageing & Days Passed (from DTF Partial / All Orders)
+  const pendingPaymentAgeing = useMemo(() => {
+    const now = new Date().getTime();
+    const allLeadsList = rawLeads && rawLeads.length > 0 ? rawLeads : leads || [];
 
-    const thisMonthCount = activeStaff.filter(e => {
-      if (!e.createdAt && !e.hireDate) return false;
-      const d = new Date(e.createdAt || e.hireDate);
-      const now = new Date();
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }).length;
+    const calculateTierStats = (list) => {
+      let totalAmount = 0;
+      let count = 0;
+      const tier0to3 = { count: 0, amount: 0, label: "0-3 Days", color: "#10b981", orders: [] };
+      const tier4to7 = { count: 0, amount: 0, label: "4-7 Days", color: "#f59e0b", orders: [] };
+      const tierOver7 = { count: 0, amount: 0, label: "Over 7 Days", color: "#ef4444", orders: [] };
+
+      list.forEach((l) => {
+        const tot = Number(l.totalAmount) || 0;
+        const adv = Number(l.advanceAmount) || 0;
+        let pend = Number(l.pendingAmount);
+
+        // Sanitize unrealistic spam values
+        if (isNaN(pend) || pend < 0 || (tot > 0 && pend > tot * 2) || pend > 50000000) {
+          pend = tot > adv ? tot - adv : 0;
+        }
+
+        const isDtfPartial = (l.orderStage || "").toLowerCase().trim() === "partial" &&
+          ((l.subStage || "").toLowerCase().includes("payment") || l.subStage === "payment-confirmation");
+
+        if (pend > 0 || isDtfPartial) {
+          const dateStr = l.updatedAt || l.createdAt || l.date;
+          const orderDate = dateStr ? new Date(dateStr).getTime() : now;
+          const daysPassed = Math.max(0, Math.floor((now - orderDate) / (1000 * 60 * 60 * 24)));
+
+          const orderItem = {
+            id: l._id,
+            orderId: l.orderId || l.orderNo || `ORD-${l._id?.slice(-4)}`,
+            clientName: l.clientName || l.customerName || "Customer",
+            companyName: l.companyName || "",
+            pendingAmount: pend,
+            totalAmount: tot,
+            daysPassed,
+            orderStage: l.orderStage || "partial",
+            subStage: l.subStage || "order",
+          };
+
+          totalAmount += pend;
+          count++;
+
+          if (daysPassed <= 3) {
+            tier0to3.count++;
+            tier0to3.amount += pend;
+            tier0to3.orders.push(orderItem);
+          } else if (daysPassed <= 7) {
+            tier4to7.count++;
+            tier4to7.amount += pend;
+            tier4to7.orders.push(orderItem);
+          } else {
+            tierOver7.count++;
+            tierOver7.amount += pend;
+            tierOver7.orders.push(orderItem);
+          }
+        }
+      });
+
+      return {
+        totalAmount,
+        count,
+        tiers: [tier0to3, tier4to7, tierOver7],
+        allOrders: [...tier0to3.orders, ...tier4to7.orders, ...tierOver7.orders].sort(
+          (a, b) => b.daysPassed - a.daysPassed
+        ),
+      };
+    };
+
+    // Filter DTF Partial leads matching sidebar photo
+    const dtfPartialLeads = allLeadsList.filter((l) => {
+      const stage = (l.orderStage || "").toLowerCase().trim();
+      const sub = (l.subStage || "").toLowerCase().trim().replace(/_/g, "-");
+      return (
+        stage === "partial" &&
+        (sub.includes("payment") || sub === "payment-confirmation" || sub === "payment status")
+      );
+    });
 
     return {
-      total,
-      training: { count: training.length, pct: total > 0 ? Math.round((training.length / total) * 100) : 0 },
-      verification: { count: verification.length, pct: total > 0 ? Math.round((verification.length / total) * 100) : 0 },
-      completed: { count: completed.length, pct: total > 0 ? Math.round((completed.length / total) * 100) : 0 },
-      thisMonthCount,
+      dtfPartial: calculateTierStats(dtfPartialLeads),
+      allOrders: calculateTierStats(allLeadsList),
     };
-  }, [employeesList]);
+  }, [rawLeads, leads]);
 
-  // Real Database Employee Lifecycle: Offboarding Breakdown
-  const offboardingStats = useMemo(() => {
-    const offboarded = employeesList.filter(e => isEmployeeInactive(e));
-    const total = offboarded.length;
-    const handover = offboarded.filter(e => (e.authorizationInfo || '').toLowerCase().includes('handover'));
-    const clearance = offboarded.filter(e => (e.authorizationInfo || '').toLowerCase().includes('clearance'));
-    const deprovisioned = offboarded.filter(e => !handover.includes(e) && !clearance.includes(e));
+  // Render Compact Order Ageing Subgraph for Completed or Pending
+  const renderAgeingSubgraph = (statusType, title, stats, hoveredSegment, setHoveredSegment) => {
+    const total = stats?.total || 0;
+    const r = 68;
+    const C = 2 * Math.PI * r; // ~427.26
+    const nonZeroCount = [stats?.under5?.count || 0, stats?.fiveTo7?.count || 0, stats?.over7?.count || 0].filter(c => c > 0).length;
+    const gap = nonZeroCount > 1 ? 5 : 0;
 
-    return {
-      total,
-      handover: { count: handover.length, pct: total > 0 ? Math.round((handover.length / total) * 100) : 0 },
-      clearance: { count: clearance.length, pct: total > 0 ? Math.round((clearance.length / total) * 100) : 0 },
-      deprovisioned: { count: deprovisioned.length, pct: total > 0 ? Math.round((deprovisioned.length / total) * 100) : 0 },
-    };
-  }, [employeesList]);
+    const lenG = total > 0 ? ((stats?.under5?.count || 0) / total) * C : 0;
+    const lenY = total > 0 ? ((stats?.fiveTo7?.count || 0) / total) * C : 0;
+    const lenR = total > 0 ? ((stats?.over7?.count || 0) / total) * C : 0;
+
+    const dashG = Math.max(0, lenG - gap);
+    const dashY = Math.max(0, lenY - gap);
+    const dashR = Math.max(0, lenR - gap);
+
+    const offsetG = -gap / 2;
+    const offsetY = -(lenG + gap / 2);
+    const offsetR = -(lenG + lenY + gap / 2);
+
+    return (
+      <div className="ageing-subgraph-col">
+        <div className="ageing-subgraph-header">
+          <span className={`ageing-subgraph-title ${statusType}`}>
+            <span className={`ageing-status-dot ${statusType}`} />
+            {title}
+          </span>
+          <span className="ageing-subgraph-count">{total} orders</span>
+        </div>
+
+        {/* Donut Visual */}
+        <div 
+          className="ageing-donut-visual-container compact"
+          onMouseLeave={() => setHoveredSegment(null)}
+        >
+          <svg viewBox="0 0 180 180" className="ageing-donut-svg">
+            <circle
+              cx="90"
+              cy="90"
+              r="68"
+              fill="none"
+              stroke="#f1f5f9"
+              strokeWidth="16"
+            />
+            {total > 0 && (
+              <g transform="rotate(-90 90 90)">
+                {(stats?.under5?.count || 0) > 0 && (
+                  <circle
+                    cx="90"
+                    cy="90"
+                    r="68"
+                    fill="none"
+                    stroke="url(#ageingGreenGrad)"
+                    strokeWidth={hoveredSegment === "under5" ? "20" : "16"}
+                    strokeDasharray={`${dashG} ${C - dashG}`}
+                    strokeDashoffset={offsetG}
+                    className="ageing-donut-segment"
+                    onMouseEnter={() => setHoveredSegment("under5")}
+                    onClick={() => handleOpenAgeingOrders("under5", statusType)}
+                    style={{ cursor: "pointer" }}
+                  />
+                )}
+                {(stats?.fiveTo7?.count || 0) > 0 && (
+                  <circle
+                    cx="90"
+                    cy="90"
+                    r="68"
+                    fill="none"
+                    stroke="url(#ageingYellowGrad)"
+                    strokeWidth={hoveredSegment === "fiveTo7" ? "20" : "16"}
+                    strokeDasharray={`${dashY} ${C - dashY}`}
+                    strokeDashoffset={offsetY}
+                    className="ageing-donut-segment"
+                    onMouseEnter={() => setHoveredSegment("fiveTo7")}
+                    onClick={() => handleOpenAgeingOrders("fiveTo7", statusType)}
+                    style={{ cursor: "pointer" }}
+                  />
+                )}
+                {(stats?.over7?.count || 0) > 0 && (
+                  <circle
+                    cx="90"
+                    cy="90"
+                    r="68"
+                    fill="none"
+                    stroke="url(#ageingRedGrad)"
+                    strokeWidth={hoveredSegment === "over7" ? "20" : "16"}
+                    strokeDasharray={`${dashR} ${C - dashR}`}
+                    strokeDashoffset={offsetR}
+                    className="ageing-donut-segment"
+                    onMouseEnter={() => setHoveredSegment("over7")}
+                    onClick={() => handleOpenAgeingOrders("over7", statusType)}
+                    style={{ cursor: "pointer" }}
+                  />
+                )}
+              </g>
+            )}
+          </svg>
+
+          {/* Donut Center Overlay - NO ARROWS & NO % */}
+          <div 
+            className="ageing-donut-center-info compact"
+            onClick={() => handleOpenAgeingOrders(hoveredSegment || "all", statusType)}
+            title={`Click to view ${hoveredSegment ? (hoveredSegment === 'under5' ? 'Under 5 Days' : hoveredSegment === 'fiveTo7' ? '5 to 7 Days' : 'Over 7 Days') : (statusType === 'completed' ? 'Completed' : 'Pending')} orders`}
+            style={{ cursor: "pointer" }}
+          >
+            {hoveredSegment === "under5" ? (
+              <>
+                <span className="ageing-center-val compact" style={{ color: "#059669" }}>
+                  {stats?.under5?.count || 0}
+                </span>
+                <span className="ageing-center-label compact">
+                  Orders
+                </span>
+                <span className="ageing-center-pill compact" style={{ background: "#dcfce7", color: "#15803d" }}>
+                  Under 5d
+                </span>
+              </>
+            ) : hoveredSegment === "fiveTo7" ? (
+              <>
+                <span className="ageing-center-val compact" style={{ color: "#d97706" }}>
+                  {stats?.fiveTo7?.count || 0}
+                </span>
+                <span className="ageing-center-label compact">
+                  Orders
+                </span>
+                <span className="ageing-center-pill compact" style={{ background: "#fef3c7", color: "#b45309" }}>
+                  5 to 7d
+                </span>
+              </>
+            ) : hoveredSegment === "over7" ? (
+              <>
+                <span className="ageing-center-val compact" style={{ color: "#dc2626" }}>
+                  {stats?.over7?.count || 0}
+                </span>
+                <span className="ageing-center-label compact">
+                  Orders
+                </span>
+                <span className="ageing-center-pill compact" style={{ background: "#fee2e2", color: "#b91c1c" }}>
+                  Over 7d
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="ageing-center-val compact">
+                  {stats?.total || 0}
+                </span>
+                <span className="ageing-center-label compact">
+                  {statusType === "completed" ? "Completed" : "Pending"}
+                </span>
+                <span className="ageing-center-pill compact">
+                  Avg: {stats?.avgDays}d
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Compact Tiers List - NO ARROWS & NO % */}
+        <div className="ageing-compact-tiers-list">
+          <div 
+            className={`ageing-compact-tier-row ${hoveredSegment === "under5" ? "active" : ""}`}
+            onMouseEnter={() => setHoveredSegment("under5")}
+            onMouseLeave={() => setHoveredSegment(null)}
+            onClick={() => handleOpenAgeingOrders("under5", statusType)}
+            title={`Click to view Under 5 Days ${statusType} orders`}
+          >
+            <div className="ageing-tier-left">
+              <span className="ageing-tier-dot green" />
+              <span className="ageing-compact-tier-name">Under 5 Days</span>
+            </div>
+            <div className="ageing-tier-right">
+              <span className="ageing-tier-count">{stats?.under5?.count || 0} orders</span>
+            </div>
+          </div>
+
+          <div 
+            className={`ageing-compact-tier-row ${hoveredSegment === "fiveTo7" ? "active" : ""}`}
+            onMouseEnter={() => setHoveredSegment("fiveTo7")}
+            onMouseLeave={() => setHoveredSegment(null)}
+            onClick={() => handleOpenAgeingOrders("fiveTo7", statusType)}
+            title={`Click to view 5 to 7 Days ${statusType} orders`}
+          >
+            <div className="ageing-tier-left">
+              <span className="ageing-tier-dot yellow" />
+              <span className="ageing-compact-tier-name">5 to 7 Days</span>
+            </div>
+            <div className="ageing-tier-right">
+              <span className="ageing-tier-count">{stats?.fiveTo7?.count || 0} orders</span>
+            </div>
+          </div>
+
+          <div 
+            className={`ageing-compact-tier-row ${hoveredSegment === "over7" ? "active" : ""}`}
+            onMouseEnter={() => setHoveredSegment("over7")}
+            onMouseLeave={() => setHoveredSegment(null)}
+            onClick={() => handleOpenAgeingOrders("over7", statusType)}
+            title={`Click to view Over 7 Days ${statusType} orders`}
+          >
+            <div className="ageing-tier-left">
+              <span className="ageing-tier-dot red" />
+              <span className="ageing-compact-tier-name">Over 7 Days</span>
+            </div>
+            <div className="ageing-tier-right">
+              <span className="ageing-tier-count">{stats?.over7?.count || 0} orders</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="dashboard-page">
       {!isOnlyOrderManagement && !isOnlyInventory && (
         <div className="dashboard-tabs">
           <button className={`tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-            <LayoutGrid size={18} /> Overview
+            <LayoutGrid size={18} />
+            <span>Overview</span>
           </button>
           <button className={`tab ${activeTab === "case" ? "active" : ""}`} onClick={() => setActiveTab("case")}>
-            <FileText size={18} /> Order Management
+            <FileText size={18} />
+            <span>Order Management</span>
           </button>
           {isAdmin && (
             <button className={`tab ${activeTab === "employee" ? "active" : ""}`} onClick={() => setActiveTab("employee")}>
-              <Users size={18} /> Employee Management
+              <Users size={18} />
+              <span>Employee Management</span>
             </button>
           )}
           <button className={`tab ${activeTab === "inventory" || activeTab === "leave" ? "active" : ""}`} onClick={() => setActiveTab("inventory")}>
-            <Package size={18} /> Inventory Management
+            <Package size={18} />
+            <span>Inventory Management</span>
+          </button>
+          <button className={`tab ${activeTab === "delivery" ? "active" : ""}`} onClick={() => setActiveTab("delivery")}>
+            <Truck size={18} />
+            <span>Delivery</span>
+          </button>
+          <button className={`tab ${activeTab === "compliance" ? "active" : ""}`} onClick={() => setActiveTab("compliance")}>
+            <ShieldCheck size={18} />
+            <span>Compliance</span>
           </button>
         </div>
       )}
@@ -994,16 +1489,47 @@ function Dashboard() {
                 {activeTab === "case" && "Order Management"}
                 {activeTab === "employee" && isAdmin && "Employee Management"}
                 {(activeTab === "inventory" || activeTab === "leave") && "Inventory Management"}
+                {activeTab === "delivery" && "Delivery"}
+                {activeTab === "compliance" && "Compliance"}
               </>
             )}
           </h1>
         </div>
 
-        <div className="date-picker">
-          <CalendarIcon size={16} />
-          <span>Monday, October 5, 2026</span>
-          <ChevronDown size={16} />
-        </div>
+        {activeTab === "employee" && isAdmin && (
+          <div className="emp-header-search-wrap">
+            <div className="emp-search-input-box">
+              <Search size={16} className="emp-search-icon" />
+              <input
+                type="text"
+                placeholder="Search employee by name, role, dept..."
+                value={employeeSearchInput}
+                onChange={(e) => {
+                  setEmployeeSearchInput(e.target.value);
+                  setEmployeeSearchQuery(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setEmployeeSearchQuery(employeeSearchInput);
+                  }
+                }}
+              />
+              {employeeSearchInput && (
+                <button
+                  type="button"
+                  className="emp-search-clear-btn"
+                  onClick={() => {
+                    setEmployeeSearchInput("");
+                    setEmployeeSearchQuery("");
+                  }}
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {activeTab === "overview" && (
@@ -1092,12 +1618,69 @@ function Dashboard() {
                 <ArrowRight size={14} className="arrow-icon" />
               </div>
             </div>
+
+            {/* Tile 4: Pending Payment (Minimal & Super Clean) */}
+            {(() => {
+              const currentStats = pendingPaymentAgeing.dtfPartial;
+
+              return (
+                <div 
+                  className="overview-tile tile-pending-payment" 
+                  onClick={() => navigate('/pending-payments', { state: { leads: rawLeads } })}
+                  style={{ cursor: "pointer" }}
+                  title="Click to view all details on a new page"
+                >
+                  <div className="tile-top">
+                    <div className="tile-icon-badge orange">
+                      <CreditCard size={22} />
+                    </div>
+                    <span className="tile-trend-pill warning">
+                      {currentStats.count} {currentStats.count === 1 ? "Order" : "Orders"}
+                    </span>
+                  </div>
+
+                  <div className="tile-main">
+                    <span className="tile-label">Pending Payment</span>
+                    <div className="tile-num-row">
+                      <span className="tile-number">
+                        ₹{Math.round(currentStats.totalAmount).toLocaleString("en-IN")}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Minimal 6px Ageing Micro-Bar */}
+                  <div className="tile-capacity-bar" style={{ display: "flex", gap: "2px" }}>
+                    {currentStats.tiers.map((tier) => {
+                      const pct = currentStats.count > 0 ? (tier.count / currentStats.count) * 100 : 0;
+                      if (pct === 0) return null;
+                      return (
+                        <div
+                          key={tier.label}
+                          style={{
+                            width: `${pct}%`,
+                            backgroundColor: tier.color,
+                            height: "100%",
+                            borderRadius: "999px"
+                          }}
+                          title={`${tier.label}: ${tier.count} orders`}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  <div className="tile-footer-action">
+                    <span>View all details</span>
+                    <ArrowRight size={14} className="arrow-icon" />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Middle Row: Production & Sales Overview + Repeat Customer Rate + Weekly Order Velocity */}
           <div className="overview-mid-row">
             {/* Left: Sales Overview (Weekly / Monthly / Custom) */}
-            <div className="ov-card stage-chart-card">
+            <div className="ov-card stage-chart-card" style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
               <div className="stage-chart-header">
                 <div className="stage-chart-title-group">
                   <h3>
@@ -1108,9 +1691,6 @@ function Dashboard() {
                       {chartViewMode === "volume"
                         ? `${salesOverviewData.totalUnits.toLocaleString('en-IN')} Units`
                         : salesOverviewData.formattedTotalRevenue}
-                    </span>
-                    <span className="stage-trend-pill">
-                      <TrendingUp size={13} /> +18.4%
                     </span>
                   </div>
                 </div>
@@ -1178,169 +1758,275 @@ function Dashboard() {
                 )}
               </div>
 
-              {/* Interactive SVG Sales Chart */}
-              <div className="stage-chart-body" onMouseLeave={() => setHoveredSalesPoint(null)}>
-                <svg viewBox="0 0 600 240" className="stage-chart-svg">
-                  <defs>
-                    <linearGradient id="salesUnitsGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#818cf8" />
-                      <stop offset="100%" stopColor="#4f46e5" />
-                    </linearGradient>
-                    <linearGradient id="salesRevGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#34d399" />
-                      <stop offset="100%" stopColor="#059669" />
-                    </linearGradient>
-                    <linearGradient id="salesFlowGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor={chartViewMode === "volume" ? "#6366f1" : "#10b981"} stopOpacity="0.22" />
-                      <stop offset="100%" stopColor={chartViewMode === "volume" ? "#6366f1" : "#10b981"} stopOpacity="0.08" />
-                    </linearGradient>
-                  </defs>
-
-                  <line x1="40" y1="60" x2="560" y2="60" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
-                  <line x1="40" y1="125" x2="560" y2="125" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
-                  <line x1="40" y1="190" x2="560" y2="190" stroke="#e2e8f0" strokeWidth="1.5" />
-
-                  {/* Flow ribbons between columns */}
-                  {salesOverviewData.columns.map((col, i) => {
-                    if (i === salesOverviewData.columns.length - 1) return null;
-                    const nextCol = salesOverviewData.columns[i + 1];
-                    const colWidth = col.colWidth || 74;
-                    const nextColWidth = nextCol.colWidth || colWidth;
-                    const xA = col.xCenter + colWidth / 2;
-                    const yA = 190 - col.h;
-                    const xB = nextCol.xCenter - nextColWidth / 2;
-                    const yB = 190 - nextCol.h;
-                    const cOffset = Math.min(30, Math.abs(xB - xA) / 2);
-
-                    const ribbon = `M ${xA} ${yA}
-                                    C ${xA + cOffset} ${yA}, ${xB - cOffset} ${yB}, ${xB} ${yB}
-                                    L ${xB} 190
-                                    L ${xA} 190 Z`;
-                    return (
-                      <path
-                        key={`ribbon-${i}`}
-                        d={ribbon}
-                        fill="url(#salesFlowGrad)"
-                        className="chart-flow-path"
-                        opacity={0.65}
-                      />
-                    );
-                  })}
-
-                  {/* Columns */}
-                  {salesOverviewData.columns.map((col, i) => {
-                    const colWidth = col.colWidth || 74;
-                    const xLeft = col.xCenter - colWidth / 2;
-                    const yTop = 190 - col.h;
-                    const isHovered = hoveredSalesPoint?.label === col.label;
-
-                    return (
-                      <g 
-                        key={`col-${i}`}
-                        onClick={() => handleOpenSalesBreakdown(col)}
-                        style={{ cursor: 'pointer' }}
-                        title={`Click to view orders for ${col.label}`}
+              {/* Interactive SVG Sales Line Graph */}
+              <div 
+                className="stage-chart-body" 
+                onMouseLeave={() => setHoveredSalesPoint(null)}
+                style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}
+              >
+                {salesOverviewData.isScrollable && (
+                  <div className="chart-scroll-hint-bar">
+                    <span className="scroll-hint-text">
+                      ↔ Scroll or use arrows to view all {salesOverviewData.columns.length} days of custom range
+                    </span>
+                    <div className="chart-scroll-arrows">
+                      <button 
+                        type="button"
+                        className="chart-scroll-arrow-btn"
+                        onClick={() => chartScrollRef.current && (chartScrollRef.current.scrollLeft -= 260)}
+                        title="Scroll left"
                       >
-                        <rect
-                          x={xLeft}
-                          y={yTop}
-                          width={colWidth}
-                          height={col.h}
-                          rx={colWidth < 50 ? "6" : "10"}
-                          fill={chartViewMode === "volume" ? "url(#salesUnitsGrad)" : "url(#salesRevGrad)"}
-                          className="chart-bar-rect"
-                          style={{
-                            cursor: 'pointer',
-                            filter: isHovered ? 'brightness(1.15) drop-shadow(0 4px 10px rgba(0,0,0,0.15))' : 'none',
-                            transition: 'all 0.2s ease'
-                          }}
-                          onMouseEnter={() => {
-                            setHoveredSalesPoint({
-                              x: col.xCenter,
-                              y: yTop,
-                              label: col.label,
-                              units: col.units,
-                              revenue: col.fullRevenue,
-                              compactRev: col.totalLabelRevenue,
-                              orders: col.orders,
-                              colData: col
-                            });
-                          }}
-                        />
-
-                        {/* Top metric label */}
-                        <text
-                          x={col.xCenter}
-                          y={Math.max(20, yTop - 10)}
-                          textAnchor="middle"
-                          fontSize={colWidth < 50 ? "10" : "12"}
-                          fontWeight="700"
-                          fill="#0f172a"
-                          style={{ cursor: 'pointer' }}
-                        >
-                          {chartViewMode === "volume"
-                            ? `${col.units.toLocaleString('en-IN')}${colWidth < 50 ? " u" : " Units"}`
-                            : col.totalLabelRevenue}
-                        </text>
-
-                        {/* Bottom period label */}
-                        <text
-                          x={col.xCenter}
-                          y={col.subLabel ? "210" : "214"}
-                          textAnchor="middle"
-                          fontSize={colWidth < 50 ? "11" : "12"}
-                          fontWeight="600"
-                          fill="#64748b"
-                          style={{ cursor: 'pointer' }}
-                        >
-                          {col.shortLabel}
-                        </text>
-
-                        {col.subLabel && (
-                          <text
-                            x={col.xCenter}
-                            y="225"
-                            textAnchor="middle"
-                            fontSize="9"
-                            fontWeight="500"
-                            fill="#94a3b8"
-                            style={{ cursor: 'pointer' }}
-                          >
-                            {col.subLabel}
-                          </text>
-                        )}
-                      </g>
-                    );
-                  })}
-                </svg>
-
-                {hoveredSalesPoint && (
-                  <div 
-                    className="chart-floating-tooltip"
-                    style={{ left: `${(hoveredSalesPoint.x / 600) * 100}%`, top: `${(hoveredSalesPoint.y / 240) * 100}%` }}
-                    onClick={() => handleOpenSalesBreakdown(hoveredSalesPoint.colData)}
-                    title="Click to view detailed orders list"
-                  >
-                    <div className="tooltip-header">
-                      <span>{hoveredSalesPoint.label}</span>
-                      <span style={{ color: chartViewMode === "volume" ? "#818cf8" : "#34d399", fontWeight: 700 }}>
-                        {hoveredSalesPoint.orders} Orders
-                      </span>
-                    </div>
-                    <div className="tooltip-row">
-                      <span>Volume Sold:</span>
-                      <strong>{hoveredSalesPoint.units.toLocaleString('en-IN')} Units</strong>
-                    </div>
-                    <div className="tooltip-row">
-                      <span>Total Revenue (INR):</span>
-                      <strong style={{ color: '#34d399' }}>{hoveredSalesPoint.revenue}</strong>
-                    </div>
-                    <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.15)', fontSize: '11px', color: '#a5b4fc', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span>Click to view orders</span>
-                      <ArrowUpRight size={12} />
+                        <ChevronLeft size={14} />
+                      </button>
+                      <button 
+                        type="button"
+                        className="chart-scroll-arrow-btn"
+                        onClick={() => chartScrollRef.current && (chartScrollRef.current.scrollLeft += 260)}
+                        title="Scroll right"
+                      >
+                        <ChevronRight size={14} />
+                      </button>
                     </div>
                   </div>
                 )}
+
+                <div 
+                  className="stage-chart-scroll-wrapper"
+                  ref={chartScrollRef}
+                  style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', overflowY: 'hidden' }}
+                >
+                  <div 
+                    className="stage-chart-canvas-container"
+                    style={{ 
+                      width: `${salesOverviewData.chartSvgWidth}px`,
+                      minWidth: '100%',
+                      position: 'relative',
+                      height: '240px'
+                    }}
+                  >
+                    <svg 
+                      viewBox={`0 0 ${salesOverviewData.chartSvgWidth} 240`} 
+                      className="stage-chart-svg"
+                      style={{ width: `${salesOverviewData.chartSvgWidth}px`, minWidth: '100%', height: '240px' }}
+                    >
+                      <defs>
+                        <linearGradient id="salesLineGradUnits" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#818cf8" />
+                          <stop offset="50%" stopColor="#6366f1" />
+                          <stop offset="100%" stopColor="#4f46e5" />
+                        </linearGradient>
+                        <linearGradient id="salesLineGradRev" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#34d399" />
+                          <stop offset="50%" stopColor="#10b981" />
+                          <stop offset="100%" stopColor="#059669" />
+                        </linearGradient>
+
+                        <linearGradient id="salesAreaGradUnits" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.28" />
+                          <stop offset="50%" stopColor="#818cf8" stopOpacity="0.10" />
+                          <stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
+                        </linearGradient>
+                        <linearGradient id="salesAreaGradRev" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.28" />
+                          <stop offset="50%" stopColor="#34d399" stopOpacity="0.10" />
+                          <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                        </linearGradient>
+                        <filter id="lineGlow" x="-20%" y="-20%" width="140%" height="140%">
+                          <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor={chartViewMode === "volume" ? "#6366f1" : "#10b981"} floodOpacity="0.25" />
+                        </filter>
+                      </defs>
+
+                      {/* Horizontal Gridlines */}
+                      <line x1="16" y1="55" x2={salesOverviewData.chartSvgWidth - 16} y2="55" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
+                      <line x1="16" y1="100" x2={salesOverviewData.chartSvgWidth - 16} y2="100" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
+                      <line x1="16" y1="145" x2={salesOverviewData.chartSvgWidth - 16} y2="145" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
+                      <line x1="16" y1="190" x2={salesOverviewData.chartSvgWidth - 16} y2="190" stroke="#e2e8f0" strokeWidth="1.5" />
+
+                      {/* Area Fill Under Line */}
+                      {salesOverviewData.areaPath && (
+                        <path
+                          d={salesOverviewData.areaPath}
+                          fill={chartViewMode === "volume" ? "url(#salesAreaGradUnits)" : "url(#salesAreaGradRev)"}
+                          className="chart-area-path"
+                        />
+                      )}
+
+                      {/* Smooth Curved Line Graph */}
+                      {salesOverviewData.linePath && (
+                        <path
+                          d={salesOverviewData.linePath}
+                          fill="none"
+                          stroke={chartViewMode === "volume" ? "url(#salesLineGradUnits)" : "url(#salesLineGradRev)"}
+                          strokeWidth="3.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          filter="url(#lineGlow)"
+                          className="chart-line-stroke"
+                        />
+                      )}
+
+                      {/* Hover Vertical Guide Line */}
+                      {hoveredSalesPoint && (
+                        <line
+                          x1={hoveredSalesPoint.x}
+                          y1="40"
+                          x2={hoveredSalesPoint.x}
+                          y2="190"
+                          stroke={chartViewMode === "volume" ? "#818cf8" : "#34d399"}
+                          strokeDasharray="3 3"
+                          strokeWidth="1.5"
+                          opacity="0.8"
+                        />
+                      )}
+
+                      {/* Data Points, Hit Areas and Labels */}
+                      {salesOverviewData.columns.map((col, i) => {
+                        const isHovered = hoveredSalesPoint?.label === col.label;
+                        const showValueLabel = salesOverviewData.columns.length <= 7 || col.val > 0 || isHovered;
+                        const sliceWidth = salesOverviewData.chartSvgWidth / salesOverviewData.columns.length;
+
+                        return (
+                          <g 
+                            key={`col-${i}`}
+                            onClick={() => handleOpenSalesBreakdown(col)}
+                            style={{ cursor: 'pointer' }}
+                            title={`Click to view orders for ${col.label}`}
+                          >
+                            {/* Full vertical slice hit area */}
+                            <rect
+                              x={col.x - sliceWidth / 2}
+                              y="30"
+                              width={sliceWidth}
+                              height="210"
+                              fill="transparent"
+                              style={{ cursor: 'pointer' }}
+                              onMouseEnter={() => {
+                                setHoveredSalesPoint({
+                                  x: col.x,
+                                  y: col.y,
+                                  label: col.label,
+                                  units: col.units,
+                                  revenue: col.fullRevenue,
+                                  compactRev: col.totalLabelRevenue,
+                                  orders: col.orders,
+                                  colData: col
+                                });
+                              }}
+                            />
+
+                            {/* Node Aura when hovered */}
+                            {isHovered && (
+                              <circle
+                                cx={col.x}
+                                cy={col.y}
+                                r="13"
+                                fill={chartViewMode === "volume" ? "rgba(99, 102, 241, 0.22)" : "rgba(16, 185, 129, 0.22)"}
+                              />
+                            )}
+
+                            {/* Node Dot on Line */}
+                            <circle
+                              cx={col.x}
+                              cy={col.y}
+                              r={isHovered ? "6" : col.val > 0 ? "4.5" : "3"}
+                              fill="#ffffff"
+                              stroke={
+                                isHovered
+                                  ? (chartViewMode === "volume" ? "#4f46e5" : "#059669")
+                                  : col.val > 0
+                                    ? (chartViewMode === "volume" ? "#6366f1" : "#10b981")
+                                    : "#cbd5e1"
+                              }
+                              strokeWidth={isHovered ? "3" : col.val > 0 ? "2.5" : "1.5"}
+                              style={{
+                                transition: 'all 0.2s ease',
+                                filter: isHovered ? 'drop-shadow(0 2px 6px rgba(0,0,0,0.25))' : 'none'
+                              }}
+                            />
+
+                            {/* Top Value Label */}
+                            {showValueLabel && (
+                              <text
+                                x={col.x}
+                                y={Math.max(22, col.y - 10)}
+                                textAnchor="middle"
+                                fontSize={salesOverviewData.columns.length > 15 ? "10" : "11"}
+                                fontWeight={isHovered ? "700" : "600"}
+                                fill={isHovered ? "#4f46e5" : col.val > 0 ? "#0f172a" : "#94a3b8"}
+                                style={{ pointerEvents: 'none', userSelect: 'none' }}
+                              >
+                                {chartViewMode === "volume"
+                                  ? `${col.units.toLocaleString('en-IN')}${salesOverviewData.columns.length > 12 ? " u" : " Units"}`
+                                  : col.totalLabelRevenue}
+                              </text>
+                            )}
+
+                            {/* Bottom Primary Short Label */}
+                            <text
+                              x={col.x}
+                              y="212"
+                              textAnchor="middle"
+                              fontSize={salesOverviewData.columns.length > 20 ? "10" : "11"}
+                              fontWeight={isHovered ? "700" : "600"}
+                              fill={isHovered ? "#4f46e5" : "#64748b"}
+                              style={{ pointerEvents: 'none', userSelect: 'none' }}
+                            >
+                              {col.shortLabel}
+                            </text>
+
+                            {/* Bottom Sub-label */}
+                            {col.subLabel && (
+                              <text
+                                x={col.x}
+                                y="226"
+                                textAnchor="middle"
+                                fontSize="9"
+                                fontWeight="500"
+                                fill={isHovered ? "#6366f1" : "#94a3b8"}
+                                style={{ pointerEvents: 'none', userSelect: 'none' }}
+                              >
+                                {col.subLabel}
+                              </text>
+                            )}
+                          </g>
+                        );
+                      })}
+                    </svg>
+
+                    {/* Floating Interactive Tooltip */}
+                    {hoveredSalesPoint && (
+                      <div 
+                        className="chart-floating-tooltip"
+                        style={{ 
+                          left: `${hoveredSalesPoint.x}px`, 
+                          top: hoveredSalesPoint.y < 105 ? `${hoveredSalesPoint.y + 16}px` : `${hoveredSalesPoint.y}px`,
+                          transform: hoveredSalesPoint.y < 105 ? 'translate(-50%, 0)' : 'translate(-50%, -110%)'
+                        }}
+                        onClick={() => handleOpenSalesBreakdown(hoveredSalesPoint.colData)}
+                        title="Click to view detailed orders list"
+                      >
+                        <div className="tooltip-header">
+                          <span>{hoveredSalesPoint.label}</span>
+                          <span style={{ color: chartViewMode === "volume" ? "#818cf8" : "#34d399", fontWeight: 700 }}>
+                            {hoveredSalesPoint.orders} Orders
+                          </span>
+                        </div>
+                        <div className="tooltip-row">
+                          <span>Volume Sold:</span>
+                          <strong>{hoveredSalesPoint.units.toLocaleString('en-IN')} Units</strong>
+                        </div>
+                        <div className="tooltip-row">
+                          <span>Total Revenue (INR):</span>
+                          <strong style={{ color: '#34d399' }}>{hoveredSalesPoint.revenue}</strong>
+                        </div>
+                        <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.15)', fontSize: '11px', color: '#a5b4fc', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>Click to view orders</span>
+                          <ArrowUpRight size={12} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Bottom Summary Strip (Replaces old stage legend) */}
@@ -1357,414 +2043,150 @@ function Dashboard() {
                       : salesOverviewData.formattedAvgRevenue}
                   </strong>
                 </div>
-                <div className="sales-summary-pill">
-                  <span>Peak Period:</span>
-                  <strong style={{ color: '#4f46e5' }}>
-                    {salesOverviewData.peakPeriod ? `${salesOverviewData.peakPeriod.shortLabel} (${chartViewMode === "volume" ? `${salesOverviewData.peakPeriod.units.toLocaleString('en-IN')} pcs` : salesOverviewData.peakPeriod.totalLabelRevenue})` : 'N/A'}
-                  </strong>
-                </div>
               </div>
             </div>
 
-            {/* Right: Order Ageing Donut Chart */}
+            {/* Right: Repeat Customer Rate */}
+            <div className="ov-card repeat-rate-card">
+              <div className="card-header-clean">
+                <div>
+                  <h3>Repeat Customer Rate</h3>
+                </div>
+                <button 
+                  className="clean-icon-btn" 
+                  title="Live calculated from leads" 
+                  onClick={() => setShowRepeatDetailsModal(true)}
+                >
+                  <HelpCircle size={17} />
+                </button>
+              </div>
+
+              <div className="repeat-gauge-body">
+                <svg viewBox="0 0 200 115" className="repeat-gauge-svg">
+                  <defs>
+                    <linearGradient id="gaugeActiveGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#10b981" />
+                      <stop offset="100%" stopColor="#34d399" />
+                    </linearGradient>
+                  </defs>
+
+                  {Array.from({ length: 40 }).map((_, i) => {
+                    const totalTicks = 40;
+                    const activeTicks = Math.round(totalTicks * (repeatCustomerStats.rate / 100));
+                    const angle = Math.PI - (i / (totalTicks - 1)) * Math.PI;
+                    const radius = 76;
+                    const cx = 100;
+                    const cy = 96;
+
+                    const x1 = cx + (radius - 10) * Math.cos(angle);
+                    const y1 = cy - (radius - 10) * Math.sin(angle);
+                    const x2 = cx + (radius + 8) * Math.cos(angle);
+                    const y2 = cy - (radius + 8) * Math.sin(angle);
+
+                    const isActive = i < activeTicks;
+                    const isTargetMark = i === Math.round(totalTicks * (repeatCustomerStats.target / 100));
+
+                    return (
+                      <g key={i}>
+                        <line
+                          x1={x1}
+                          y1={y1}
+                          x2={x2}
+                          y2={y2}
+                          stroke={isActive ? "url(#gaugeActiveGrad)" : "#e2e8f0"}
+                          strokeWidth={isTargetMark ? "4" : "3"}
+                          strokeLinecap="round"
+                          className={`repeat-tick ${isActive ? "repeat-tick-active" : ""}`}
+                        />
+                        {isTargetMark && (
+                          <circle
+                            cx={cx + (radius + 16) * Math.cos(angle)}
+                            cy={cy - (radius + 16) * Math.sin(angle)}
+                            r="2.5"
+                            fill="#f59e0b"
+                          />
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+
+                <div className="repeat-gauge-center">
+                  <span className="repeat-percentage">{repeatCustomerStats.rate}%</span>
+                  <span className="repeat-target-status">
+                    <Sparkles size={13} />
+                    {repeatCustomerStats.rate >= repeatCustomerStats.target
+                      ? `Target exceeded (+${repeatCustomerStats.rate - repeatCustomerStats.target}%)`
+                      : `Target ${repeatCustomerStats.target}%`}
+                  </span>
+                  <span className="repeat-sync-source">
+                    <Radio size={11} color="#10b981" />
+                    {repeatCustomerStats.repeatCount} / {repeatCustomerStats.totalCount} orders
+                  </span>
+                </div>
+              </div>
+
+              <div className="repeat-footer-stats">
+                <div className="repeat-stat-col">
+                  <span className="repeat-stat-label">Repeat</span>
+                  <span className="repeat-stat-val" style={{ color: "#059669" }}>
+                    {repeatCustomerStats.repeatCount} ({repeatCustomerStats.rate}%)
+                  </span>
+                </div>
+                <div className="repeat-stat-col">
+                  <span className="repeat-stat-label">First-Time</span>
+                  <span className="repeat-stat-val" style={{ color: "#64748b" }}>
+                    {repeatCustomerStats.firstTimeCount} ({100 - repeatCustomerStats.rate}%)
+                  </span>
+                </div>
+                <button 
+                  className="repeat-details-btn"
+                  onClick={() => setShowRepeatDetailsModal(true)}
+                >
+                  Details <ArrowUpRight size={13} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Sub-Mid Row: Order Ageing & Weekly Activity */}
+          <div className="overview-sub-mid-row">
+            {/* Widget 1: Order Ageing Donut Charts (Completed & Pending) */}
             <div className="ov-card ageing-donut-card">
+              <svg width="0" height="0" style={{ position: 'absolute', pointerEvents: 'none' }}>
+                <defs>
+                  <linearGradient id="ageingGreenGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#10b981" />
+                    <stop offset="100%" stopColor="#059669" />
+                  </linearGradient>
+                  <linearGradient id="ageingYellowGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#fbbf24" />
+                    <stop offset="100%" stopColor="#f59e0b" />
+                  </linearGradient>
+                  <linearGradient id="ageingRedGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#f87171" />
+                    <stop offset="100%" stopColor="#ef4444" />
+                  </linearGradient>
+                </defs>
+              </svg>
+
               <div className="ageing-header-top">
                 <div className="ageing-title-group">
                   <h3>
                     <Timer size={18} color="#f59e0b" /> Order Ageing
                   </h3>
-                  <p className="ageing-title-sub">Turnaround speed & aging breakdown</p>
-                </div>
-
-                <div className="ageing-status-pill-strip" role="tablist" aria-label="Order Ageing Filter">
-                  <button
-                    className={`ageing-tab-btn ${orderAgeingFilter === "completed" ? "active" : ""}`}
-                    onClick={() => setOrderAgeingFilter("completed")}
-                    title="Packaging stage and beyond"
-                  >
-                    Completed ({orderAgeingStats.completedTotal})
-                  </button>
-                  <button
-                    className={`ageing-tab-btn ${orderAgeingFilter === "pending" ? "active" : ""}`}
-                    onClick={() => setOrderAgeingFilter("pending")}
-                    title="Before packaging stage"
-                  >
-                    Pending ({orderAgeingStats.pendingTotal})
-                  </button>
-                  <button
-                    className={`ageing-tab-btn ${orderAgeingFilter === "all" ? "active" : ""}`}
-                    onClick={() => setOrderAgeingFilter("all")}
-                    title="All active and completed orders"
-                  >
-                    All ({orderAgeingStats.allTotal})
-                  </button>
                 </div>
               </div>
 
-              {/* Donut Chart Visual */}
-              <div 
-                className="ageing-donut-visual-container"
-                onMouseLeave={() => setHoveredAgeingSegment(null)}
-              >
-                <svg viewBox="0 0 220 220" className="ageing-donut-svg">
-                  <defs>
-                    <linearGradient id="ageingGreenGrad" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor="#10b981" />
-                      <stop offset="100%" stopColor="#059669" />
-                    </linearGradient>
-                    <linearGradient id="ageingYellowGrad" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor="#fbbf24" />
-                      <stop offset="100%" stopColor="#f59e0b" />
-                    </linearGradient>
-                    <linearGradient id="ageingRedGrad" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor="#f87171" />
-                      <stop offset="100%" stopColor="#ef4444" />
-                    </linearGradient>
-                  </defs>
-
-                  {/* Base Track */}
-                  <circle
-                    cx="110"
-                    cy="110"
-                    r="80"
-                    fill="none"
-                    stroke="#f1f5f9"
-                    strokeWidth="20"
-                  />
-
-                  {/* Computed Donut Segments */}
-                  {(() => {
-                    const total = orderAgeingStats.total;
-                    const r = 80;
-                    const C = 2 * Math.PI * r; // ~502.65
-                    if (total === 0) return null;
-
-                    const nonZeroCount = [
-                      orderAgeingStats.under5.count,
-                      orderAgeingStats.fiveTo7.count,
-                      orderAgeingStats.over7.count
-                    ].filter(c => c > 0).length;
-
-                    const gap = nonZeroCount > 1 ? 5 : 0;
-
-                    const lenG = (orderAgeingStats.under5.count / total) * C;
-                    const lenY = (orderAgeingStats.fiveTo7.count / total) * C;
-                    const lenR = (orderAgeingStats.over7.count / total) * C;
-
-                    const dashG = Math.max(0, lenG - gap);
-                    const dashY = Math.max(0, lenY - gap);
-                    const dashR = Math.max(0, lenR - gap);
-
-                    const offsetG = -gap / 2;
-                    const offsetY = -(lenG + gap / 2);
-                    const offsetR = -(lenG + lenY + gap / 2);
-
-                    return (
-                      <g transform="rotate(-90 110 110)">
-                        {/* Green: Under 5 Days */}
-                        {orderAgeingStats.under5.count > 0 && (
-                          <circle
-                            cx="110"
-                            cy="110"
-                            r="80"
-                            fill="none"
-                            stroke="url(#ageingGreenGrad)"
-                            strokeWidth={hoveredAgeingSegment === "under5" ? "26" : "20"}
-                            strokeDasharray={`${dashG} ${C - dashG}`}
-                            strokeDashoffset={offsetG}
-                            className="ageing-donut-segment"
-                            onMouseEnter={() => setHoveredAgeingSegment("under5")}
-                            onClick={() => handleOpenAgeingOrders("under5")}
-                            style={{ cursor: "pointer" }}
-                          />
-                        )}
-
-                        {/* Yellow: 5 to 7 Days */}
-                        {orderAgeingStats.fiveTo7.count > 0 && (
-                          <circle
-                            cx="110"
-                            cy="110"
-                            r="80"
-                            fill="none"
-                            stroke="url(#ageingYellowGrad)"
-                            strokeWidth={hoveredAgeingSegment === "fiveTo7" ? "26" : "20"}
-                            strokeDasharray={`${dashY} ${C - dashY}`}
-                            strokeDashoffset={offsetY}
-                            className="ageing-donut-segment"
-                            onMouseEnter={() => setHoveredAgeingSegment("fiveTo7")}
-                            onClick={() => handleOpenAgeingOrders("fiveTo7")}
-                            style={{ cursor: "pointer" }}
-                          />
-                        )}
-
-                        {/* Red: Over 7 Days */}
-                        {orderAgeingStats.over7.count > 0 && (
-                          <circle
-                            cx="110"
-                            cy="110"
-                            r="80"
-                            fill="none"
-                            stroke="url(#ageingRedGrad)"
-                            strokeWidth={hoveredAgeingSegment === "over7" ? "26" : "20"}
-                            strokeDasharray={`${dashR} ${C - dashR}`}
-                            strokeDashoffset={offsetR}
-                            className="ageing-donut-segment"
-                            onMouseEnter={() => setHoveredAgeingSegment("over7")}
-                            onClick={() => handleOpenAgeingOrders("over7")}
-                            style={{ cursor: "pointer" }}
-                          />
-                        )}
-                      </g>
-                    );
-                  })()}
-                </svg>
-
-                {/* Donut Center Overlay */}
-                <div 
-                  className="ageing-donut-center-info"
-                  onClick={() => handleOpenAgeingOrders(hoveredAgeingSegment || "all")}
-                  title={`Click to view ${hoveredAgeingSegment ? (hoveredAgeingSegment === 'under5' ? 'Under 5 Days' : hoveredAgeingSegment === 'fiveTo7' ? '5 to 7 Days' : 'Over 7 Days') : (orderAgeingFilter === 'completed' ? 'Completed' : orderAgeingFilter === 'pending' ? 'Pending' : 'All')} orders`}
-                  style={{ cursor: "pointer" }}
-                >
-                  {hoveredAgeingSegment === "under5" ? (
-                    <>
-                      <span className="ageing-center-val" style={{ color: "#059669" }}>
-                        {orderAgeingStats.under5.pct}%
-                      </span>
-                      <span className="ageing-center-label">
-                        {orderAgeingStats.under5.count} Orders
-                      </span>
-                      <span className="ageing-center-pill" style={{ background: "#dcfce7", color: "#15803d" }}>
-                        Under 5 Days ↗
-                      </span>
-                    </>
-                  ) : hoveredAgeingSegment === "fiveTo7" ? (
-                    <>
-                      <span className="ageing-center-val" style={{ color: "#d97706" }}>
-                        {orderAgeingStats.fiveTo7.pct}%
-                      </span>
-                      <span className="ageing-center-label">
-                        {orderAgeingStats.fiveTo7.count} Orders
-                      </span>
-                      <span className="ageing-center-pill" style={{ background: "#fef3c7", color: "#b45309" }}>
-                        5 to 7 Days ↗
-                      </span>
-                    </>
-                  ) : hoveredAgeingSegment === "over7" ? (
-                    <>
-                      <span className="ageing-center-val" style={{ color: "#dc2626" }}>
-                        {orderAgeingStats.over7.pct}%
-                      </span>
-                      <span className="ageing-center-label">
-                        {orderAgeingStats.over7.count} Orders
-                      </span>
-                      <span className="ageing-center-pill" style={{ background: "#fee2e2", color: "#b91c1c" }}>
-                        Over 7 Days ↗
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="ageing-center-val">
-                        {orderAgeingStats.total}
-                      </span>
-                      <span className="ageing-center-label">
-                        {orderAgeingFilter === "completed" ? "Completed Orders" : orderAgeingFilter === "pending" ? "Pending Orders" : "Total Orders"}
-                      </span>
-                      <span className="ageing-center-pill">
-                        Avg: {orderAgeingStats.avgDays} Days ↗
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Breakdown Legend List */}
-              <div className="ageing-breakdown-list">
-                {/* Green: Under 5 Days */}
-                <div 
-                  className={`ageing-tier-item ${hoveredAgeingSegment === "under5" ? "active" : ""}`}
-                  onMouseEnter={() => setHoveredAgeingSegment("under5")}
-                  onMouseLeave={() => setHoveredAgeingSegment(null)}
-                  onClick={() => handleOpenAgeingOrders("under5")}
-                  title="Click to view Under 5 Days orders in ledger"
-                >
-                  <div className="ageing-tier-left">
-                    <span className="ageing-tier-dot green"></span>
-                    <div className="ageing-tier-info">
-                      <span className="ageing-tier-name">Under 5 Days</span>
-                      <span className="ageing-tier-sub">Fast Turnaround</span>
-                    </div>
-                  </div>
-                  <div className="ageing-tier-right">
-                    <span className="ageing-tier-count">{orderAgeingStats.under5.count} orders</span>
-                    <span className="ageing-tier-pill green">{orderAgeingStats.under5.pct}%</span>
-                    <ArrowUpRight size={13} style={{ color: "#94a3b8" }} />
-                  </div>
-                </div>
-
-                {/* Yellow: 5 to 7 Days */}
-                <div 
-                  className={`ageing-tier-item ${hoveredAgeingSegment === "fiveTo7" ? "active" : ""}`}
-                  onMouseEnter={() => setHoveredAgeingSegment("fiveTo7")}
-                  onMouseLeave={() => setHoveredAgeingSegment(null)}
-                  onClick={() => handleOpenAgeingOrders("fiveTo7")}
-                  title="Click to view 5 to 7 Days orders in ledger"
-                >
-                  <div className="ageing-tier-left">
-                    <span className="ageing-tier-dot yellow"></span>
-                    <div className="ageing-tier-info">
-                      <span className="ageing-tier-name">5 to 7 Days</span>
-                      <span className="ageing-tier-sub">Standard SLA</span>
-                    </div>
-                  </div>
-                  <div className="ageing-tier-right">
-                    <span className="ageing-tier-count">{orderAgeingStats.fiveTo7.count} orders</span>
-                    <span className="ageing-tier-pill yellow">{orderAgeingStats.fiveTo7.pct}%</span>
-                    <ArrowUpRight size={13} style={{ color: "#94a3b8" }} />
-                  </div>
-                </div>
-
-                {/* Red: Over 7 Days */}
-                <div 
-                  className={`ageing-tier-item ${hoveredAgeingSegment === "over7" ? "active" : ""}`}
-                  onMouseEnter={() => setHoveredAgeingSegment("over7")}
-                  onMouseLeave={() => setHoveredAgeingSegment(null)}
-                  onClick={() => handleOpenAgeingOrders("over7")}
-                  title="Click to view Over 7 Days orders in ledger"
-                >
-                  <div className="ageing-tier-left">
-                    <span className="ageing-tier-dot red"></span>
-                    <div className="ageing-tier-info">
-                      <span className="ageing-tier-name">Over 7 Days</span>
-                      <span className="ageing-tier-sub">Aged / Delayed</span>
-                    </div>
-                  </div>
-                  <div className="ageing-tier-right">
-                    <span className="ageing-tier-count">{orderAgeingStats.over7.count} orders</span>
-                    <span className="ageing-tier-pill red">{orderAgeingStats.over7.pct}%</span>
-                    <ArrowUpRight size={13} style={{ color: "#94a3b8" }} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Card Footer */}
-              <div className="ageing-indicator-footer">
-                <span className="ageing-benchmark-tag">
-                  ✓ Packaging = Completed
-                </span>
-                <span>
-                  Avg Turnaround: <strong>{orderAgeingStats.avgDays}d</strong>
-                </span>
+              {/* Two Separate Compact Graphs: Completed and Pending */}
+              <div className="ageing-two-graphs-grid">
+                {renderAgeingSubgraph("completed", "Completed", orderAgeingStats.completed, hoveredCompletedSegment, setHoveredCompletedSegment)}
+                {renderAgeingSubgraph("pending", "Pending", orderAgeingStats.pending, hoveredPendingSegment, setHoveredPendingSegment)}
               </div>
             </div>
-          </div>
 
-          {/* Sub-Mid Row: Repeat Customer Rate & Weekly Activity */}
-          <div className="overview-sub-mid-row">
-            {/* Widget 1: Repeat Customer Rate */}
-            <div className="ov-card repeat-rate-card">
-                <div className="card-header-clean">
-                  <div>
-                    <h3>Repeat Customer Rate</h3>
-                  </div>
-                  <button 
-                    className="clean-icon-btn" 
-                    title="Live calculated from leads" 
-                    onClick={() => setShowRepeatDetailsModal(true)}
-                  >
-                    <HelpCircle size={17} />
-                  </button>
-                </div>
-
-                <div className="repeat-gauge-body">
-                  <svg viewBox="0 0 200 115" className="repeat-gauge-svg">
-                    <defs>
-                      <linearGradient id="gaugeActiveGrad" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="#10b981" />
-                        <stop offset="100%" stopColor="#34d399" />
-                      </linearGradient>
-                    </defs>
-
-                    {Array.from({ length: 40 }).map((_, i) => {
-                      const totalTicks = 40;
-                      const activeTicks = Math.round(totalTicks * (repeatCustomerStats.rate / 100));
-                      const angle = Math.PI - (i / (totalTicks - 1)) * Math.PI;
-                      const radius = 76;
-                      const cx = 100;
-                      const cy = 96;
-
-                      const x1 = cx + (radius - 10) * Math.cos(angle);
-                      const y1 = cy - (radius - 10) * Math.sin(angle);
-                      const x2 = cx + (radius + 8) * Math.cos(angle);
-                      const y2 = cy - (radius + 8) * Math.sin(angle);
-
-                      const isActive = i < activeTicks;
-                      const isTargetMark = i === Math.round(totalTicks * (repeatCustomerStats.target / 100));
-
-                      return (
-                        <g key={i}>
-                          <line
-                            x1={x1}
-                            y1={y1}
-                            x2={x2}
-                            y2={y2}
-                            stroke={isActive ? "url(#gaugeActiveGrad)" : "#e2e8f0"}
-                            strokeWidth={isTargetMark ? "4" : "3"}
-                            strokeLinecap="round"
-                            className={`repeat-tick ${isActive ? "repeat-tick-active" : ""}`}
-                          />
-                          {isTargetMark && (
-                            <circle
-                              cx={cx + (radius + 16) * Math.cos(angle)}
-                              cy={cy - (radius + 16) * Math.sin(angle)}
-                              r="2.5"
-                              fill="#f59e0b"
-                            />
-                          )}
-                        </g>
-                      );
-                    })}
-                  </svg>
-
-                  <div className="repeat-gauge-center">
-                    <span className="repeat-percentage">{repeatCustomerStats.rate}%</span>
-                    <span className="repeat-target-status">
-                      <Sparkles size={13} />
-                      {repeatCustomerStats.rate >= repeatCustomerStats.target
-                        ? `Target exceeded (+${repeatCustomerStats.rate - repeatCustomerStats.target}%)`
-                        : `Target ${repeatCustomerStats.target}%`}
-                    </span>
-                    <span className="repeat-sync-source">
-                      <Radio size={11} color="#10b981" />
-                      {repeatCustomerStats.repeatCount} / {repeatCustomerStats.totalCount} orders
-                    </span>
-                  </div>
-                </div>
-
-                <div className="repeat-footer-stats">
-                  <div className="repeat-stat-col">
-                    <span className="repeat-stat-label">Repeat</span>
-                    <span className="repeat-stat-val" style={{ color: "#059669" }}>
-                      {repeatCustomerStats.repeatCount} ({repeatCustomerStats.rate}%)
-                    </span>
-                  </div>
-                  <div className="repeat-stat-col">
-                    <span className="repeat-stat-label">First-Time</span>
-                    <span className="repeat-stat-val" style={{ color: "#64748b" }}>
-                      {repeatCustomerStats.firstTimeCount} ({100 - repeatCustomerStats.rate}%)
-                    </span>
-                  </div>
-                  <button 
-                    className="repeat-details-btn"
-                    onClick={() => setShowRepeatDetailsModal(true)}
-                  >
-                    Details <ArrowUpRight size={13} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Widget 2: Weekly Order Velocity */}
-              <div className="ov-card velocity-card">
+            {/* Widget 2: Weekly Order Velocity */}
+            <div className="ov-card velocity-card">
                 <div className="card-header-clean">
                   <div>
                     <h3>Weekly Activity</h3>
@@ -2199,341 +2621,6 @@ function Dashboard() {
             </div>
           </div>
 
-          {/* Bottom Row: Workforce Lifecycle (Onboarding & Offboarding) */}
-          <div className="overview-bottom-row">
-            {/* Onboarding Overview Card */}
-            <div className="ov-card" style={{ cursor: 'pointer' }}>
-              <div className="card-header-clean" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <h3>Onboarding</h3>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span className="stage-trend-pill positive" style={{ fontSize: "11px" }}>
-                    {onboardingStats.thisMonthCount > 0 ? `+${onboardingStats.thisMonthCount} this month` : `${onboardingStats.total} Staff`}
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); navigate('/employees'); }}
-                    style={{
-                      background: '#eff6ff',
-                      color: '#2563eb',
-                      border: '1px solid #bfdbfe',
-                      borderRadius: '8px',
-                      padding: '3px 8px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '3px'
-                    }}
-                    title="Click to view employees data table"
-                  >
-                    View <ArrowUpRight size={12} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="lifecycle-card-body" onClick={() => navigate('/employees')}>
-                <div className="donut-wrapper" style={{ cursor: 'pointer' }} onMouseLeave={() => setActiveDonutHover(prev => ({ ...prev, onboarding: null }))}>
-                  <svg viewBox="0 0 100 100" className="donut-svg" style={{ overflow: 'visible' }}>
-                    <circle cx="50" cy="50" r="40" fill="none" stroke="#f1f5f9" strokeWidth="12" pointerEvents="none" />
-                    {(() => {
-                      const total = onboardingStats.total || 1;
-                      const trainingFrac = onboardingStats.training.count / total;
-                      const verificationFrac = onboardingStats.verification.count / total;
-                      const completedFrac = onboardingStats.completed.count / total;
-
-                      const polarToCartesian = (cx, cy, r, angleRad) => ({
-                        x: cx + r * Math.cos(angleRad),
-                        y: cy + r * Math.sin(angleRad),
-                      });
-
-                      const describeArc = (cx, cy, r, startAngleRad, endAngleRad) => {
-                        const start = polarToCartesian(cx, cy, r, startAngleRad);
-                        const end = polarToCartesian(cx, cy, r, endAngleRad);
-                        const angleDiff = endAngleRad - startAngleRad;
-                        const largeArcFlag = angleDiff <= Math.PI ? 0 : 1;
-                        return `M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
-                      };
-
-                      const a0 = -Math.PI / 2;
-                      const a1 = a0 + trainingFrac * 2 * Math.PI;
-                      const a2 = a1 + verificationFrac * 2 * Math.PI;
-                      const a3 = a0 + 2 * Math.PI - 0.0001;
-
-                      const trainingPath = onboardingStats.training.count > 0 ? describeArc(50, 50, 40, a0, a1) : null;
-                      const verificationPath = onboardingStats.verification.count > 0 ? describeArc(50, 50, 40, a1, a2) : null;
-                      const completedPath = onboardingStats.completed.count > 0 ? describeArc(50, 50, 40, a2, a3) : null;
-
-                      return (
-                        <>
-                          {trainingPath && (
-                            <path
-                              d={trainingPath}
-                              fill="none"
-                              stroke="#3b82f6"
-                              strokeWidth={activeDonutHover.onboarding?.label === "Training" ? 15 : 12}
-                              pointerEvents="stroke"
-                              style={{ cursor: "pointer", transition: "all 0.2s ease" }}
-                              onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, onboarding: { label: "Training", val: String(onboardingStats.training.count) } }))}
-                              onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=training'); }}
-                            />
-                          )}
-                          {verificationPath && (
-                            <path
-                              d={verificationPath}
-                              fill="none"
-                              stroke="#10b981"
-                              strokeWidth={activeDonutHover.onboarding?.label === "Verification" ? 15 : 12}
-                              pointerEvents="stroke"
-                              style={{ cursor: "pointer", transition: "all 0.2s ease" }}
-                              onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, onboarding: { label: "Verification", val: String(onboardingStats.verification.count) } }))}
-                              onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=verification'); }}
-                            />
-                          )}
-                          {completedPath && (
-                            <path
-                              d={completedPath}
-                              fill="none"
-                              stroke="#f59e0b"
-                              strokeWidth={activeDonutHover.onboarding?.label === "Completed" ? 15 : 12}
-                              pointerEvents="stroke"
-                              style={{ cursor: "pointer", transition: "all 0.2s ease" }}
-                              onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, onboarding: { label: "Completed", val: String(onboardingStats.completed.count) } }))}
-                              onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=completed'); }}
-                            />
-                          )}
-                        </>
-                      );
-                    })()}
-                  </svg>
-                  <div className="donut-center-info" style={{ pointerEvents: 'none' }}>
-                    <span className="donut-center-label">
-                      {activeDonutHover.onboarding?.label || "TOTAL"}
-                    </span>
-                    <span className="donut-center-val">
-                      {activeDonutHover.onboarding?.val || onboardingStats.total}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="lifecycle-breakdown-list">
-                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=training'); }} style={{ cursor: 'pointer' }}>
-                    <div className="lifecycle-item-top">
-                      <span className="lifecycle-item-title">
-                        <span className="lifecycle-dot" style={{ background: "#3b82f6" }}></span>
-                        Training
-                      </span>
-                      <span className="lifecycle-item-val">{onboardingStats.training.count} ({onboardingStats.training.pct}%)</span>
-                    </div>
-                    <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: `${onboardingStats.training.pct}%`, background: "#3b82f6" }}></div>
-                    </div>
-                  </div>
-
-                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=verification'); }} style={{ cursor: 'pointer' }}>
-                    <div className="lifecycle-item-top">
-                      <span className="lifecycle-item-title">
-                        <span className="lifecycle-dot" style={{ background: "#10b981" }}></span>
-                        Verification
-                      </span>
-                      <span className="lifecycle-item-val">{onboardingStats.verification.count} ({onboardingStats.verification.pct}%)</span>
-                    </div>
-                    <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: `${onboardingStats.verification.pct}%`, background: "#10b981" }}></div>
-                    </div>
-                  </div>
-
-                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=completed'); }} style={{ cursor: 'pointer' }}>
-                    <div className="lifecycle-item-top">
-                      <span className="lifecycle-item-title">
-                        <span className="lifecycle-dot" style={{ background: "#f59e0b" }}></span>
-                        Completed
-                      </span>
-                      <span className="lifecycle-item-val">{onboardingStats.completed.count} ({onboardingStats.completed.pct}%)</span>
-                    </div>
-                    <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: `${onboardingStats.completed.pct}%`, background: "#f59e0b" }}></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Offboarding Overview Card */}
-            <div className="ov-card" style={{ cursor: 'pointer' }}>
-              <div className="card-header-clean" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <h3>Offboarding</h3>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span className="tile-trend-pill neutral" style={{ fontSize: "11px" }}>
-                    {offboardingStats.total === 0 ? "0 Pipeline (100% Retained)" : `${offboardingStats.total} Pipeline`}
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=offboarding'); }}
-                    style={{
-                      background: '#f8fafc',
-                      color: '#475569',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '8px',
-                      padding: '3px 8px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '3px'
-                    }}
-                    title="Click to view employees data table"
-                  >
-                    View <ArrowUpRight size={12} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="lifecycle-card-body" onClick={() => navigate('/employees?filter=offboarding')}>
-                <div className="donut-wrapper" style={{ cursor: 'pointer' }} onMouseLeave={() => setActiveDonutHover(prev => ({ ...prev, offboarding: null }))}>
-                  <svg viewBox="0 0 100 100" className="donut-svg" style={{ overflow: 'visible' }}>
-                    <circle cx="50" cy="50" r="40" fill="none" stroke="#f1f5f9" strokeWidth="12" pointerEvents="none" />
-                    {offboardingStats.total === 0 ? (
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="none"
-                        stroke="#10b981"
-                        strokeWidth="3"
-                        strokeDasharray="4 6"
-                        opacity="0.4"
-                        pointerEvents="none"
-                      />
-                    ) : (
-                      (() => {
-                        const total = offboardingStats.total || 1;
-                        const handoverFrac = offboardingStats.handover.count / total;
-                        const clearanceFrac = offboardingStats.clearance.count / total;
-                        const deprovisionedFrac = offboardingStats.deprovisioned.count / total;
-
-                        const polarToCartesian = (cx, cy, r, angleRad) => ({
-                          x: cx + r * Math.cos(angleRad),
-                          y: cy + r * Math.sin(angleRad),
-                        });
-
-                        const describeArc = (cx, cy, r, startAngleRad, endAngleRad) => {
-                          const start = polarToCartesian(cx, cy, r, startAngleRad);
-                          const end = polarToCartesian(cx, cy, r, endAngleRad);
-                          const angleDiff = endAngleRad - startAngleRad;
-                          const largeArcFlag = angleDiff <= Math.PI ? 0 : 1;
-                          return `M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
-                        };
-
-                        const a0 = -Math.PI / 2;
-                        const a1 = a0 + handoverFrac * 2 * Math.PI;
-                        const a2 = a1 + clearanceFrac * 2 * Math.PI;
-                        const a3 = a0 + 2 * Math.PI - 0.0001;
-
-                        const handoverPath = offboardingStats.handover.count > 0 ? describeArc(50, 50, 40, a0, a1) : null;
-                        const clearancePath = offboardingStats.clearance.count > 0 ? describeArc(50, 50, 40, a1, a2) : null;
-                        const deprovisionedPath = offboardingStats.deprovisioned.count > 0 ? describeArc(50, 50, 40, a2, a3) : null;
-
-                        return (
-                          <>
-                            {handoverPath && (
-                              <path
-                                d={handoverPath}
-                                fill="none"
-                                stroke="#f87171"
-                                strokeWidth={activeDonutHover.offboarding?.label === "Handover" ? 15 : 12}
-                                pointerEvents="stroke"
-                                style={{ cursor: "pointer", transition: "all 0.2s ease" }}
-                                onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, offboarding: { label: "Handover", val: String(offboardingStats.handover.count) } }))}
-                                onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=handover'); }}
-                              />
-                            )}
-                            {clearancePath && (
-                              <path
-                                d={clearancePath}
-                                fill="none"
-                                stroke="#8b78f6"
-                                strokeWidth={activeDonutHover.offboarding?.label === "Clearance" ? 15 : 12}
-                                pointerEvents="stroke"
-                                style={{ cursor: "pointer", transition: "all 0.2s ease" }}
-                                onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, offboarding: { label: "Clearance", val: String(offboardingStats.clearance.count) } }))}
-                                onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=clearance'); }}
-                              />
-                            )}
-                            {deprovisionedPath && (
-                              <path
-                                d={deprovisionedPath}
-                                fill="none"
-                                stroke="#64748b"
-                                strokeWidth={activeDonutHover.offboarding?.label === "Deprovisioned" ? 15 : 12}
-                                pointerEvents="stroke"
-                                style={{ cursor: "pointer", transition: "all 0.2s ease" }}
-                                onMouseEnter={() => setActiveDonutHover(prev => ({ ...prev, offboarding: { label: "Deprovisioned", val: String(offboardingStats.deprovisioned.count) } }))}
-                                onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=deprovisioned'); }}
-                              />
-                            )}
-                          </>
-                        );
-                      })()
-                    )}
-                  </svg>
-                  <div className="donut-center-info" style={{ pointerEvents: 'none' }}>
-                    <span className="donut-center-label">
-                      {activeDonutHover.offboarding?.label || (offboardingStats.total === 0 ? "RETAINED" : "TOTAL")}
-                    </span>
-                    <span className="donut-center-val">
-                      {activeDonutHover.offboarding?.val || (offboardingStats.total === 0 ? "100%" : offboardingStats.total)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="lifecycle-breakdown-list">
-                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=handover'); }} style={{ cursor: 'pointer' }}>
-                    <div className="lifecycle-item-top">
-                      <span className="lifecycle-item-title">
-                        <span className="lifecycle-dot" style={{ background: "#f87171" }}></span>
-                        Handover
-                      </span>
-                      <span className="lifecycle-item-val">{offboardingStats.handover.count} ({offboardingStats.handover.pct}%)</span>
-                    </div>
-                    <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: `${offboardingStats.handover.pct}%`, background: "#f87171" }}></div>
-                    </div>
-                  </div>
-
-                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=clearance'); }} style={{ cursor: 'pointer' }}>
-                    <div className="lifecycle-item-top">
-                      <span className="lifecycle-item-title">
-                        <span className="lifecycle-dot" style={{ background: "#8b78f6" }}></span>
-                        Clearance
-                      </span>
-                      <span className="lifecycle-item-val">{offboardingStats.clearance.count} ({offboardingStats.clearance.pct}%)</span>
-                    </div>
-                    <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: `${offboardingStats.clearance.pct}%`, background: "#8b78f6" }}></div>
-                    </div>
-                  </div>
-
-                  <div className="lifecycle-item" onClick={(e) => { e.stopPropagation(); navigate('/employees?filter=deprovisioned'); }} style={{ cursor: 'pointer' }}>
-                    <div className="lifecycle-item-top">
-                      <span className="lifecycle-item-title">
-                        <span className="lifecycle-dot" style={{ background: "#64748b" }}></span>
-                        Deprovisioned
-                      </span>
-                      <span className="lifecycle-item-val">{offboardingStats.deprovisioned.count} ({offboardingStats.deprovisioned.pct}%)</span>
-                    </div>
-                    <div className="lifecycle-item-bar">
-                      <div className="lifecycle-item-fill" style={{ width: `${offboardingStats.deprovisioned.pct}%`, background: "#64748b" }}></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Repeat Customer Details Modal */}
           {showRepeatDetailsModal && (
             <div className="repeat-modal-backdrop" onClick={() => setShowRepeatDetailsModal(false)}>
@@ -2617,57 +2704,88 @@ function Dashboard() {
 
       {activeTab === "employee" && isAdmin && (
         <div className="dashboard-content">
-          <div className="employee-cards-grid">
-            {normalizedEmployees.map((emp) => (
-              <div key={emp.id} className="employee-card">
-                <div className="emp-card-header">
-                  <div className="emp-avatar" style={{ backgroundColor: emp.avatarBg }}>
-                    {emp.initials}
-                    <span className={`emp-status ${emp.status}`}></span>
-                  </div>
-                  <h3 className="emp-name">{emp.name}</h3>
-                  <p className="emp-role">{emp.role}</p>
-                  <span className="emp-badge">{emp.department}</span>
-                  {emp.isInactive && (
-                    <span className="emp-badge" style={{ background: '#fee2e2', color: '#dc2626', marginLeft: '6px', border: '1px solid #fecaca' }}>
-                      Inactive
-                    </span>
-                  )}
-                </div>
-                <div className="emp-stats">
-                  <div className="emp-stat">
-                    <h4>{emp.openTasks}</h4>
-                    <p>Open leads</p>
-                  </div>
-                  <div className="emp-stat">
-                    <h4>{emp.completedTasks}</h4>
-                    <p>Completed</p>
-                  </div>
-                </div>
-                <div className="emp-workload">
-                  <div className="workload-header">
-                    <span>Workload</span>
-                    <span>{emp.workload}%</span>
-                  </div>
-                  <div className="workload-bar-bg">
-                    <div
-                      className="workload-bar-fill"
-                      style={{
-                        width: `${emp.workload}%`,
-                        backgroundColor: getWorkloadColor(emp.workload),
-                      }}
-                    ></div>
-                  </div>
-                </div>
-                <div className="emp-actions">
-                  <button className="btn-msg">Message</button>
-                  <button className="btn-profile" onClick={() => setSelectedEmployee(emp)}>
-                    Profile
+          <div className="emp-grid-toolbar">
+            <span className="emp-results-count">
+              Showing <strong>{filteredEmployeeCards.length}</strong> of {normalizedEmployees.length} employees
+              {employeeSearchQuery && (
+                <span className="emp-filter-tag">
+                  matching &ldquo;{employeeSearchQuery}&rdquo;
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmployeeSearchInput("");
+                      setEmployeeSearchQuery("");
+                    }}
+                    title="Clear filter"
+                  >
+                    <X size={12} />
                   </button>
-                </div>
-              </div>
-            ))}
+                </span>
+              )}
+            </span>
           </div>
+
+          {filteredEmployeeCards.length === 0 ? (
+            <div className="emp-no-results">
+              <Users size={36} color="#94a3b8" />
+              <h3>No employees found</h3>
+              <p>No employee matches &ldquo;{employeeSearchQuery}&rdquo;. Try another search term.</p>
+              <button
+                type="button"
+                className="btn-clear-filter"
+                onClick={() => {
+                  setEmployeeSearchInput("");
+                  setEmployeeSearchQuery("");
+                }}
+              >
+                Clear Search
+              </button>
+            </div>
+          ) : (
+            <div className="employee-cards-grid">
+              {filteredEmployeeCards.map((emp) => (
+                <div key={emp.id} className="employee-card square-card">
+                  <div className="emp-card-top">
+                    <div className="emp-avatar" style={{ backgroundColor: emp.avatarBg }}>
+                      {emp.initials}
+                      <span className={`emp-status ${emp.status}`}></span>
+                    </div>
+                    <h3 className="emp-name" title={emp.name}>{emp.name}</h3>
+                    <p className="emp-role" title={emp.role}>{emp.role}</p>
+                    <div className="emp-badges-row">
+                      <span className="emp-badge">{emp.department}</span>
+                      {emp.isInactive && (
+                        <span className="emp-badge inactive-badge">Inactive</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="emp-dummy-summary">
+                    <div className="dummy-metric-pill" title="Total Leave Taken (Dummy Info)">
+                      <span className="metric-label">Leaves:</span>
+                      <span className="metric-val">{emp.dummy?.totalLeavesTaken ?? 0}d</span>
+                    </div>
+                    <div className="dummy-metric-pill" title="Salary Deduction (Dummy Info)">
+                      <span className="metric-label">Ded:</span>
+                      <span className={`metric-val ${emp.dummy?.salaryDeduction > 0 ? "ded-active" : "ded-zero"}`}>
+                        {emp.dummy?.salaryDeduction > 0 ? `₹${emp.dummy.salaryDeduction.toLocaleString()}` : "₹0"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="emp-actions">
+                    <button
+                      type="button"
+                      className="btn-profile"
+                      onClick={() => setSelectedEmployee(emp)}
+                    >
+                      Profile
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -2687,6 +2805,7 @@ function Dashboard() {
               <button
                 className="close-panel-btn"
                 onClick={() => setSelectedEmployee(null)}
+                title="Close"
               >
                 <X size={20} />
               </button>
@@ -2703,57 +2822,165 @@ function Dashboard() {
 
                 <div className="sp-meta">
                   <span>
-                    <MapPin size={14} /> Lisbon
-                  </span>
-                  <span>
                     <Users size={14} /> {selectedEmployee.department}
                   </span>
                   <span className="sp-online-status">
                     <span className={`sp-dot ${selectedEmployee.status}`}></span>
-                    {selectedEmployee.status === "online" ? "Online" : selectedEmployee.status === "inactive" ? "Inactive" : "Away"}
+                    {selectedEmployee.status === "online"
+                      ? "Active"
+                      : selectedEmployee.status === "inactive"
+                      ? "Inactive"
+                      : "Away"}
                   </span>
                 </div>
               </div>
 
-              <div className="sp-stats-row">
-                <div className="sp-stat-box">
-                  <h3>{selectedEmployee.openTasks}</h3>
-                  <p>Open</p>
+              {/* Attendance & Leaves Section */}
+              <div className="sp-detail-card">
+                <div className="sp-detail-card-header">
+                  <div className="sp-card-icon leave-icon">
+                    <Calendar size={18} />
+                  </div>
+                  <div>
+                    <h4>Attendance & Leaves</h4>
+                    <span className="dummy-tag">Dummy Info</span>
+                  </div>
                 </div>
-                <div className="sp-stat-box">
-                  <h3>{selectedEmployee.completedTasks}</h3>
-                  <p>Done</p>
+                <div className="sp-main-metric">
+                  <span className="sp-metric-number">
+                    {selectedEmployee.dummy?.totalLeavesTaken ?? 3}
+                  </span>
+                  <span className="sp-metric-unit">Days Taken</span>
                 </div>
-                <div className="sp-stat-box">
-                  <h3>{selectedEmployee.workload}%</h3>
-                  <p>Load</p>
+                <div className="sp-leave-quota-bar">
+                  <div className="quota-header">
+                    <span>Leave Quota Used</span>
+                    <span>
+                      {selectedEmployee.dummy?.totalLeavesTaken ?? 3} /{" "}
+                      {selectedEmployee.dummy?.annualLeaveAllowance ?? 18} Days
+                    </span>
+                  </div>
+                  <div className="quota-bar-bg">
+                    <div
+                      className="quota-bar-fill"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (((selectedEmployee.dummy?.totalLeavesTaken ?? 3) /
+                            (selectedEmployee.dummy?.annualLeaveAllowance ?? 18)) *
+                            100)
+                        )}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+                <div className="sp-mini-stats-grid">
+                  <div className="sp-mini-stat">
+                    <span className="stat-label">Sick Leaves</span>
+                    <span className="stat-val">
+                      {selectedEmployee.dummy?.sickLeaves ?? 1} Days
+                    </span>
+                  </div>
+                  <div className="sp-mini-stat">
+                    <span className="stat-label">Casual Leaves</span>
+                    <span className="stat-val">
+                      {selectedEmployee.dummy?.casualLeaves ?? 2} Days
+                    </span>
+                  </div>
+                  <div className="sp-mini-stat">
+                    <span className="stat-label">Remaining</span>
+                    <span className="stat-val highlight">
+                      {selectedEmployee.dummy?.remainingLeaves ?? 15} Days
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="sp-tasks-section">
-                <h4>Assigned tasks</h4>
-                <div className="sp-task-list">
-                  <div className="sp-task-item">
-                    <span className="task-dot in-progress"></span>
-                    <span className="task-name">Design login & sign-up screens</span>
-                    <span className="task-status">In progress</span>
+              {/* Salary & Payroll Deduction Section */}
+              <div className="sp-detail-card">
+                <div className="sp-detail-card-header">
+                  <div className="sp-card-icon salary-icon">
+                    <IndianRupee size={18} />
                   </div>
-                  <div className="sp-task-item">
-                    <span className="task-dot done"></span>
-                    <span className="task-name">Monorepo cleanup</span>
-                    <span className="task-status">Done</span>
-                  </div>
-                  <div className="sp-task-item">
-                    <span className="task-dot done"></span>
-                    <span className="task-name">Dashboard analytics widgets</span>
-                    <span className="task-status">Done</span>
+                  <div>
+                    <h4>Salary & Deductions</h4>
+                    <span className="dummy-tag">Dummy Info</span>
                   </div>
                 </div>
+                <div className="sp-main-metric">
+                  <span
+                    className={`sp-metric-number ${
+                      (selectedEmployee.dummy?.salaryDeduction ?? 0) > 0
+                        ? "deduction-alert"
+                        : "deduction-clean"
+                    }`}
+                  >
+                    ₹
+                    {(
+                      selectedEmployee.dummy?.salaryDeduction ?? 0
+                    ).toLocaleString()}
+                  </span>
+                  <span className="sp-metric-unit">Total Deduction</span>
+                </div>
+                <p className="sp-deduction-reason">
+                  <strong>Status: </strong>
+                  {selectedEmployee.dummy?.deductionReason ||
+                    "Within paid leave allowance"}
+                </p>
+                <div className="sp-mini-stats-grid">
+                  <div className="sp-mini-stat">
+                    <span className="stat-label">Base Salary</span>
+                    <span className="stat-val">
+                      ₹
+                      {(
+                        selectedEmployee.dummy?.baseSalary ?? 40000
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="sp-mini-stat">
+                    <span className="stat-label">Net Payable</span>
+                    <span className="stat-val highlight">
+                      ₹
+                      {(
+                        selectedEmployee.dummy?.netSalary ?? 40000
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Profile Meta Section */}
+              <div className="sp-info-list">
+                {selectedEmployee.employeeId && (
+                  <div className="sp-info-row">
+                    <span className="info-key">Employee ID:</span>
+                    <span className="info-val">{selectedEmployee.employeeId}</span>
+                  </div>
+                )}
+                {selectedEmployee.email && (
+                  <div className="sp-info-row">
+                    <span className="info-key">Email:</span>
+                    <span className="info-val">{selectedEmployee.email}</span>
+                  </div>
+                )}
+                {selectedEmployee.shiftStartTime && selectedEmployee.shiftEndTime && (
+                  <div className="sp-info-row">
+                    <span className="info-key">Shift Hours:</span>
+                    <span className="info-val">
+                      {selectedEmployee.shiftStartTime} - {selectedEmployee.shiftEndTime}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="sp-actions">
-                <button className="btn-msg">Message</button>
-                <button className="btn-assign">+ Assign task</button>
+                <button
+                  type="button"
+                  className="btn-profile-close"
+                  onClick={() => setSelectedEmployee(null)}
+                >
+                  Close Profile
+                </button>
               </div>
             </div>
           )}
@@ -2767,6 +2994,18 @@ function Dashboard() {
           ) : (
             <InventoryManagement />
           )}
+        </div>
+      )}
+
+      {activeTab === "delivery" && (
+        <div className="dashboard-content">
+          <DeliveryDashboard leads={rawLeads} />
+        </div>
+      )}
+
+      {activeTab === "compliance" && (
+        <div className="dashboard-content">
+          <ComplianceDashboard />
         </div>
       )}
     </div>

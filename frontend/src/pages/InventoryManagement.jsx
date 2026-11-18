@@ -2130,7 +2130,7 @@ export default function InventoryManagement() {
       </div>
 
       {/* Live Graphical Analytics: Order Placed, In Stock, Reserved, Sizes, Valuation */}
-      <InventoryAnalyticsPanel stocks={stockRoomData} />
+      <InventoryAnalyticsPanel stocks={stockRoomData} leads={detectedOrders} />
 
       {/* Main Table Card (Screenshot 2) */}
       <div className="erp-table-card">

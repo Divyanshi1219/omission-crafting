@@ -1,0 +1,421 @@
+/* ==========================================================================
+   DeliveryDashboard.css
+   Modern, responsive styling matching Omission Crafting design system
+   ========================================================================== */
+
+.delivery-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeIn 0.35s ease-out;
+  width: 100%;
+}
+
+/* Summary KPI Cards */
+.delivery-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+@media (max-width: 1024px) {
+  .delivery-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .delivery-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.delivery-kpi-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 20px 22px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 6px 18px -4px rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.25s ease;
+}
+
+.delivery-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -4px rgba(15, 23, 42, 0.08);
+}
+
+.app.dark .delivery-kpi-card {
+  background: #18181b;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.delivery-kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.delivery-kpi-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.app.dark .delivery-kpi-title {
+  color: #94a3b8;
+}
+
+.delivery-kpi-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delivery-kpi-icon-blue { background: #eff6ff; color: #2563eb; }
+.delivery-kpi-icon-amber { background: #fffbeb; color: #d97706; }
+.delivery-kpi-icon-purple { background: #faf5ff; color: #9333ea; }
+.delivery-kpi-icon-green { background: #ecfdf5; color: #059669; }
+
+.app.dark .delivery-kpi-icon-blue { background: rgba(37, 99, 235, 0.15); }
+.app.dark .delivery-kpi-icon-amber { background: rgba(217, 119, 6, 0.15); }
+.app.dark .delivery-kpi-icon-purple { background: rgba(147, 51, 234, 0.15); }
+.app.dark .delivery-kpi-icon-green { background: rgba(5, 150, 105, 0.15); }
+
+.delivery-kpi-body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.delivery-kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.app.dark .delivery-kpi-value {
+  color: #f8fafc;
+}
+
+.delivery-kpi-subtext {
+  font-size: 12px;
+  font-weight: 500;
+  color: #10b981;
+}
+
+.delivery-kpi-subtext.neutral {
+  color: #64748b;
+}
+
+.app.dark .delivery-kpi-subtext.neutral {
+  color: #94a3b8;
+}
+
+/* Section Header and Controls */
+.delivery-main-card {
+  background: #ffffff;
+  border-radius: 20px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 8px 24px -4px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.app.dark .delivery-main-card {
+  background: #18181b;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.delivery-toolbar {
+  padding: 18px 22px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.app.dark .delivery-toolbar {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.delivery-tabs-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 12px;
+}
+
+.app.dark .delivery-tabs-filter {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.delivery-tab-btn {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.delivery-tab-btn:hover {
+  color: #0f172a;
+}
+
+.app.dark .delivery-tab-btn:hover {
+  color: #f8fafc;
+}
+
+.delivery-tab-btn.active {
+  background: #ffffff;
+  color: #2563eb;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.app.dark .delivery-tab-btn.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.delivery-tab-count {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.app.dark .delivery-tab-count {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.delivery-search-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  max-width: 420px;
+}
+
+.delivery-search-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.delivery-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+
+.delivery-search-input {
+  width: 100%;
+  padding: 8px 14px 8px 36px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  font-size: 13px;
+  background: #ffffff;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.delivery-search-input:focus {
+  border-color: #2563eb;
+}
+
+.app.dark .delivery-search-input {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #f8fafc;
+}
+
+/* Deliveries Table */
+.delivery-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.delivery-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+
+.delivery-table th {
+  background: #f8fafc;
+  padding: 13px 18px;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.app.dark .delivery-table th {
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.delivery-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.app.dark .delivery-table td {
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.delivery-table tr:hover td {
+  background: #f8fafc;
+}
+
+.app.dark .delivery-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.delivery-id-cell {
+  font-weight: 700;
+  color: #2563eb;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.delivery-client-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.app.dark .delivery-client-name {
+  color: #f8fafc;
+}
+
+.delivery-client-sub {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.delivery-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.delivery-status-badge.delivered {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.delivery-status-badge.in-transit {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.delivery-status-badge.out-for-delivery {
+  background: #faf5ff;
+  color: #9333ea;
+}
+
+.delivery-status-badge.pending-dispatch {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.app.dark .delivery-status-badge.delivered { background: rgba(5, 150, 105, 0.18); color: #34d399; }
+.app.dark .delivery-status-badge.in-transit { background: rgba(37, 99, 235, 0.18); color: #60a5fa; }
+.app.dark .delivery-status-badge.out-for-delivery { background: rgba(147, 51, 234, 0.18); color: #c084fc; }
+.app.dark .delivery-status-badge.pending-dispatch { background: rgba(217, 119, 6, 0.18); color: #fbbf24; }
+
+.delivery-carrier-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f1f5f9;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+}
+
+.app.dark .delivery-carrier-tag {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+.delivery-action-btn {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.delivery-action-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.app.dark .delivery-action-btn {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #e4e4e7;
+}
+
+.app.dark .delivery-action-btn:hover {
+  background: #3f3f46;
+  color: #ffffff;
+}
+
+.delivery-empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: #64748b;
+}
+
+.delivery-empty-icon {
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
