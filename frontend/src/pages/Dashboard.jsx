@@ -7,6 +7,7 @@ import {
   Users, 
   Calendar, 
   UserCheck, 
+  UserX, 
   Clock, 
   Calendar as CalendarIcon, 
   ChevronDown, 
@@ -30,7 +31,8 @@ import {
   Plus,
   Archive,
   BookmarkCheck,
-  Filter
+  Filter,
+  Timer
 } from "lucide-react";
 import "./EmployeeCards.css";
 import "./OverviewDashboard.css";
@@ -71,7 +73,12 @@ function Dashboard() {
     lowStockAlerts: 0,
     itemsOutOfStock: 0,
   });
-  const isAdmin = currentUser?.id === "admin";
+  const isAdmin =
+    currentUser?.id === "admin" ||
+    currentUser?.role === "CEO" ||
+    (currentUser?.role && currentUser.role.toLowerCase().includes("admin")) ||
+    (currentUser?.name || "").toLowerCase().startsWith("adam") ||
+    (currentUser?.department || "").toLowerCase() === "ceo";
   const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
   const isProduction =
     currentUser?.id === "production" ||
@@ -112,8 +119,17 @@ function Dashboard() {
     }
   }, [isStock, isAdmin]);
 
-  // Live Leads and Production Data from Backend
-  const [rawLeads, setRawLeads] = useState([]);
+  // Live Leads and Production Data from Backend (cached first for zero delay)
+  const [rawLeads, setRawLeads] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem("omission_cached_leads");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  });
   // True once the leads fetch succeeded — lets profiles with zero orders
   // display their real (0) numbers instead of the demo baseline data.
   const [leadsLoaded, setLeadsLoaded] = useState(false);
@@ -141,7 +157,7 @@ function Dashboard() {
 
   // UI Interactive States
   const [chartViewMode, setChartViewMode] = useState("volume"); // "volume" | "revenue"
-  const [salesTimeFrame, setSalesTimeFrame] = useState("monthly"); // "weekly" | "monthly" | "custom"
+  const [salesTimeFrame, setSalesTimeFrame] = useState("daily"); // "daily" | "weekly" | "monthly" | "custom"
   const [customStartDate, setCustomStartDate] = useState("2026-10-01");
   const [customEndDate, setCustomEndDate] = useState("2026-11-30");
   const [hoveredSalesPoint, setHoveredSalesPoint] = useState(null);
@@ -150,6 +166,8 @@ function Dashboard() {
   const [hoveredDay, setHoveredDay] = useState(null); // tooltip data for velocity chart
   const [showRepeatDetailsModal, setShowRepeatDetailsModal] = useState(false);
   const [activeDonutHover, setActiveDonutHover] = useState({ onboarding: null, offboarding: null });
+  const [orderAgeingFilter, setOrderAgeingFilter] = useState("completed"); // "completed" | "pending" | "all"
+  const [hoveredAgeingSegment, setHoveredAgeingSegment] = useState(null);
 
   // Live Inventory Overview State & Synchronization
   const [inventoryItems, setInventoryItems] = useState([]);
@@ -435,22 +453,29 @@ function Dashboard() {
     };
   }, [inventoryStats]);
 
-  // Fetch leads and check backend health on mount
+  // Fetch leads and check backend health on mount and tab switch
   useEffect(() => {
     api.get("/api/health")
       .then((res) => console.log("Backend connected:", res.data))
       .catch((err) => console.warn("Backend health check failed:", err.message));
 
-    api.get("/api/leads")
-      .then((res) => {
-        if (res.data?.data) {
-          setRawLeads(res.data.data);
-          setLeadsLoaded(true);
-        }
-      })
-      .catch((err) => {
-        console.warn("Leads fetch failed, using realistic baseline:", err.message);
-      });
+    const fetchLeads = () => {
+      api.get("/api/leads")
+        .then((res) => {
+          if (res.data?.data) {
+            setRawLeads(res.data.data);
+            setLeadsLoaded(true);
+            try {
+              sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
+            } catch (_) {}
+          }
+        })
+        .catch((err) => {
+          console.warn("Leads fetch failed, using realistic baseline:", err.message);
+        });
+    };
+
+    fetchLeads();
 
     api.get("/api/employees")
       .then((res) => {
@@ -461,7 +486,11 @@ function Dashboard() {
       .catch((err) => {
         console.warn("Employees fetch failed, using default:", err.message);
       });
-  }, []);
+
+    const handleFocus = () => fetchLeads();
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [activeTab]);
 
   // Compute live repeat customer rate linked to lead form field `repeatedOrder`
   const repeatCustomerStats = useMemo(() => {
@@ -515,6 +544,109 @@ function Dashboard() {
     };
   }, [leads, leadsLoaded, isAdmin]);
 
+  // Live Order Ageing Analytics (Packaging & beyond = Completed, Pre-Packaging = Pending)
+  const orderAgeingStats = useMemo(() => {
+    const leadsList = (rawLeads && rawLeads.length > 0)
+      ? rawLeads
+      : (leads && leads.length > 0)
+        ? leads
+        : [];
+
+    const orders = leadsList.filter(l => l.query === 'order' || l.orderStage || l.totalQuantity || l.orderId);
+
+    const completedSubStages = [
+      'packaging',
+      'delivery-pending',
+      'delivery pending',
+      'delivered',
+      'delivery',
+      'customer-support',
+      'customer support',
+      'support',
+      'archived',
+      'staging-room',
+      'staging room',
+      'payment-confirmation',
+      'payment confirmation',
+      'payment status'
+    ];
+
+    const isCompleted = (o) => {
+      if (o.isCompleted === true) return true;
+      const sub = (o.subStage || '').toLowerCase().trim();
+      const stage = (o.orderStage || '').toLowerCase().trim();
+      if (completedSubStages.includes(sub)) return true;
+      if (stage === 'complete' && !['order', 'new', 'leads', 'dtf-pending', 'stock', 'printing', 'quality-check'].includes(sub)) {
+        return true;
+      }
+      return false;
+    };
+
+    const now = new Date();
+
+    const categorized = orders.map(o => {
+      const completed = isCompleted(o);
+      const created = new Date(o.createdAt || o.deliveryDate || '2026-10-15');
+      const validCreated = isNaN(created.getTime()) ? new Date('2026-10-15') : created;
+
+      let days = 0;
+      if (completed) {
+        const updated = new Date(o.updatedAt || o.createdAt || now);
+        const validUpdated = isNaN(updated.getTime()) ? now : updated;
+        const diffMs = Math.max(0, validUpdated.getTime() - validCreated.getTime());
+        days = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+      } else {
+        const diffMs = Math.max(0, now.getTime() - validCreated.getTime());
+        days = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+      }
+
+      let tier = "over7";
+      if (days < 5) tier = "under5";
+      else if (days <= 7) tier = "fiveTo7";
+
+      return {
+        ...o,
+        isCompleted: completed,
+        days,
+        tier
+      };
+    });
+
+    const completedOrders = categorized.filter(o => o.isCompleted);
+    const pendingOrders = categorized.filter(o => !o.isCompleted);
+
+    const activeList = orderAgeingFilter === "completed"
+      ? completedOrders
+      : orderAgeingFilter === "pending"
+        ? pendingOrders
+        : categorized;
+
+    const total = activeList.length;
+    const under5Count = activeList.filter(o => o.tier === "under5").length;
+    const fiveTo7Count = activeList.filter(o => o.tier === "fiveTo7").length;
+    const over7Count = activeList.filter(o => o.tier === "over7").length;
+
+    const under5Pct = total > 0 ? Math.round((under5Count / total) * 100) : 0;
+    const fiveTo7Pct = total > 0 ? Math.round((fiveTo7Count / total) * 100) : 0;
+    const over7Pct = total > 0 ? Math.max(0, 100 - under5Pct - fiveTo7Pct) : 0;
+
+    const avgDays = total > 0
+      ? (activeList.reduce((sum, o) => sum + o.days, 0) / total).toFixed(1)
+      : 0;
+
+    return {
+      total,
+      completedTotal: completedOrders.length,
+      pendingTotal: pendingOrders.length,
+      allTotal: categorized.length,
+      under5: { count: under5Count, pct: under5Pct, label: "Under 5 Days" },
+      fiveTo7: { count: fiveTo7Count, pct: fiveTo7Pct, label: "5 to 7 Days" },
+      over7: { count: over7Count, pct: over7Pct, label: "Over 7 Days (Aged)" },
+      avgDays,
+      activeList
+    };
+  }, [rawLeads, leads, orderAgeingFilter]);
+
   // Currency formatter for INR
   const formatINR = (val, compact = false) => {
     const num = Number(val) || 0;
@@ -527,10 +659,48 @@ function Dashboard() {
     return `₹ ${Math.round(num).toLocaleString('en-IN')}`;
   };
 
+  // Open dedicated Sales Orders Ledger breakdown for a selected period
+  const handleOpenSalesBreakdown = (col) => {
+    if (!col) {
+      navigate("/sales/orders");
+      return;
+    }
+    let url = `/sales/orders?label=${encodeURIComponent(col.label || col.shortLabel || "")}`;
+    if (salesTimeFrame === "daily" && col.start && col.end) {
+      url += `&period=daily&start=${col.start.toISOString()}&end=${col.end.toISOString()}`;
+    } else if (salesTimeFrame === "weekly" && col.start && col.end) {
+      url += `&period=weekly&start=${col.start.toISOString()}&end=${col.end.toISOString()}`;
+    } else if (salesTimeFrame === "monthly") {
+      url += `&period=monthly&month=${col.monthIdx}&year=${col.year}`;
+    } else if (salesTimeFrame === "custom") {
+      url += `&period=custom&start=${customStartDate}&end=${customEndDate}`;
+    }
+    navigate(url);
+  };
+
+  // Open Sales Orders Ledger breakdown filtered by Order Ageing
+  const handleOpenAgeingOrders = (tier = "all") => {
+    const params = new URLSearchParams();
+    if (orderAgeingFilter && orderAgeingFilter !== "all") {
+      params.set("ageingStatus", orderAgeingFilter);
+    }
+    if (tier && tier !== "all") {
+      params.set("ageingTier", tier);
+    }
+    const statusLabel = orderAgeingFilter === "completed" ? "Completed Orders" : orderAgeingFilter === "pending" ? "Pending Orders" : "All Orders";
+    const tierLabel = tier === "under5" ? "Under 5 Days" : tier === "fiveTo7" ? "5 to 7 Days" : tier === "over7" ? "Over 7 Days (Aged)" : "All Tiers";
+    params.set("label", `${tierLabel} • ${statusLabel}`);
+    navigate(`/sales/orders?${params.toString()}`);
+  };
+
   // Clean, live aggregated sales data from actual database orders
   const salesOverviewData = useMemo(() => {
-    const hasLiveLeads = isAdmin ? leads.length > 0 : leadsLoaded;
-    const leadsList = hasLiveLeads ? leads : [];
+    // For executive company sales overview, prioritize full real leads
+    const leadsList = (rawLeads && rawLeads.length > 0)
+      ? rawLeads
+      : (leads && leads.length > 0)
+        ? leads
+        : [];
 
     const sanitizeLead = (l) => {
       const rawNet = Number(l.netAmount);
@@ -548,21 +718,51 @@ function Dashboard() {
         id: l.orderId || l._id,
         units: qty,
         revenue: safeRev,
-        date: isNaN(d) ? new Date('2026-10-15') : d
+        date: isNaN(d.getTime()) ? new Date('2026-10-15') : d
       };
     };
 
     const cleanLeads = leadsList.map(sanitizeLead);
-    const xCenters = [85, 225, 365, 505];
-
     let periodBuckets = [];
 
-    if (salesTimeFrame === "weekly") {
+    if (salesTimeFrame === "daily") {
+      // Dynamic recent 7 days ending on today (or latest order date)
+      const now = new Date();
+      const latestLeadTs = cleanLeads.length > 0 ? Math.max(...cleanLeads.map(x => x.date.getTime())) : now.getTime();
+      const refDate = new Date(Math.max(now.getTime(), latestLeadTs));
+      const baseDate = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
+
+      periodBuckets = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(baseDate);
+        d.setDate(d.getDate() - i);
+        d.setHours(0, 0, 0, 0);
+
+        const endD = new Date(d);
+        endD.setHours(23, 59, 59, 999);
+
+        const shortDay = d.toLocaleDateString("en-US", { weekday: "short" });
+        const shortDate = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const fullDate = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+
+        const inDay = cleanLeads.filter(x => x.date >= d && x.date <= endD);
+        periodBuckets.push({
+          label: fullDate,
+          shortLabel: shortDay,
+          subLabel: shortDate,
+          start: d,
+          end: endD,
+          units: inDay.reduce((s, x) => s + x.units, 0),
+          revenue: inDay.reduce((s, x) => s + x.revenue, 0),
+          orders: inDay.length,
+        });
+      }
+    } else if (salesTimeFrame === "weekly") {
       periodBuckets = [
-        { label: "Oct W2 (11-17)", shortLabel: "Oct W2", start: new Date("2026-10-11T00:00:00"), end: new Date("2026-10-17T23:59:59") },
         { label: "Oct W3 (18-24)", shortLabel: "Oct W3", start: new Date("2026-10-18T00:00:00"), end: new Date("2026-10-24T23:59:59") },
         { label: "Oct W4 (25-31)", shortLabel: "Oct W4", start: new Date("2026-10-25T00:00:00"), end: new Date("2026-10-31T23:59:59") },
         { label: "Nov W1 (01-07)", shortLabel: "Nov W1", start: new Date("2026-11-01T00:00:00"), end: new Date("2026-11-07T23:59:59") },
+        { label: "Nov W2 (08-14)", shortLabel: "Nov W2", start: new Date("2026-11-08T00:00:00"), end: new Date("2026-11-14T23:59:59") },
       ];
       periodBuckets.forEach(b => {
         const inBucket = cleanLeads.filter(x => x.date >= b.start && x.date <= b.end);
@@ -620,11 +820,19 @@ function Dashboard() {
       1
     );
 
+    const numCols = periodBuckets.length;
+    const colWidth = numCols > 5 ? 44 : 74;
+    const paddingX = numCols > 5 ? 55 : 85;
+    const usableWidth = 600 - paddingX * 2;
+    const xStep = numCols > 1 ? usableWidth / (numCols - 1) : 0;
+    const xCenters = periodBuckets.map((_, i) => Math.round(paddingX + i * xStep));
+
     const columns = periodBuckets.map((b, i) => {
       const val = chartViewMode === "volume" ? b.units : b.revenue;
       const h = val > 0 ? Math.max(14, Math.round((val / maxVal) * 125)) : 10;
       return {
         ...b,
+        colWidth,
         xCenter: xCenters[i],
         val,
         h,
@@ -645,7 +853,7 @@ function Dashboard() {
       formattedAvgRevenue: formatINR(periodBuckets.length ? Math.round(totalRevenue / periodBuckets.length) : 0, false),
       peakPeriod: columns.reduce((p, c) => (c.val > (p?.val || 0) ? c : p), columns[0])
     };
-  }, [leads, leadsLoaded, salesTimeFrame, customStartDate, customEndDate, chartViewMode]);
+  }, [rawLeads, leads, salesTimeFrame, customStartDate, customEndDate, chartViewMode]);
 
   // Weekly Order Velocity Data
   const weeklyVelocityData = [
@@ -658,6 +866,19 @@ function Dashboard() {
     { day: "Sun", standard: 4, urgent: 1, total: 5, isPeak: false },
   ];
 
+  // Helper to determine inactive employees based on form selection (e.g., 'Inactive (Disabled)')
+  const isEmployeeInactive = (emp) => {
+    if (!emp) return false;
+    const s = (emp.accountStatus || "").toLowerCase().trim();
+    return (
+      s.includes("inactive") ||
+      s.includes("disabled") ||
+      s === "suspended" ||
+      s === "offboarding" ||
+      s === "terminated"
+    );
+  };
+
   // Real MongoDB Workforce Normalization
   const normalizedEmployees = useMemo(() => {
     return employeesList.map((emp, idx) => {
@@ -667,7 +888,8 @@ function Dashboard() {
       const department = emp.department || 'Operations';
       const avatarColors = ['#ffedd5', '#e2e8f0', '#d1fae5', '#e0e7ff', '#fef08a'];
       const avatarBg = emp.avatarBg || avatarColors[idx % avatarColors.length];
-      const status = (emp.accountStatus || 'Active').toLowerCase() === 'active' ? 'online' : 'away';
+      const isInactive = isEmployeeInactive(emp);
+      const status = isInactive ? 'inactive' : (emp.accountStatus || 'Active').toLowerCase() === 'active' ? 'online' : 'away';
 
       return {
         ...emp,
@@ -678,6 +900,7 @@ function Dashboard() {
         department,
         avatarBg,
         status,
+        isInactive,
         openTasks: emp.openTasks ?? (leads.filter(l => (l.employeeName || '').toLowerCase().includes(displayName.toLowerCase())).length),
         completedTasks: emp.completedTasks ?? 12,
         workload: emp.workload ?? 65,
@@ -687,24 +910,27 @@ function Dashboard() {
 
   // Workforce stats from real MongoDB employees
   const totalEmployees = normalizedEmployees.length;
-  const activeEmployees = normalizedEmployees.filter(e => e.status === "online").length;
-  const leaveEmployees = normalizedEmployees.filter(e => e.status === "away").length;
+  const inactiveEmployees = normalizedEmployees.filter(e => e.isInactive).length;
+  const activeEmployees = normalizedEmployees.filter(e => !e.isInactive).length;
+  const leaveEmployees = normalizedEmployees.filter(e => e.status === "away" && !e.isInactive).length;
   const activePct = totalEmployees > 0 ? Math.round((activeEmployees / totalEmployees) * 100) : 0;
+  const inactivePct = totalEmployees > 0 ? Math.round((inactiveEmployees / totalEmployees) * 100) : 0;
 
   // Real Database Employee Lifecycle: Onboarding Breakdown
   const onboardingStats = useMemo(() => {
-    const total = employeesList.length;
-    const training = employeesList.filter(e => {
+    const activeStaff = employeesList.filter(e => !isEmployeeInactive(e));
+    const total = activeStaff.length;
+    const training = activeStaff.filter(e => {
       const s = (e.accountStatus || '').toLowerCase();
       const t = (e.employeeType || '').toLowerCase();
       return s === 'probation' || s === 'training' || t === 'intern';
     });
-    const verification = employeesList.filter(e => {
+    const verification = activeStaff.filter(e => {
       return !training.includes(e) && (!e.email || !e.email.includes('@'));
     });
-    const completed = employeesList.filter(e => !training.includes(e) && !verification.includes(e));
+    const completed = activeStaff.filter(e => !training.includes(e) && !verification.includes(e));
 
-    const thisMonthCount = employeesList.filter(e => {
+    const thisMonthCount = activeStaff.filter(e => {
       if (!e.createdAt && !e.hireDate) return false;
       const d = new Date(e.createdAt || e.hireDate);
       const now = new Date();
@@ -722,10 +948,7 @@ function Dashboard() {
 
   // Real Database Employee Lifecycle: Offboarding Breakdown
   const offboardingStats = useMemo(() => {
-    const offboarded = employeesList.filter(e => {
-      const s = (e.accountStatus || '').toLowerCase();
-      return s === 'inactive' || s === 'suspended' || s === 'offboarding' || s === 'terminated';
-    });
+    const offboarded = employeesList.filter(e => isEmployeeInactive(e));
     const total = offboarded.length;
     const handover = offboarded.filter(e => (e.authorizationInfo || '').toLowerCase().includes('handover'));
     const clearance = offboarded.filter(e => (e.authorizationInfo || '').toLowerCase().includes('clearance'));
@@ -787,36 +1010,7 @@ function Dashboard() {
         <div className="overview-container">
           {/* Top Metric Tiles */}
           <div className="overview-tiles-grid">
-            {/* Tile 1: Total Workforce */}
-            <div 
-              className="overview-tile tile-workforce" 
-              onClick={() => isAdmin && setActiveTab("employee")}
-              style={!isAdmin ? { cursor: "default" } : {}}
-            >
-              <div className="tile-top">
-                <div className="tile-icon-badge blue">
-                  <Users size={22} />
-                </div>
-                <span className="tile-trend-pill positive">
-                  <TrendingUp size={12} /> +2
-                </span>
-              </div>
-              <div className="tile-main">
-                <span className="tile-label">Total Workforce</span>
-                <div className="tile-num-row">
-                  <span className="tile-number">{totalEmployees}</span>
-                </div>
-              </div>
-              <div className="tile-capacity-bar">
-                <div className="tile-capacity-fill blue" style={{ width: "100%" }}></div>
-              </div>
-              <div className="tile-footer-action">
-                <span>{isAdmin ? "View all employees" : "Workforce overview"}</span>
-                {isAdmin && <ArrowRight size={14} className="arrow-icon" />}
-              </div>
-            </div>
-
-            {/* Tile 2: Active on Duty */}
+            {/* Tile 1: Active Employees */}
             <div 
               className="overview-tile tile-active" 
               onClick={() => isAdmin && setActiveTab("employee")}
@@ -845,6 +1039,35 @@ function Dashboard() {
               </div>
             </div>
 
+            {/* Tile 2: Inactive Employees */}
+            <div 
+              className="overview-tile tile-inactive" 
+              onClick={() => navigate('/employees?filter=inactive')}
+              style={{ cursor: "pointer" }}
+            >
+              <div className="tile-top">
+                <div className="tile-icon-badge red">
+                  <UserX size={22} />
+                </div>
+                <span className={`tile-trend-pill ${inactiveEmployees > 0 ? "danger" : "neutral"}`}>
+                  {inactiveEmployees} inactive
+                </span>
+              </div>
+              <div className="tile-main">
+                <span className="tile-label">Inactive Employees</span>
+                <div className="tile-num-row">
+                  <span className="tile-number">{inactiveEmployees}</span>
+                </div>
+              </div>
+              <div className="tile-capacity-bar">
+                <div className="tile-capacity-fill red" style={{ width: `${totalEmployees > 0 ? (inactiveEmployees / totalEmployees) * 100 : 0}%` }}></div>
+              </div>
+              <div className="tile-footer-action">
+                <span>View inactive employees</span>
+                <ArrowRight size={14} className="arrow-icon" />
+              </div>
+            </div>
+
             {/* Tile 3: On Leave Today */}
             <div className="overview-tile tile-leave" onClick={() => setActiveTab("inventory")}>
               <div className="tile-top">
@@ -862,7 +1085,7 @@ function Dashboard() {
                 </div>
               </div>
               <div className="tile-capacity-bar">
-                <div className="tile-capacity-fill orange" style={{ width: `${(leaveEmployees / totalEmployees) * 100}%` }}></div>
+                <div className="tile-capacity-fill orange" style={{ width: `${totalEmployees > 0 ? (leaveEmployees / totalEmployees) * 100 : 0}%` }}></div>
               </div>
               <div className="tile-footer-action">
                 <span>Manage leave calendar</span>
@@ -908,8 +1131,14 @@ function Dashboard() {
                 </div>
               </div>
 
-              {/* Time Period Filter Chips Strip (Weekly / Monthly / Custom) */}
+              {/* Time Period Filter Chips Strip (Daily / Weekly / Monthly / Custom) */}
               <div className="sales-period-strip">
+                <button 
+                  className={`sales-period-chip ${salesTimeFrame === "daily" ? "active" : ""}`}
+                  onClick={() => setSalesTimeFrame("daily")}
+                >
+                  <Clock size={13} /> Daily Sales
+                </button>
                 <button 
                   className={`sales-period-chip ${salesTimeFrame === "weekly" ? "active" : ""}`}
                   onClick={() => setSalesTimeFrame("weekly")}
@@ -975,14 +1204,16 @@ function Dashboard() {
                   {salesOverviewData.columns.map((col, i) => {
                     if (i === salesOverviewData.columns.length - 1) return null;
                     const nextCol = salesOverviewData.columns[i + 1];
-                    const colWidth = 74;
+                    const colWidth = col.colWidth || 74;
+                    const nextColWidth = nextCol.colWidth || colWidth;
                     const xA = col.xCenter + colWidth / 2;
                     const yA = 190 - col.h;
-                    const xB = nextCol.xCenter - colWidth / 2;
+                    const xB = nextCol.xCenter - nextColWidth / 2;
                     const yB = 190 - nextCol.h;
+                    const cOffset = Math.min(30, Math.abs(xB - xA) / 2);
 
                     const ribbon = `M ${xA} ${yA}
-                                    C ${xA + 40} ${yA}, ${xB - 40} ${yB}, ${xB} ${yB}
+                                    C ${xA + cOffset} ${yA}, ${xB - cOffset} ${yB}, ${xB} ${yB}
                                     L ${xB} 190
                                     L ${xA} 190 Z`;
                     return (
@@ -991,26 +1222,31 @@ function Dashboard() {
                         d={ribbon}
                         fill="url(#salesFlowGrad)"
                         className="chart-flow-path"
-                        opacity={0.7}
+                        opacity={0.65}
                       />
                     );
                   })}
 
                   {/* Columns */}
                   {salesOverviewData.columns.map((col, i) => {
-                    const colWidth = 74;
+                    const colWidth = col.colWidth || 74;
                     const xLeft = col.xCenter - colWidth / 2;
                     const yTop = 190 - col.h;
                     const isHovered = hoveredSalesPoint?.label === col.label;
 
                     return (
-                      <g key={`col-${i}`}>
+                      <g 
+                        key={`col-${i}`}
+                        onClick={() => handleOpenSalesBreakdown(col)}
+                        style={{ cursor: 'pointer' }}
+                        title={`Click to view orders for ${col.label}`}
+                      >
                         <rect
                           x={xLeft}
                           y={yTop}
                           width={colWidth}
                           height={col.h}
-                          rx="10"
+                          rx={colWidth < 50 ? "6" : "10"}
                           fill={chartViewMode === "volume" ? "url(#salesUnitsGrad)" : "url(#salesRevGrad)"}
                           className="chart-bar-rect"
                           style={{
@@ -1026,7 +1262,8 @@ function Dashboard() {
                               units: col.units,
                               revenue: col.fullRevenue,
                               compactRev: col.totalLabelRevenue,
-                              orders: col.orders
+                              orders: col.orders,
+                              colData: col
                             });
                           }}
                         />
@@ -1034,26 +1271,44 @@ function Dashboard() {
                         {/* Top metric label */}
                         <text
                           x={col.xCenter}
-                          y={yTop - 12}
+                          y={Math.max(20, yTop - 10)}
                           textAnchor="middle"
-                          fontSize="12"
+                          fontSize={colWidth < 50 ? "10" : "12"}
                           fontWeight="700"
                           fill="#0f172a"
+                          style={{ cursor: 'pointer' }}
                         >
-                          {chartViewMode === "volume" ? `${col.units.toLocaleString('en-IN')} Units` : col.totalLabelRevenue}
+                          {chartViewMode === "volume"
+                            ? `${col.units.toLocaleString('en-IN')}${colWidth < 50 ? " u" : " Units"}`
+                            : col.totalLabelRevenue}
                         </text>
 
                         {/* Bottom period label */}
                         <text
                           x={col.xCenter}
-                          y="214"
+                          y={col.subLabel ? "210" : "214"}
                           textAnchor="middle"
-                          fontSize="12"
+                          fontSize={colWidth < 50 ? "11" : "12"}
                           fontWeight="600"
                           fill="#64748b"
+                          style={{ cursor: 'pointer' }}
                         >
                           {col.shortLabel}
                         </text>
+
+                        {col.subLabel && (
+                          <text
+                            x={col.xCenter}
+                            y="225"
+                            textAnchor="middle"
+                            fontSize="9"
+                            fontWeight="500"
+                            fill="#94a3b8"
+                            style={{ cursor: 'pointer' }}
+                          >
+                            {col.subLabel}
+                          </text>
+                        )}
                       </g>
                     );
                   })}
@@ -1063,6 +1318,8 @@ function Dashboard() {
                   <div 
                     className="chart-floating-tooltip"
                     style={{ left: `${(hoveredSalesPoint.x / 600) * 100}%`, top: `${(hoveredSalesPoint.y / 240) * 100}%` }}
+                    onClick={() => handleOpenSalesBreakdown(hoveredSalesPoint.colData)}
+                    title="Click to view detailed orders list"
                   >
                     <div className="tooltip-header">
                       <span>{hoveredSalesPoint.label}</span>
@@ -1077,6 +1334,10 @@ function Dashboard() {
                     <div className="tooltip-row">
                       <span>Total Revenue (INR):</span>
                       <strong style={{ color: '#34d399' }}>{hoveredSalesPoint.revenue}</strong>
+                    </div>
+                    <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.15)', fontSize: '11px', color: '#a5b4fc', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>Click to view orders</span>
+                      <ArrowUpRight size={12} />
                     </div>
                   </div>
                 )}
@@ -1105,10 +1366,303 @@ function Dashboard() {
               </div>
             </div>
 
-            {/* Right Side: Repeat Customer Rate + Weekly Order Velocity */}
-            <div className="overview-right-column">
-              {/* Widget 1: Repeat Customer Rate */}
-              <div className="ov-card repeat-rate-card">
+            {/* Right: Order Ageing Donut Chart */}
+            <div className="ov-card ageing-donut-card">
+              <div className="ageing-header-top">
+                <div className="ageing-title-group">
+                  <h3>
+                    <Timer size={18} color="#f59e0b" /> Order Ageing
+                  </h3>
+                  <p className="ageing-title-sub">Turnaround speed & aging breakdown</p>
+                </div>
+
+                <div className="ageing-status-pill-strip" role="tablist" aria-label="Order Ageing Filter">
+                  <button
+                    className={`ageing-tab-btn ${orderAgeingFilter === "completed" ? "active" : ""}`}
+                    onClick={() => setOrderAgeingFilter("completed")}
+                    title="Packaging stage and beyond"
+                  >
+                    Completed ({orderAgeingStats.completedTotal})
+                  </button>
+                  <button
+                    className={`ageing-tab-btn ${orderAgeingFilter === "pending" ? "active" : ""}`}
+                    onClick={() => setOrderAgeingFilter("pending")}
+                    title="Before packaging stage"
+                  >
+                    Pending ({orderAgeingStats.pendingTotal})
+                  </button>
+                  <button
+                    className={`ageing-tab-btn ${orderAgeingFilter === "all" ? "active" : ""}`}
+                    onClick={() => setOrderAgeingFilter("all")}
+                    title="All active and completed orders"
+                  >
+                    All ({orderAgeingStats.allTotal})
+                  </button>
+                </div>
+              </div>
+
+              {/* Donut Chart Visual */}
+              <div 
+                className="ageing-donut-visual-container"
+                onMouseLeave={() => setHoveredAgeingSegment(null)}
+              >
+                <svg viewBox="0 0 220 220" className="ageing-donut-svg">
+                  <defs>
+                    <linearGradient id="ageingGreenGrad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#10b981" />
+                      <stop offset="100%" stopColor="#059669" />
+                    </linearGradient>
+                    <linearGradient id="ageingYellowGrad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#fbbf24" />
+                      <stop offset="100%" stopColor="#f59e0b" />
+                    </linearGradient>
+                    <linearGradient id="ageingRedGrad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#f87171" />
+                      <stop offset="100%" stopColor="#ef4444" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Base Track */}
+                  <circle
+                    cx="110"
+                    cy="110"
+                    r="80"
+                    fill="none"
+                    stroke="#f1f5f9"
+                    strokeWidth="20"
+                  />
+
+                  {/* Computed Donut Segments */}
+                  {(() => {
+                    const total = orderAgeingStats.total;
+                    const r = 80;
+                    const C = 2 * Math.PI * r; // ~502.65
+                    if (total === 0) return null;
+
+                    const nonZeroCount = [
+                      orderAgeingStats.under5.count,
+                      orderAgeingStats.fiveTo7.count,
+                      orderAgeingStats.over7.count
+                    ].filter(c => c > 0).length;
+
+                    const gap = nonZeroCount > 1 ? 5 : 0;
+
+                    const lenG = (orderAgeingStats.under5.count / total) * C;
+                    const lenY = (orderAgeingStats.fiveTo7.count / total) * C;
+                    const lenR = (orderAgeingStats.over7.count / total) * C;
+
+                    const dashG = Math.max(0, lenG - gap);
+                    const dashY = Math.max(0, lenY - gap);
+                    const dashR = Math.max(0, lenR - gap);
+
+                    const offsetG = -gap / 2;
+                    const offsetY = -(lenG + gap / 2);
+                    const offsetR = -(lenG + lenY + gap / 2);
+
+                    return (
+                      <g transform="rotate(-90 110 110)">
+                        {/* Green: Under 5 Days */}
+                        {orderAgeingStats.under5.count > 0 && (
+                          <circle
+                            cx="110"
+                            cy="110"
+                            r="80"
+                            fill="none"
+                            stroke="url(#ageingGreenGrad)"
+                            strokeWidth={hoveredAgeingSegment === "under5" ? "26" : "20"}
+                            strokeDasharray={`${dashG} ${C - dashG}`}
+                            strokeDashoffset={offsetG}
+                            className="ageing-donut-segment"
+                            onMouseEnter={() => setHoveredAgeingSegment("under5")}
+                            onClick={() => handleOpenAgeingOrders("under5")}
+                            style={{ cursor: "pointer" }}
+                          />
+                        )}
+
+                        {/* Yellow: 5 to 7 Days */}
+                        {orderAgeingStats.fiveTo7.count > 0 && (
+                          <circle
+                            cx="110"
+                            cy="110"
+                            r="80"
+                            fill="none"
+                            stroke="url(#ageingYellowGrad)"
+                            strokeWidth={hoveredAgeingSegment === "fiveTo7" ? "26" : "20"}
+                            strokeDasharray={`${dashY} ${C - dashY}`}
+                            strokeDashoffset={offsetY}
+                            className="ageing-donut-segment"
+                            onMouseEnter={() => setHoveredAgeingSegment("fiveTo7")}
+                            onClick={() => handleOpenAgeingOrders("fiveTo7")}
+                            style={{ cursor: "pointer" }}
+                          />
+                        )}
+
+                        {/* Red: Over 7 Days */}
+                        {orderAgeingStats.over7.count > 0 && (
+                          <circle
+                            cx="110"
+                            cy="110"
+                            r="80"
+                            fill="none"
+                            stroke="url(#ageingRedGrad)"
+                            strokeWidth={hoveredAgeingSegment === "over7" ? "26" : "20"}
+                            strokeDasharray={`${dashR} ${C - dashR}`}
+                            strokeDashoffset={offsetR}
+                            className="ageing-donut-segment"
+                            onMouseEnter={() => setHoveredAgeingSegment("over7")}
+                            onClick={() => handleOpenAgeingOrders("over7")}
+                            style={{ cursor: "pointer" }}
+                          />
+                        )}
+                      </g>
+                    );
+                  })()}
+                </svg>
+
+                {/* Donut Center Overlay */}
+                <div 
+                  className="ageing-donut-center-info"
+                  onClick={() => handleOpenAgeingOrders(hoveredAgeingSegment || "all")}
+                  title={`Click to view ${hoveredAgeingSegment ? (hoveredAgeingSegment === 'under5' ? 'Under 5 Days' : hoveredAgeingSegment === 'fiveTo7' ? '5 to 7 Days' : 'Over 7 Days') : (orderAgeingFilter === 'completed' ? 'Completed' : orderAgeingFilter === 'pending' ? 'Pending' : 'All')} orders`}
+                  style={{ cursor: "pointer" }}
+                >
+                  {hoveredAgeingSegment === "under5" ? (
+                    <>
+                      <span className="ageing-center-val" style={{ color: "#059669" }}>
+                        {orderAgeingStats.under5.pct}%
+                      </span>
+                      <span className="ageing-center-label">
+                        {orderAgeingStats.under5.count} Orders
+                      </span>
+                      <span className="ageing-center-pill" style={{ background: "#dcfce7", color: "#15803d" }}>
+                        Under 5 Days ↗
+                      </span>
+                    </>
+                  ) : hoveredAgeingSegment === "fiveTo7" ? (
+                    <>
+                      <span className="ageing-center-val" style={{ color: "#d97706" }}>
+                        {orderAgeingStats.fiveTo7.pct}%
+                      </span>
+                      <span className="ageing-center-label">
+                        {orderAgeingStats.fiveTo7.count} Orders
+                      </span>
+                      <span className="ageing-center-pill" style={{ background: "#fef3c7", color: "#b45309" }}>
+                        5 to 7 Days ↗
+                      </span>
+                    </>
+                  ) : hoveredAgeingSegment === "over7" ? (
+                    <>
+                      <span className="ageing-center-val" style={{ color: "#dc2626" }}>
+                        {orderAgeingStats.over7.pct}%
+                      </span>
+                      <span className="ageing-center-label">
+                        {orderAgeingStats.over7.count} Orders
+                      </span>
+                      <span className="ageing-center-pill" style={{ background: "#fee2e2", color: "#b91c1c" }}>
+                        Over 7 Days ↗
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="ageing-center-val">
+                        {orderAgeingStats.total}
+                      </span>
+                      <span className="ageing-center-label">
+                        {orderAgeingFilter === "completed" ? "Completed Orders" : orderAgeingFilter === "pending" ? "Pending Orders" : "Total Orders"}
+                      </span>
+                      <span className="ageing-center-pill">
+                        Avg: {orderAgeingStats.avgDays} Days ↗
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Breakdown Legend List */}
+              <div className="ageing-breakdown-list">
+                {/* Green: Under 5 Days */}
+                <div 
+                  className={`ageing-tier-item ${hoveredAgeingSegment === "under5" ? "active" : ""}`}
+                  onMouseEnter={() => setHoveredAgeingSegment("under5")}
+                  onMouseLeave={() => setHoveredAgeingSegment(null)}
+                  onClick={() => handleOpenAgeingOrders("under5")}
+                  title="Click to view Under 5 Days orders in ledger"
+                >
+                  <div className="ageing-tier-left">
+                    <span className="ageing-tier-dot green"></span>
+                    <div className="ageing-tier-info">
+                      <span className="ageing-tier-name">Under 5 Days</span>
+                      <span className="ageing-tier-sub">Fast Turnaround</span>
+                    </div>
+                  </div>
+                  <div className="ageing-tier-right">
+                    <span className="ageing-tier-count">{orderAgeingStats.under5.count} orders</span>
+                    <span className="ageing-tier-pill green">{orderAgeingStats.under5.pct}%</span>
+                    <ArrowUpRight size={13} style={{ color: "#94a3b8" }} />
+                  </div>
+                </div>
+
+                {/* Yellow: 5 to 7 Days */}
+                <div 
+                  className={`ageing-tier-item ${hoveredAgeingSegment === "fiveTo7" ? "active" : ""}`}
+                  onMouseEnter={() => setHoveredAgeingSegment("fiveTo7")}
+                  onMouseLeave={() => setHoveredAgeingSegment(null)}
+                  onClick={() => handleOpenAgeingOrders("fiveTo7")}
+                  title="Click to view 5 to 7 Days orders in ledger"
+                >
+                  <div className="ageing-tier-left">
+                    <span className="ageing-tier-dot yellow"></span>
+                    <div className="ageing-tier-info">
+                      <span className="ageing-tier-name">5 to 7 Days</span>
+                      <span className="ageing-tier-sub">Standard SLA</span>
+                    </div>
+                  </div>
+                  <div className="ageing-tier-right">
+                    <span className="ageing-tier-count">{orderAgeingStats.fiveTo7.count} orders</span>
+                    <span className="ageing-tier-pill yellow">{orderAgeingStats.fiveTo7.pct}%</span>
+                    <ArrowUpRight size={13} style={{ color: "#94a3b8" }} />
+                  </div>
+                </div>
+
+                {/* Red: Over 7 Days */}
+                <div 
+                  className={`ageing-tier-item ${hoveredAgeingSegment === "over7" ? "active" : ""}`}
+                  onMouseEnter={() => setHoveredAgeingSegment("over7")}
+                  onMouseLeave={() => setHoveredAgeingSegment(null)}
+                  onClick={() => handleOpenAgeingOrders("over7")}
+                  title="Click to view Over 7 Days orders in ledger"
+                >
+                  <div className="ageing-tier-left">
+                    <span className="ageing-tier-dot red"></span>
+                    <div className="ageing-tier-info">
+                      <span className="ageing-tier-name">Over 7 Days</span>
+                      <span className="ageing-tier-sub">Aged / Delayed</span>
+                    </div>
+                  </div>
+                  <div className="ageing-tier-right">
+                    <span className="ageing-tier-count">{orderAgeingStats.over7.count} orders</span>
+                    <span className="ageing-tier-pill red">{orderAgeingStats.over7.pct}%</span>
+                    <ArrowUpRight size={13} style={{ color: "#94a3b8" }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Card Footer */}
+              <div className="ageing-indicator-footer">
+                <span className="ageing-benchmark-tag">
+                  ✓ Packaging = Completed
+                </span>
+                <span>
+                  Avg Turnaround: <strong>{orderAgeingStats.avgDays}d</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Sub-Mid Row: Repeat Customer Rate & Weekly Activity */}
+          <div className="overview-sub-mid-row">
+            {/* Widget 1: Repeat Customer Rate */}
+            <div className="ov-card repeat-rate-card">
                 <div className="card-header-clean">
                   <div>
                     <h3>Repeat Customer Rate</h3>
@@ -1374,7 +1928,6 @@ function Dashboard() {
                 </div>
               </div>
             </div>
-          </div>
 
           {/* Pure Graphical Single Inventory Chart */}
           <div className="overview-inventory-section">
@@ -2075,6 +2628,11 @@ function Dashboard() {
                   <h3 className="emp-name">{emp.name}</h3>
                   <p className="emp-role">{emp.role}</p>
                   <span className="emp-badge">{emp.department}</span>
+                  {emp.isInactive && (
+                    <span className="emp-badge" style={{ background: '#fee2e2', color: '#dc2626', marginLeft: '6px', border: '1px solid #fecaca' }}>
+                      Inactive
+                    </span>
+                  )}
                 </div>
                 <div className="emp-stats">
                   <div className="emp-stat">
@@ -2152,7 +2710,7 @@ function Dashboard() {
                   </span>
                   <span className="sp-online-status">
                     <span className={`sp-dot ${selectedEmployee.status}`}></span>
-                    {selectedEmployee.status === "online" ? "Online" : "Away"}
+                    {selectedEmployee.status === "online" ? "Online" : selectedEmployee.status === "inactive" ? "Inactive" : "Away"}
                   </span>
                 </div>
               </div>

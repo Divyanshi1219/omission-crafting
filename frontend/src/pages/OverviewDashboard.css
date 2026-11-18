@@ -73,6 +73,10 @@
   background: linear-gradient(90deg, #f59e0b, #d97706);
 }
 
+.overview-tile.tile-inactive::before {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
 /* Dark mode for tiles */
 .app.dark .overview-tile {
   background: rgba(30, 41, 59, 0.7);
@@ -124,6 +128,12 @@
   border: 1px solid rgba(253, 230, 138, 0.6);
 }
 
+.tile-icon-badge.red {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  color: #ef4444;
+  border: 1px solid rgba(254, 202, 202, 0.6);
+}
+
 .app.dark .tile-icon-badge.blue {
   background: rgba(37, 99, 235, 0.2);
   color: #93c5fd;
@@ -140,6 +150,12 @@
   background: rgba(217, 119, 6, 0.2);
   color: #fde68a;
   border-color: rgba(245, 158, 11, 0.3);
+}
+
+.app.dark .tile-icon-badge.red {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
 }
 
 .tile-trend-pill {
@@ -192,6 +208,12 @@
   border: 1px solid rgba(254, 215, 170, 0.5);
 }
 
+.tile-trend-pill.danger {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid rgba(254, 202, 202, 0.6);
+}
+
 .app.dark .tile-trend-pill.positive {
   background: rgba(5, 150, 105, 0.2);
   color: #6ee7b7;
@@ -208,6 +230,12 @@
   background: rgba(217, 119, 6, 0.2);
   color: #fde68a;
   border-color: rgba(245, 158, 11, 0.3);
+}
+
+.app.dark .tile-trend-pill.danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
 }
 
 .tile-main {
@@ -289,6 +317,10 @@
   background: linear-gradient(90deg, #f59e0b, #fbbf24);
 }
 
+.tile-capacity-fill.red {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
 .tile-footer-action {
   margin-top: auto;
   padding-top: 10px;
@@ -328,8 +360,399 @@
    -------------------------------------------------------------------------- */
 .overview-mid-row {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1.65fr 1fr;
   gap: 20px;
+}
+
+@media (max-width: 1150px) {
+  .overview-mid-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.overview-sub-mid-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .overview-sub-mid-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Order Ageing Donut Card */
+.ageing-donut-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 480px;
+  gap: 12px;
+}
+
+.ageing-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ageing-title-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.app.dark .ageing-title-group h3 {
+  color: #f8fafc;
+}
+
+.ageing-title-sub {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+}
+
+.app.dark .ageing-title-sub {
+  color: #94a3b8;
+}
+
+.ageing-status-pill-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+.app.dark .ageing-status-pill-strip {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.ageing-tab-btn {
+  border: none;
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ageing-tab-btn:hover {
+  color: #0f172a;
+}
+
+.app.dark .ageing-tab-btn:hover {
+  color: #ffffff;
+}
+
+.ageing-tab-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.app.dark .ageing-tab-btn.active {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+/* Donut Visual Area */
+.ageing-donut-visual-container {
+  position: relative;
+  width: 210px;
+  height: 210px;
+  margin: 4px auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ageing-donut-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ageing-donut-segment {
+  cursor: pointer;
+  transition: stroke-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), filter 0.22s ease;
+}
+
+.ageing-donut-segment:hover {
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.22));
+}
+
+.ageing-donut-center-info {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 130px;
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 10px;
+  transition: all 0.2s ease;
+}
+
+.ageing-donut-center-info:hover {
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+.ageing-view-ledger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: #4f46e5;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.ageing-view-ledger-btn:hover {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.app.dark .ageing-view-ledger-btn {
+  color: #a5b4fc;
+}
+
+.app.dark .ageing-view-ledger-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: #c7d2fe;
+}
+
+.ageing-center-val {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.app.dark .ageing-center-val {
+  color: #f8fafc;
+}
+
+.ageing-center-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.app.dark .ageing-center-label {
+  color: #94a3b8;
+}
+
+.ageing-center-pill {
+  margin-top: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.app.dark .ageing-center-pill {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+/* Breakdown List */
+.ageing-breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.ageing-tier-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.app.dark .ageing-tier-item {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.ageing-tier-item:hover, .ageing-tier-item.active {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateX(2px);
+}
+
+.app.dark .ageing-tier-item:hover, .app.dark .ageing-tier-item.active {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.ageing-tier-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ageing-tier-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ageing-tier-dot.green {
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+.ageing-tier-dot.yellow {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+}
+
+.ageing-tier-dot.red {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+.ageing-tier-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.ageing-tier-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.app.dark .ageing-tier-name {
+  color: #f8fafc;
+}
+
+.ageing-tier-sub {
+  font-size: 10.5px;
+  color: #64748b;
+}
+
+.app.dark .ageing-tier-sub {
+  color: #94a3b8;
+}
+
+.ageing-tier-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ageing-tier-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.app.dark .ageing-tier-count {
+  color: #f8fafc;
+}
+
+.ageing-tier-pill {
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ageing-tier-pill.green {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.ageing-tier-pill.yellow {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.ageing-tier-pill.red {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.app.dark .ageing-tier-pill.green {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+.app.dark .ageing-tier-pill.yellow {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fde68a;
+}
+
+.app.dark .ageing-tier-pill.red {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.ageing-indicator-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.app.dark .ageing-indicator-footer {
+  border-top-color: rgba(255, 255, 255, 0.06);
+  color: #94a3b8;
+}
+
+.ageing-benchmark-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eff6ff;
+  color: #2563eb;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10.5px;
+}
+
+.app.dark .ageing-benchmark-tag {
+  background: rgba(37, 99, 235, 0.15);
+  color: #93c5fd;
 }
 
 /* Card Shell */
@@ -752,13 +1175,53 @@
   border-radius: 12px;
   padding: 12px 16px;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
   font-size: 12px;
   z-index: 50;
   border: 1px solid rgba(255, 255, 255, 0.12);
   min-width: 170px;
   transform: translate(-50%, -110%);
   animation: tooltipPop 0.2s ease-out;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.chart-floating-tooltip:hover {
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.sales-breakdown-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #2563eb;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sales-breakdown-link-btn:hover {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+.app.dark .sales-breakdown-link-btn {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(37, 99, 235, 0.3);
+  color: #93c5fd;
+}
+
+.app.dark .sales-breakdown-link-btn:hover {
+  background: #2563eb;
+  color: #ffffff;
 }
 
 @keyframes tooltipPop {
