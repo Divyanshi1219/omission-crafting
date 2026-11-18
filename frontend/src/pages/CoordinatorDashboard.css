@@ -1,0 +1,459 @@
+/* =========================================================
+   COORDINATOR DASHBOARD - REFINED TASTEFUL COLOR ACCENTS
+   Matching the platform's signature top-border tile style
+========================================================= */
+
+.coordinator-dashboard-root {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: coordFadeIn 0.2s ease-out;
+  box-sizing: border-box;
+}
+
+@keyframes coordFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+/* --- Top 4 Metric Summary Tiles (Signature Border-Top Style) --- */
+.coordinator-tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 1080px) {
+  .coordinator-tiles-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .coordinator-tiles-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.coordinator-tile {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 18px 20px;
+  border: 1px solid #e2e8f0;
+  border-top: 3px solid #94a3b8;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.coordinator-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+}
+
+/* Tasteful Tile Top Accents */
+.coordinator-tile.tile-total {
+  border-top-color: #b45309;
+}
+.coordinator-tile.tile-total:hover,
+.coordinator-tile.tile-total.active {
+  border-color: #fde68a;
+  border-top-color: #b45309;
+  box-shadow: 0 4px 14px rgba(180, 83, 9, 0.08);
+}
+
+.coordinator-tile.tile-stock {
+  border-top-color: #0284c7;
+}
+.coordinator-tile.tile-stock:hover,
+.coordinator-tile.tile-stock.active {
+  border-color: #bae6fd;
+  border-top-color: #0284c7;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.08);
+}
+
+.coordinator-tile.tile-printing {
+  border-top-color: #7c3aed;
+}
+.coordinator-tile.tile-printing:hover,
+.coordinator-tile.tile-printing.active {
+  border-color: #ddd6fe;
+  border-top-color: #7c3aed;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.08);
+}
+
+.coordinator-tile.tile-packaging {
+  border-top-color: #059669;
+}
+.coordinator-tile.tile-packaging:hover,
+.coordinator-tile.tile-packaging.active {
+  border-color: #a7f3d0;
+  border-top-color: #059669;
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.08);
+}
+
+.coordinator-tile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.coordinator-tile-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coord-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.coord-dot.amber { background: #b45309; }
+.coord-dot.blue { background: #0284c7; }
+.coord-dot.purple { background: #7c3aed; }
+.coord-dot.green { background: #059669; }
+
+.coordinator-tile-count {
+  font-size: 32px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+  margin: 4px 0 2px 0;
+}
+
+.coordinator-tile-sub {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.app.dark .coordinator-tile {
+  background: #1e293b;
+  border-color: #334155;
+}
+.app.dark .coordinator-tile-count {
+  color: #f8fafc;
+}
+
+/* --- Filter & Search Toolbar --- */
+.coordinator-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.coordinator-tabs-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.coordinator-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.coordinator-tab-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.coordinator-tab-btn.active {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #ffffff;
+}
+
+.coordinator-tab-count {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.coordinator-tab-btn.active .coordinator-tab-count {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.coordinator-search-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 12px;
+  width: 260px;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.coordinator-search-wrapper:focus-within {
+  border-color: #2563eb;
+}
+
+.coordinator-search-input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  width: 100%;
+  color: #0f172a;
+}
+
+.app.dark .coordinator-tab-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #94a3b8;
+}
+.app.dark .coordinator-tab-btn.active {
+  background: #f8fafc;
+  border-color: #f8fafc;
+  color: #0f172a;
+}
+.app.dark .coordinator-search-wrapper {
+  background: #1e293b;
+  border-color: #334155;
+}
+.app.dark .coordinator-search-input {
+  color: #f8fafc;
+}
+
+/* --- Queue Section --- */
+.coordinator-queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.coordinator-queue-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.coordinator-queue-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.app.dark .coordinator-queue-title {
+  color: #f8fafc;
+}
+
+/* --- Order Cards Grid --- */
+.coordinator-orders-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.coordinator-order-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  transition: all 0.2s ease;
+}
+
+.coordinator-order-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.app.dark .coordinator-order-card {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+/* Card Top */
+.coordinator-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.coordinator-card-id-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.coordinator-card-id {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #1d4ed8;
+  letter-spacing: -0.2px;
+}
+
+/* Tasteful Stage Badges */
+.coordinator-card-stage-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.coordinator-card-stage-pill.sample {
+  background: #fef3c7;
+  color: #b45309;
+}
+.coordinator-card-stage-pill.partial {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+.coordinator-card-stage-pill.complete {
+  background: #ecfdf5;
+  color: #047857;
+}
+.coordinator-card-stage-pill.task {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+
+/* Card Meta */
+.coordinator-card-company {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 3px 0;
+}
+
+.coordinator-card-client {
+  font-size: 12.5px;
+  color: #64748b;
+  margin: 0 0 6px 0;
+}
+
+.coordinator-card-items {
+  font-size: 12px;
+  color: #475569;
+  background: #f8fafc;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app.dark .coordinator-card-id {
+  color: #60a5fa;
+}
+.app.dark .coordinator-card-company {
+  color: #f8fafc;
+}
+.app.dark .coordinator-card-items {
+  background: #0f172a;
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+
+/* Card Button */
+.coordinator-card-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.coordinator-card-btn:hover {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.app.dark .coordinator-card-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f8fafc;
+}
+.app.dark .coordinator-card-btn:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0f172a;
+}
+
+/* Empty State */
+.coordinator-empty-state {
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  color: #64748b;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.app.dark .coordinator-empty-state {
+  background: #1e293b;
+  border-color: #334155;
+}

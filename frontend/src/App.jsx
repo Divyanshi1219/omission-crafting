@@ -5,6 +5,7 @@ import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 
 import Dashboard from "./pages/Dashboard";
+import CoordinatorDashboard from "./pages/CoordinatorDashboard";
 import AllEmployees from "./pages/AllEmployees";
 import OrderManagement from "./pages/OrderManagement";
 import InvoicesList from "./pages/Invoices/InvoicesList";
@@ -18,6 +19,7 @@ import SalesOrdersBreakdown from "./pages/SalesOrdersBreakdown";
 import PendingPaymentsPage from "./pages/PendingPaymentsPage";
 import Login from "./pages/Login";
 import DemoIdeasPage from "./pages/DemoIdeasPage"; // TEMP demo page ideas (delete after client approves)
+import ErrorBoundary from "./components/ErrorBoundary";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
 import "./App.css";
@@ -34,11 +36,16 @@ function AppContent({ darkMode, setDarkMode }) {
     currentUser?.id === "lead_manager" ||
     Boolean(currentUser?.role && currentUser.role.toLowerCase() === "lead manager") ||
     Boolean(currentUser?.department && currentUser.department.toLowerCase() === "lead manager");
+  const isCoordinator =
+    currentUser?.id === "coordinator" ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase() === "coordinator") ||
+    Boolean(currentUser?.department && currentUser.department.toLowerCase() === "coordinator");
   const isSalesOrAdmin = isSales || currentUser?.id === "admin" || isLeadManager;
   const isTaskUser =
     currentUser?.id === "stock" ||
     currentUser?.id === "production" ||
     currentUser?.id === "admin" ||
+    isCoordinator ||
     Boolean(
       currentUser?.role &&
         (currentUser.role.toLowerCase().includes("stock") ||
@@ -82,7 +89,7 @@ function AppContent({ darkMode, setDarkMode }) {
           <Routes>
             <Route
               path="/"
-              element={<Dashboard />}
+              element={isCoordinator ? <CoordinatorDashboard /> : <Dashboard key={currentUser?.id || "default"} />}
             />
 
             <Route
@@ -211,7 +218,9 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <AppContent darkMode={darkMode} setDarkMode={setDarkMode} />
+        <ErrorBoundary>
+          <AppContent darkMode={darkMode} setDarkMode={setDarkMode} />
+        </ErrorBoundary>
       </BrowserRouter>
     </AuthProvider>
   );

@@ -104,6 +104,23 @@ export const PROFILES = {
     permissions: ["Lead Approvals", "Order Validation", "Invoice Oversight", "Sales Review"],
     stats: { clearance: "Level 3 (Management)", location: "HQ Sales Ops", department: "Lead Manager" },
   },
+  coordinator: {
+    id: "coordinator",
+    name: "Alex Rivera",
+    role: "Coordinator",
+    department: "Coordinator",
+    subtitle: "Floor Logistics & Handover Management",
+    email: "coordinator@omissioncrafting.com",
+    initials: "AR",
+    avatarBg: "#f3e8ff",
+    avatarColor: "#6b21a8",
+    badge: "Coordinator",
+    badgeColor: "#7e22ce",
+    badgeBg: "#f3e8ff",
+    description: "Internal pickup and stage transfer coordination across Stock, Printing, Packaging, and Staging Room.",
+    permissions: ["Ready to Pick Intake", "Floor Handover", "Stage Dispatches", "Pickup Verification"],
+    stats: { clearance: "Level 2 (Coordination)", location: "Production Floor", department: "Coordinator" },
+  },
 };
 
 export const SALES_EMPLOYEE_NAMES = [

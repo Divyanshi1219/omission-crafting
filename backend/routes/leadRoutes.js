@@ -3,9 +3,31 @@ const mongoose = require("mongoose");
 const router = express.Router();
 const Lead = require("../models/Lead");
 
+// Lightweight in-memory cache for fast dashboard & list queries (invalidated on any write)
+const leadsCache = new Map();
+const CACHE_TTL_MS = 6000; // 6 seconds
+
+const clearLeadsCache = () => {
+  leadsCache.clear();
+};
+
+// Automatically bust cache whenever any write/update/delete operation is performed
+router.use((req, res, next) => {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    clearLeadsCache();
+  }
+  next();
+});
+
 // GET /api/leads - Fetch leads (optional filter by query, orderStage, subStage)
 router.get("/", async (req, res) => {
   try {
+    const cacheKey = req.originalUrl || JSON.stringify(req.query);
+    const cached = leadsCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+      return res.json(cached.data);
+    }
+
     const filter = {};
     const q = req.query.query || req.query.status;
     if (q) {
@@ -69,10 +91,22 @@ router.get("/", async (req, res) => {
             digitalDesign: 0,
             logoDesignFiles: 0,
             digitalDesignFiles: 0,
-            "stockTaskData.readyToPickAttachments.url": 0,
-            "stockTaskData.sampleReadyToPickAttachments.url": 0,
-            "stockTaskData.partialReadyToPickAttachments.url": 0,
-            "stockTaskData.completeReadyToPickAttachments.url": 0,
+            "stockTaskData.readyToPickAttachments": 0,
+            "stockTaskData.sampleReadyToPickAttachments": 0,
+            "stockTaskData.partialReadyToPickAttachments": 0,
+            "stockTaskData.completeReadyToPickAttachments": 0,
+            "printingStageData.attachments": 0,
+            "sampleReadyToPickUpData.attachments": 0,
+            "sampleStagingGroundData.attachments": 0,
+            "sampleStagingGroundData.stagingAttachments": 0,
+            "customerApprovalData.attachments": 0,
+            "customerApprovalData.stagingAttachments": 0,
+            "partialPrintingData.attachments": 0,
+            "partialQualityCheckData.attachments": 0,
+            "partialPackagingData.attachments": 0,
+            "completePrintingData.attachments": 0,
+            "completeQualityCheckData.attachments": 0,
+            "completePackagingData.attachments": 0,
           }
     )
       .sort({ updatedAt: -1, createdAt: -1 })
@@ -197,7 +231,9 @@ router.get("/", async (req, res) => {
       Lead.bulkWrite(bulkOps).catch((err) => console.error("Background bulkWrite error:", err));
     }
 
-    res.json({ success: true, count: leads.length, data: leads });
+    const responsePayload = { success: true, count: leads.length, data: leads };
+    leadsCache.set(cacheKey, { timestamp: Date.now(), data: responsePayload });
+    res.json(responsePayload);
   } catch (error) {
     console.error("Error fetching leads:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -301,6 +337,9 @@ const computeLeadChanges = (existing, incoming) => {
   const fieldDefs = [
     { key: "employeeName", label: "Employee Name" },
     { key: "query", label: "Query Type" },
+    { key: "orderStage", label: "Order Stage" },
+    { key: "subStage", label: "Sub Stage" },
+    { key: "source", label: "Source" },
     { key: "companyName", label: "Company Name" },
     { key: "clientName", label: "Client Name" },
     { key: "companyAddress", label: "Company Address" },
@@ -781,6 +820,23 @@ router.post("/", async (req, res) => {
         new: true,
         runValidators: true,
       });
+
+      try {
+        const Task = require("../models/Task");
+        const orderIdStr = updated.orderId || updated._id.toString().slice(-6).toUpperCase();
+        const taskIdStr = `TSK-${orderIdStr}`;
+        await Task.findOneAndUpdate(
+          { $or: [{ leadId: updated._id }, { taskId: taskIdStr }] },
+          {
+            orderStage: updated.orderStage || "sample",
+            subStage: updated.subStage || "",
+            status: "In Progress",
+          }
+        );
+      } catch (e) {
+        console.warn("Could not sync Task model on lead update:", e.message);
+      }
+
       return res.json({ success: true, message: "Lead updated successfully", data: updated });
     }
 
@@ -833,7 +889,7 @@ router.put("/:id", async (req, res) => {
     if (!existing) {
       return res.status(404).json({ success: false, message: "Lead not found" });
     }
-    const { performedBy, performedByRole, performedById, logAction, ...updateData } = req.body;
+    const { performedBy, performedByRole, performedById, logAction, logDetails, ...updateData } = req.body;
     const changes = computeLeadChanges(existing, updateData);
     const isNowOrder = (updateData.query || existing.query || "lead").toLowerCase().trim() === "order";
     const stageStr = isNowOrder
@@ -849,7 +905,7 @@ router.put("/:id", async (req, res) => {
       performedBy: actorName,
       role: actorRole,
       loginId: performedById || existing.createdBy || "sales",
-      details: `${isNowOrder ? "Order" : "Lead"} edited by ${actorName} (${actorRole}).`,
+      details: logDetails || `${isNowOrder ? "Order" : "Lead"} edited by ${actorName} (${actorRole}).`,
       changes: changes.length > 0 ? changes : ["Updated application details"],
       timestamp: new Date(),
     });

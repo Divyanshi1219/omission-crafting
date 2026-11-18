@@ -5,6 +5,7 @@ import {
   CheckCircle,
   RotateCcw,
   ArrowLeft,
+  ArrowRight,
   Search,
   Clock,
   CheckCircle2,
@@ -77,10 +78,19 @@ export default function Approvals({ defaultTab = "all" }) {
   const isProdProfile =
     currentUser?.id === "production" ||
     Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("production"));
-  const isAdminProfile = currentUser?.id === "admin" || (!isStockProfile && !isProdProfile);
+  const isCoordinator =
+    currentUser?.id === "coordinator" ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("coordinator")) ||
+    Boolean(currentUser?.department && currentUser.department.toLowerCase().includes("coordinator"));
+  const isAdminProfile = currentUser?.id === "admin" || (!isStockProfile && !isProdProfile && !isCoordinator);
 
   // Submenus based on profile
   const taskSubMenus = useMemo(() => {
+    if (isCoordinator) {
+      return [
+        { key: "ready-to-pick", label: "Ready to Pick (From Stock)", path: "/tasks/ready-to-pick" },
+      ];
+    }
     if (isStockProfile) {
       return [
         { key: "all", label: "ALL", path: "/tasks/all" },
@@ -117,10 +127,10 @@ export default function Approvals({ defaultTab = "all" }) {
   useEffect(() => {
     if (isProdProfile) {
       setRoleView("production");
-    } else if (isStockProfile) {
+    } else if (isStockProfile || isCoordinator) {
       setRoleView("stock");
     }
-  }, [currentUser?.id, isProdProfile, isStockProfile]);
+  }, [currentUser?.id, isProdProfile, isStockProfile, isCoordinator]);
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3834,6 +3844,60 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                           borderTop: "1px solid #e2e8f0"
                         }}
                       >
+
+                        {/* Directional Pickup & Handover Route Banner */}
+                        <div
+                          style={{
+                            background: "linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)",
+                            border: "1px solid #bfdbfe",
+                            borderRadius: "10px",
+                            padding: "12px 16px",
+                            marginBottom: "16px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            flexWrap: "wrap",
+                            gap: "10px",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                            <span
+                              style={{
+                                background: "#0284c7",
+                                color: "#ffffff",
+                                padding: "5px 12px",
+                                borderRadius: "6px",
+                                fontSize: "11.5px",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.4px",
+                              }}
+                            >
+                              📍 Pick From: Stock Room (Verified)
+                            </span>
+
+                            <ArrowRight size={16} color="#64748b" />
+
+                            <span
+                              style={{
+                                background: "#059669",
+                                color: "#ffffff",
+                                padding: "5px 12px",
+                                borderRadius: "6px",
+                                fontSize: "11.5px",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.4px",
+                              }}
+                            >
+                              🎯 Deliver To: {isOrderEmbroidery(selectedOrder) ? "Embroidery Staging Room" : "Production Printing Floor"}
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: "12px", color: "#334155", fontWeight: 600 }}>
+                            Coordinator Task Handover
+                          </div>
+                        </div>
 
                         {/* Question: Sample Received? */}
                         <div style={{ marginBottom: "16px" }}>

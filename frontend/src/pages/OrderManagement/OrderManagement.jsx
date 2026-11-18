@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Plus, Trash2, ArrowLeft, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2, ArrowLeft, ArrowRight, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import './OrderManagement.css';
@@ -136,6 +136,39 @@ const SUB_STAGES_BY_ORDER_STAGE = {
     'Delivered',
     'Customer Support'
   ]
+};
+
+const SUB_STAGE_OPTIONS_BY_ORDER_STAGE = {
+  sample: [
+    { label: 'Order', slug: 'order' },
+    { label: 'DTF Pending', slug: 'dtf-pending' },
+    { label: 'Stock', slug: 'stock' },
+    { label: 'Printing', slug: 'printing' },
+    { label: 'Ready to Pick Up', slug: 'ready-to-pick-up' },
+    { label: 'Staging Room', slug: 'staging-room' },
+    { label: 'Customer Approval Awaiting', slug: 'customer-approval-awaiting' },
+  ],
+  partial: [
+    { label: 'Order', slug: 'order' },
+    { label: 'DTF Pending', slug: 'dtf-pending' },
+    { label: 'Stock', slug: 'stock' },
+    { label: 'Printing', slug: 'printing' },
+    { label: 'Quality Check', slug: 'quality-check' },
+    { label: 'Packaging', slug: 'packaging' },
+    { label: 'Staging Room', slug: 'staging-room' },
+    { label: 'Payment Confirmation', slug: 'payment-confirmation' },
+  ],
+  complete: [
+    { label: 'Order', slug: 'order' },
+    { label: 'DTF Pending', slug: 'dtf-pending' },
+    { label: 'Stock', slug: 'stock' },
+    { label: 'Printing', slug: 'printing' },
+    { label: 'Quality Check', slug: 'quality-check' },
+    { label: 'Packaging', slug: 'packaging' },
+    { label: 'Delivery Pending', slug: 'delivery-pending' },
+    { label: 'Delivered', slug: 'delivered' },
+    { label: 'Customer Support', slug: 'customer-support' },
+  ],
 };
 
 const MAJOR_STAGES_ORDER = ['sample', 'partial', 'complete'];
@@ -309,7 +342,9 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
   const subStageMatches =
     itemSub === normTargetSub ||
     ((itemSub === 'staging-room' || itemSub === 'staging-ground') &&
-     (normTargetSub === 'staging-room' || normTargetSub === 'staging-ground'));
+      (normTargetSub === 'staging-room' || normTargetSub === 'staging-ground')) ||
+    ((itemSub === 'ready-to-pick' || itemSub === 'ready-to-pickup') &&
+      (normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup'));
 
   if (!stageMatches || !subStageMatches) {
     return { matches: false, status: 'none', isCompleted: false };
@@ -406,10 +441,10 @@ const STAGE_ROUTE_MAP = {
   '/order/sample/order': 'Order',
   '/order/sample/dtf-pending': 'DTF Pending',
   '/order/sample/stock': 'Stock',
-  '/order/sample/ready-to-pick': 'Ready to Pick Up',
-  '/order/sample/ready-to-pickup': 'Ready to Pick Up',
+  '/order/sample/ready-to-pick': 'Ready to Pick (From Stock)',
+  '/order/sample/ready-to-pickup': 'Ready to Pick (From Stock)',
   '/order/sample/printing': 'Printing',
-  '/order/sample/ready-to-pick-up': 'Ready to Pick Up',
+  '/order/sample/ready-to-pick-up': 'Ready to Pick (From Printing)',
   '/order/sample/staging-room': 'Staging Room',
   '/order/sample/staging-ground': 'Staging Room',
   '/order/sample/customer-approval-awaiting': 'Customer Approval Awaiting',
@@ -421,12 +456,12 @@ const STAGE_ROUTE_MAP = {
   '/order/partial/order': 'Order',
   '/order/partial/dtf-pending': 'DTF Pending',
   '/order/partial/stock': 'Stock',
-  '/order/partial/ready-to-pick': 'Ready to Pick Up',
-  '/order/partial/ready-to-pickup': 'Ready to Pick Up',
+  '/order/partial/ready-to-pick': 'Ready to Pick (From Stock)',
+  '/order/partial/ready-to-pickup': 'Ready to Pick (From Stock)',
   '/order/partial/printing': 'Printing',
   '/order/partial/quality-check': 'Quality Check',
   '/order/partial/packaging': 'Packaging',
-  '/order/partial/ready-to-pick-up': 'Ready to Pick Up',
+  '/order/partial/ready-to-pick-up': 'Ready to Pick (From Packaging)',
   '/order/partial/staging-room': 'Staging Room',
   '/order/partial/payment-confirmation': 'Payment Confirmation',
 
@@ -437,12 +472,12 @@ const STAGE_ROUTE_MAP = {
   '/order/complete/order': 'Order',
   '/order/complete/dtf-pending': 'DTF Pending',
   '/order/complete/stock': 'Stock',
-  '/order/complete/ready-to-pick': 'Ready to Pick Up',
-  '/order/complete/ready-to-pickup': 'Ready to Pick Up',
+  '/order/complete/ready-to-pick': 'Ready to Pick (From Stock)',
+  '/order/complete/ready-to-pickup': 'Ready to Pick (From Stock)',
   '/order/complete/printing': 'Printing',
   '/order/complete/quality-check': 'Quality Check',
   '/order/complete/packaging': 'Packaging',
-  '/order/complete/ready-to-pick-up': 'Ready to Pick Up',
+  '/order/complete/ready-to-pick-up': 'Ready to Pick (From Packaging)',
   '/order/complete/delivery-pending': 'Ready to Deliver',
   '/order/complete/delivered': 'Delivered',
   '/order/complete/customer-support': 'Customer Support',
@@ -474,17 +509,39 @@ const getDefaultDeliveryDate = () => {
 function OrderManagement() {
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.id === 'admin' || currentUser?.role === 'CEO' || (currentUser?.name || '').toLowerCase().startsWith('adam');
+  const isCEO = currentUser?.role === 'CEO' || currentUser?.id === 'admin' || (currentUser?.name || '').toLowerCase().startsWith('adam');
   const isSales = currentUser?.role === 'Sales Executive' || currentUser?.id?.startsWith('sales');
+  const isCoordinator =
+    currentUser?.id === 'coordinator' ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase().includes('coordinator')) ||
+    Boolean(currentUser?.department && currentUser.department.toLowerCase().includes('coordinator'));
   const isLeadManager =
     currentUser?.id === 'lead_manager' ||
-    Boolean(currentUser?.role && currentUser.role.toLowerCase() === 'lead manager');
+    Boolean(currentUser?.role && currentUser.role.toLowerCase().includes('lead manager'));
   const isLeadManagerOrAdmin = isLeadManager || currentUser?.id === 'admin';
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
 
+  const [query, setQuery] = useState('lead');
+  const [queryStatus, setQueryStatus] = useState('');
+  const [orderApprovalData, setOrderApprovalData] = useState(null);
+
+  const isOrderQuery = ((orderApprovalData?.query || query || 'order').toLowerCase().trim() === 'order');
+
+  const isApprovalReview = Boolean(
+    editId &&
+    isOrderQuery && (
+      isLeadManager ||
+      searchParams.get('from')?.includes('/approvals') ||
+      (isLeadManagerOrAdmin && searchParams.get('from')?.includes('/approvals'))
+    )
+  );
+
   const [leadManagerNote, setLeadManagerNote] = useState('');
+  const [referModalOpen, setReferModalOpen] = useState(false);
+  const [referBackReason, setReferBackReason] = useState('');
   const [submittingLeadAction, setSubmittingLeadAction] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
 
@@ -498,11 +555,12 @@ function OrderManagement() {
 
   const isCustomerSupport = location.pathname === '/order/customer-support';
 
-  const [query, setQuery] = useState('lead');
-  const [queryStatus, setQueryStatus] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isEditing, setIsEditing] = useState(searchParams.get('edit') === 'true');
   const [items, setItems] = useState([]);
+  const [isEditingItems, setIsEditingItems] = useState(false);
+  const [itemsBackup, setItemsBackup] = useState([]);
+  const [isSavingItems, setIsSavingItems] = useState(false);
 
   const [masterItems, setMasterItems] = useState([
     { name: 'T-Shirt' },
@@ -552,9 +610,12 @@ function OrderManagement() {
     setIsEditing(searchParams.get('edit') === 'true');
   }, [searchParams]);
 
-  let isReadOnly = isLeadManager ? true : Boolean(editId && !isEditing);
+  let isReadOnly = isApprovalReview ? true : (isLeadManager || isCoordinator ? true : Boolean(editId && !isEditing));
+  const isItemsReadOnly = isEditingItems ? false : isReadOnly;
+  const canEditItemsAsManager = Boolean(editId && (isLeadManager || isApprovalReview || isAdmin));
 
   const [formData, setFormData] = useState({
+    source: '',
     companyName: '',
     clientName: '',
     companyAddress: '',
@@ -594,7 +655,7 @@ function OrderManagement() {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    } catch (_) {}
+    } catch (_) { }
     return [];
   });
 
@@ -602,10 +663,9 @@ function OrderManagement() {
     try {
       const cached = sessionStorage.getItem("omission_cached_leads");
       if (cached && JSON.parse(cached).length > 0) return false;
-    } catch (_) {}
+    } catch (_) { }
     return true;
   });
-  const [orderApprovalData, setOrderApprovalData] = useState(null);
   const [orderReservations, setOrderReservations] = useState([]);
 
   useEffect(() => {
@@ -650,6 +710,7 @@ function OrderManagement() {
     companyAddress: false,
     state: false,
     pincode: false,
+    source: false,
     repeatedOrder: false,
     additionalNote: false,
     logoName: false,
@@ -702,7 +763,7 @@ function OrderManagement() {
     amountPaid: '',
     amountReceived: '',
     balanceRemaining: '',
-    
+
     // Partial
     partialPrintingStatus: 'Complete',
     partialPrintedCount: 0,
@@ -723,7 +784,7 @@ function OrderManagement() {
     partialPaymentMode: 'Bank Transfer',
     partialAmountReceived: 50000,
     partialBalanceRemaining: 0,
-    
+
     // Complete
     completePrintingStatus: 'Complete',
     completePrintedCount: 100,
@@ -756,7 +817,7 @@ function OrderManagement() {
           setLeadsList(res.data.data);
           try {
             sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
-          } catch (_) {}
+          } catch (_) { }
         }
       })
       .catch((err) => console.error('Error fetching leads:', err));
@@ -875,6 +936,7 @@ function OrderManagement() {
     if (orderApprovalData) {
       const d = orderApprovalData;
       setFormData({
+        source: d.source || '',
         companyName: d.companyName || '',
         clientName: d.clientName || '',
         companyAddress: d.companyAddress || '',
@@ -922,6 +984,34 @@ function OrderManagement() {
   const handleCancelEdit = () => {
     setIsEditing(false);
     resetFormToCurrentOrder();
+  };
+
+  const handleOrderStageChange = (e) => {
+    const newStage = e.target.value.toLowerCase();
+    setOrderStage(newStage);
+    const validOptions = SUB_STAGE_OPTIONS_BY_ORDER_STAGE[newStage] || [];
+    const currentSubSlug = (!subStage || subStage === 'new' || subStage === 'leads')
+      ? 'order'
+      : subStage.toLowerCase().replace(/\s+/g, '-');
+    const exists = validOptions.find(opt => opt.slug === currentSubSlug);
+    if (exists) {
+      setSelectedStage(exists.label);
+    } else {
+      const firstOpt = validOptions[0] || { label: 'Order', slug: 'order' };
+      setSubStage(firstOpt.slug);
+      setSelectedStage(firstOpt.label);
+    }
+  };
+
+  const handleSubStageChange = (e) => {
+    const newSubSlug = e.target.value;
+    setSubStage(newSubSlug);
+    const activeStageKey = (orderStage || 'sample').toLowerCase();
+    const validOptions = SUB_STAGE_OPTIONS_BY_ORDER_STAGE[activeStageKey] || [];
+    const matched = validOptions.find(opt => opt.slug === newSubSlug);
+    if (matched) {
+      setSelectedStage(matched.label);
+    }
   };
 
   const handleSaveExistingOrder = async () => {
@@ -995,42 +1085,89 @@ function OrderManagement() {
     try {
       const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
       const wasLeadBefore = (orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order';
+      const prevStage = (orderApprovalData?.orderStage || 'sample').toLowerCase();
+      const prevSub = (orderApprovalData?.subStage || 'order').toLowerCase().replace(/\s+/g, '-');
+      const targetOrderStage = isLeadQuery ? '' : (orderStage || 'sample').toLowerCase();
+      const targetSubStage = isLeadQuery ? 'leads' : ((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage.toLowerCase().replace(/\s+/g, '-'));
+      const stageChangedByCEO = isCEO && !isLeadQuery && (targetOrderStage !== prevStage || targetSubStage !== prevSub);
+
       const payload = {
         _id: editId,
         employeeName: currentEmpName,
         createdBy: currentUser?.id || 'sales',
-        performedBy: currentUser?.name || currentEmpName,
-        performedByRole: currentUser?.role || 'Sales Executive',
-        performedById: currentUser?.id || 'sales',
-        logAction: (wasLeadBefore && !isLeadQuery)
-          ? 'Lead Converted to Order & Submitted'
-          : (isLeadQuery ? 'Lead Edited' : 'Order Edited'),
+        performedBy: currentUser?.name || (isCEO ? 'Adam' : currentEmpName),
+        performedByRole: isCEO ? 'CEO' : (currentUser?.role || 'Sales Executive'),
+        performedById: currentUser?.id || (isCEO ? 'admin' : 'sales'),
+        logAction: stageChangedByCEO
+          ? `Stage override to ${targetOrderStage.toUpperCase()} → ${targetSubStage} by CEO`
+          : ((wasLeadBefore && !isLeadQuery)
+            ? 'Lead Converted to Order & Submitted'
+            : (isLeadQuery ? 'Lead Edited' : 'Order Edited')),
         query: isLeadQuery ? 'lead' : 'order',
         queryStatus,
-        orderStage: isLeadQuery ? '' : (orderStage || 'sample'),
-        subStage: isLeadQuery ? 'leads' : (subStage || 'order'),
+        orderStage: targetOrderStage,
+        subStage: targetSubStage,
         ...formData,
         employeeName: currentEmpName,
         orderId: formData.orderId,
         items,
-        approvalStatus: isLeadQuery ? 'Lead' : ((wasLeadBefore && !isLeadQuery) ? 'Pending' : (orderApprovalData?.approvalStatus || 'Pending')),
+        approvalStatus: isLeadQuery
+          ? 'Lead'
+          : (isCEO
+            ? 'Approved'
+            : ((wasLeadBefore && !isLeadQuery) ? 'Pending' : (orderApprovalData?.approvalStatus || 'Pending'))),
         leadApproval: isLeadQuery ? {
           status: 'Not Applicable',
           note: '',
           author: '',
+        } : (isCEO ? {
+          status: 'Approved',
+          note: stageChangedByCEO ? `Approved & stage moved to ${targetOrderStage} → ${targetSubStage} by CEO` : (orderApprovalData?.leadApproval?.note || 'Approved by CEO'),
+          author: currentUser?.name ? `${currentUser.name} (CEO)` : 'Adam (CEO)',
+          updatedAt: new Date(),
         } : ((wasLeadBefore && !isLeadQuery) ? {
           status: 'Pending',
           note: '',
           author: '',
           resubmittedAt: new Date(),
-        } : (orderApprovalData?.leadApproval || { status: 'Pending', note: '', author: '' })),
+        } : (orderApprovalData?.leadApproval || { status: 'Pending', note: '', author: '' }))),
       };
+
+      if (isCEO && !isLeadQuery) {
+        payload.stockApproval = {
+          status: 'Approved',
+          note: 'Cleared by CEO override',
+          author: currentUser?.name ? `${currentUser.name} (CEO)` : 'Adam (CEO)',
+          updatedAt: new Date(),
+        };
+        payload.productionApproval = {
+          status: 'Approved',
+          note: 'Cleared by CEO override',
+          author: currentUser?.name ? `${currentUser.name} (CEO)` : 'Adam (CEO)',
+          updatedAt: new Date(),
+        };
+        if (!payload.stockTaskStage || payload.stockTaskStage !== 'completed') {
+          payload.stockTaskStage = 'completed';
+        }
+        if (targetSubStage === 'printing') {
+          payload.productionTaskStage = 'logo_printing';
+        } else if (['quality-check', 'packaging', 'staging-room', 'payment-confirmation', 'delivery-pending', 'delivered', 'customer-support'].includes(targetSubStage)) {
+          payload.productionTaskStage = 'completed';
+        }
+      }
+
       const res = await api.post('/api/leads', payload);
-      alert(isLeadQuery ? 'Lead updated successfully!' : ((wasLeadBefore && !isLeadQuery) ? 'Order submitted successfully!\nSent to Lead Manager for approval.' : 'Order updated successfully!'));
+      alert(isLeadQuery ? 'Lead updated successfully!' : ((wasLeadBefore && !isLeadQuery) ? 'Order submitted successfully!\nSent to Lead Manager for approval.' : (stageChangedByCEO ? `Order stage moved to ${targetOrderStage.toUpperCase()} → ${targetSubStage} successfully!` : 'Order updated successfully!')));
       if (res.data?.data) {
         setOrderApprovalData(res.data.data);
       }
       setIsEditing(false);
+
+      if (isCEO && !isLeadQuery) {
+        navigate(`/order/${targetOrderStage}/${targetSubStage}`);
+        return;
+      }
+
       if (!isLeadQuery && searchParams.get('from')?.includes('/order/leads')) {
         const targetStage = orderStage || 'sample';
         const targetSub = !subStage || subStage === 'new' || subStage === 'leads' ? 'order' : subStage.replace(/\s+/g, '-');
@@ -1050,6 +1187,22 @@ function OrderManagement() {
     if (orderApprovalData?.leadApproval?.status) {
       return orderApprovalData.leadApproval;
     }
+    if (orderApprovalData?.approvalStatus === 'Approved') {
+      return {
+        status: 'Approved',
+        note: '',
+        author: 'Lead Manager',
+        updatedAt: null,
+      };
+    }
+    if (orderApprovalData?.approvalStatus === 'Referred Back') {
+      return {
+        status: 'Referred Back',
+        note: '',
+        author: 'Lead Manager',
+        updatedAt: null,
+      };
+    }
     const comments = orderApprovalData?.approvalComments || [];
     const leadComment = [...comments].reverse().find(c =>
       (c.role && c.role.toLowerCase().includes('lead manager')) ||
@@ -1065,7 +1218,7 @@ function OrderManagement() {
       };
     }
     return {
-      status: orderApprovalData?.approvalStatus === 'Referred Back' ? 'Referred Back' : (orderApprovalData?.approvalStatus || 'Pending'),
+      status: orderApprovalData?.approvalStatus || 'Pending',
       note: '',
       author: 'Sarah Jenkins',
       updatedAt: null,
@@ -1086,7 +1239,7 @@ function OrderManagement() {
     const comments = orderApprovalData?.approvalComments || [];
     const stockComment = [...comments].reverse().find(c =>
       ((c.role && c.role.toLowerCase().includes('stock')) ||
-      (c.author && c.author.toLowerCase().includes('elena'))) &&
+        (c.author && c.author.toLowerCase().includes('elena'))) &&
       !c.role?.toLowerCase().includes('lead manager') &&
       !c.comment?.toLowerCase().includes('approved by lead manager')
     );
@@ -1118,7 +1271,7 @@ function OrderManagement() {
     const comments = orderApprovalData?.approvalComments || [];
     const prodComment = [...comments].reverse().find(c =>
       ((c.role && c.role.toLowerCase().includes('production')) ||
-      (c.author && c.author.toLowerCase().includes('marcus'))) &&
+        (c.author && c.author.toLowerCase().includes('marcus'))) &&
       !c.role?.toLowerCase().includes('lead manager') &&
       !c.comment?.toLowerCase().includes('approved by lead manager')
     );
@@ -1146,11 +1299,16 @@ function OrderManagement() {
     stockAppr.status === 'Referred Back' ||
     prodAppr.status === 'Referred Back';
 
-  const handleLeadManagerAction = async (status) => {
+  const handleLeadManagerAction = async (status, noteOverride = '') => {
     if (!editId || submittingLeadAction) return;
+    if (isEditingItems) {
+      alert('You have unsaved item edits. Please click "Save Items" or "Cancel" in the Add Item section first.');
+      return;
+    }
     if (status === 'Approved' && isLeadSubmitted) return;
 
-    if (status === 'Referred Back' && !leadManagerNote.trim()) {
+    const finalNote = (noteOverride || leadManagerNote || '').trim();
+    if (status === 'Referred Back' && !finalNote) {
       alert('Additional note is mandatory with every refer back. Please enter instructions or changes required for the sales executive.');
       return;
     }
@@ -1163,7 +1321,7 @@ function OrderManagement() {
         department: 'lead_manager',
         role: 'Lead Manager',
         author: currentUser?.name || 'Sarah Jenkins',
-        comment: leadManagerNote.trim() || (status === 'Approved' ? (currentUser?.id === 'admin' ? 'Submitted by CEO' : 'Submitted by Lead Manager') : 'Referred back by Lead Manager'),
+        comment: finalNote || (status === 'Approved' ? (currentUser?.id === 'admin' ? 'Submitted by CEO' : 'Submitted by Lead Manager') : 'Referred back by Lead Manager'),
       };
 
       const res = await api.patch(`/api/leads/${editId}/approval`, payload);
@@ -1174,6 +1332,8 @@ function OrderManagement() {
           : `Order #${res.data.data?.orderId || 'Order'} referred back to sales executive with mandatory correction note.`;
         setActionSuccessMsg(msg);
         setLeadManagerNote('');
+        setReferBackReason('');
+        setReferModalOpen(false);
         setTimeout(() => setActionSuccessMsg(''), 6000);
 
         const target = searchParams.get('from')?.includes('/approvals')
@@ -1281,7 +1441,7 @@ function OrderManagement() {
               }
 
               const printingPickupCount = printingData.readyToPickupCount || printingData.printedCount || sampleCount || 1;
-              
+
               let initialStageStatus = printingData.printingStatus;
               if (fromUrl.includes('/customer-approval-awaiting')) {
                 if (initialCustomerApproved === 'no') {
@@ -1402,6 +1562,7 @@ function OrderManagement() {
               setItems(d.items || []);
               setFormData({
                 employeeName: d.employeeName || '',
+                source: d.source || '',
                 companyName: d.companyName || '',
                 clientName: d.clientName || '',
                 companyAddress: d.companyAddress || '',
@@ -1448,7 +1609,7 @@ function OrderManagement() {
                       }));
                     }
                   })
-                  .catch(() => {});
+                  .catch(() => { });
               }
             }
           })
@@ -1465,6 +1626,7 @@ function OrderManagement() {
         setPhoneTouched(false);
         setFormData({
           employeeName: currentUser?.name || '',
+          source: '',
           companyName: '',
           clientName: '',
           companyAddress: '',
@@ -1505,7 +1667,7 @@ function OrderManagement() {
               }));
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     }
   }, [location.pathname, editId, searchParams.get('mode')]);
@@ -1519,7 +1681,7 @@ function OrderManagement() {
           setLeadsList(res.data.data);
           try {
             sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
-          } catch (_) {}
+          } catch (_) { }
         }
       })
       .catch((err) => console.error('Error fetching leads:', err))
@@ -1592,6 +1754,11 @@ function OrderManagement() {
   }, [formData.totalAmount, formData.netAmount, formData.gst, formData.advanceAmount]);
 
   const getActiveDefinition = () => {
+    if (orderStage) {
+      const os = orderStage.toLowerCase().trim();
+      if (['sample', 'partial', 'complete'].includes(os)) return os;
+    }
+
     const stageParam = (searchParams.get('stage') || '').toLowerCase().trim();
     if (['sample', 'partial', 'complete'].includes(stageParam)) return stageParam;
 
@@ -1606,11 +1773,7 @@ function OrderManagement() {
       const os = orderApprovalData.orderStage.toLowerCase().trim();
       if (['sample', 'partial', 'complete'].includes(os)) return os;
     }
-    if (orderStage) {
-      const os = orderStage.toLowerCase().trim();
-      if (['sample', 'partial', 'complete'].includes(os)) return os;
-    }
-if (location.pathname.startsWith('/order/embroidery/sample') || location.pathname.includes('/order/sample') || location.pathname.includes('/sample/')) return 'sample';
+    if (location.pathname.startsWith('/order/embroidery/sample') || location.pathname.includes('/order/sample') || location.pathname.includes('/sample/')) return 'sample';
     if (location.pathname.includes('/order/partial') || location.pathname.includes('/partial/')) return 'partial';
     if (location.pathname.includes('/order/complete') || location.pathname.includes('/complete/')) return 'complete';
     if (editId) return 'sample';
@@ -1638,7 +1801,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
   useEffect(() => {
     if (editId) {
       const activeStages = getCurrentStages();
-      const currentSub = (orderApprovalData?.subStage || subStage || '').toLowerCase().replace(/\s+/g, '-');
+      const currentSub = (subStage || orderApprovalData?.subStage || '').toLowerCase().replace(/\s+/g, '-');
       if (currentSub) {
         const matched = activeStages.find(s => s.toLowerCase().replace(/\s+/g, '-') === currentSub);
         if (matched) {
@@ -1743,6 +1906,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
 
     setFormData({
       employeeName: currentUser?.name || '',
+      source: '',
       companyName: '',
       clientName: '',
       companyAddress: '',
@@ -1953,7 +2117,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
               }));
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     }
   };
@@ -2028,7 +2192,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
         try {
           const idRes = await api.get('/api/leads/next-order-id');
           if (idRes.data?.nextOrderId) finalOrderId = idRes.data.nextOrderId;
-        } catch (_) {}
+        } catch (_) { }
       }
       const currentEmpName = formData.employeeName || (currentUser?.name || 'Sales Executive');
       const payload = {
@@ -2086,7 +2250,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     return ['t-shirt', 't shirt', 'tshirt'].includes(t);
   };
 
-  
+
   const getSelectedItemConfig = (it) => {
     if (!it) return null;
     if (it.itemType === 'others') return null;
@@ -2136,6 +2300,102 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
 
   const handleRemoveItem = (id) => {
     setItems(items.filter(item => item.id !== id));
+  };
+
+  const handleStartEditItems = () => {
+    setItemsBackup(JSON.parse(JSON.stringify(items || [])));
+    setIsEditingItems(true);
+  };
+
+  const handleCancelEditItems = () => {
+    if (itemsBackup && Array.isArray(itemsBackup)) {
+      setItems(itemsBackup);
+    }
+    setIsEditingItems(false);
+  };
+
+  const handleSaveItems = async () => {
+    if (!editId || isSavingItems) return;
+
+    if (!items || items.length === 0) {
+      alert('Please add at least one item using "Add Item".');
+      return;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const itemVal = (it.item || it.enterItem || '').trim();
+      if (!itemVal || !(it.fabric || '').trim() || !it.quantity || Number(it.quantity) <= 0 || !(it.size || '').trim() || !(it.color || '').trim()) {
+        alert(`Please fill in all mandatory fields for Item #${i + 1} (Item, Fabric, Quantity, Size, and Color).`);
+        return;
+      }
+    }
+
+    const currentItemsTotalQty = items.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0);
+    const targetOrderTotalQty = Number(formData.totalQuantity || orderApprovalData?.totalQuantity || 0);
+
+    if (targetOrderTotalQty > 0 && currentItemsTotalQty !== targetOrderTotalQty) {
+      alert(`Validation Error: Total quantity in "Add Item" (${currentItemsTotalQty} pcs) must equal Total Quantity (${targetOrderTotalQty} pcs).`);
+      return;
+    }
+
+    setIsSavingItems(true);
+    setActionSuccessMsg('');
+
+    try {
+      const actorName = currentUser?.name || 'Lead Manager';
+      const actorRole = isLeadManager ? 'Lead Manager' : (currentUser?.role || 'Lead Manager');
+      const actorId = currentUser?.id || 'lead_manager';
+
+      const cleanItems = items.map((it) => {
+        const itemObj = {
+          item: it.item || (it.itemType === 't-shirt' ? 'T-Shirt' : it.enterItem || ''),
+          itemType: it.itemType || '',
+          enterItem: it.enterItem || '',
+          printingType: it.printingType || '',
+          sublimationOption: it.sublimationOption || '',
+          collarType: it.collarType || '',
+          neckType: it.neckType || '',
+          fabric: it.fabric || '',
+          quantity: Number(it.quantity) || 0,
+          size: it.size || '',
+          color: it.color || '',
+        };
+        if (it._id && typeof it._id === 'string' && it._id.length === 24) {
+          itemObj._id = it._id;
+        }
+        return itemObj;
+      });
+
+      const payload = {
+        items: cleanItems,
+        performedBy: actorName,
+        performedByRole: actorRole,
+        performedById: actorId,
+        logAction: 'Order Items Edited by Lead Manager',
+        logDetails: `Order items updated by ${actorName} (${actorRole}) during approval review.`,
+      };
+
+      const res = await api.put(`/api/leads/${editId}`, payload);
+      if (res.data?.success) {
+        setOrderApprovalData(res.data.data);
+        if (Array.isArray(res.data.data?.items)) {
+          setItems(res.data.data.items);
+        }
+        setIsEditingItems(false);
+        setActiveActivityTab('application');
+        const successNotice = 'Items updated successfully! Changes saved and recorded in Activity Log.';
+        setActionSuccessMsg(successNotice);
+        setTimeout(() => setActionSuccessMsg(''), 5000);
+      } else {
+        alert(res.data?.message || 'Failed to update items.');
+      }
+    } catch (err) {
+      console.error('Error saving items:', err);
+      alert(err.response?.data?.message || 'Failed to save items. Please try again.');
+    } finally {
+      setIsSavingItems(false);
+    }
   };
 
   const canSubmit = Boolean(query);
@@ -3027,24 +3287,24 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     const stockSampleCount = (orderApprovalData.stockTaskData?.sampleDeduction !== undefined && Number(orderApprovalData.stockTaskData.sampleDeduction) > 0)
       ? Number(orderApprovalData.stockTaskData.sampleDeduction)
       : (orderApprovalData.sampleStagingGroundData?.givenForSample !== undefined && Number(orderApprovalData.sampleStagingGroundData.givenForSample) > 0)
-      ? Number(orderApprovalData.sampleStagingGroundData.givenForSample)
-      : (orderApprovalData.stockTaskData?.receivedCount !== undefined && Number(orderApprovalData.stockTaskData.receivedCount) > 0)
-      ? Number(orderApprovalData.stockTaskData.receivedCount)
-      : (orderApprovalData.sampleReadyToPickUpData?.readyToPickupCount !== undefined && Number(orderApprovalData.sampleReadyToPickUpData.readyToPickupCount) > 0)
-      ? Number(orderApprovalData.sampleReadyToPickUpData.readyToPickupCount)
-      : (Array.isArray(orderApprovalData.itemsStockData) && orderApprovalData.itemsStockData.some((it) => Number(it.sampleDeduction) > 0))
-      ? orderApprovalData.itemsStockData.reduce((acc, it) => acc + (Number(it.sampleDeduction) || 0), 0)
-      : 1;
+        ? Number(orderApprovalData.sampleStagingGroundData.givenForSample)
+        : (orderApprovalData.stockTaskData?.receivedCount !== undefined && Number(orderApprovalData.stockTaskData.receivedCount) > 0)
+          ? Number(orderApprovalData.stockTaskData.receivedCount)
+          : (orderApprovalData.sampleReadyToPickUpData?.readyToPickupCount !== undefined && Number(orderApprovalData.sampleReadyToPickUpData.readyToPickupCount) > 0)
+            ? Number(orderApprovalData.sampleReadyToPickUpData.readyToPickupCount)
+            : (Array.isArray(orderApprovalData.itemsStockData) && orderApprovalData.itemsStockData.some((it) => Number(it.sampleDeduction) > 0))
+              ? orderApprovalData.itemsStockData.reduce((acc, it) => acc + (Number(it.sampleDeduction) || 0), 0)
+              : 1;
 
     const prodSampleCount = (orderApprovalData.productionTaskData?.sampleLogosCount !== undefined && Number(orderApprovalData.productionTaskData.sampleLogosCount) > 0)
       ? Number(orderApprovalData.productionTaskData.sampleLogosCount)
       : (orderApprovalData.productionTaskData?.logosForSample !== undefined && Number(orderApprovalData.productionTaskData.logosForSample) > 0)
-      ? Number(orderApprovalData.productionTaskData.logosForSample)
-      : (orderApprovalData.productionTaskData?.givingForSample !== undefined && Number(orderApprovalData.productionTaskData.givingForSample) > 0)
-      ? Number(orderApprovalData.productionTaskData.givingForSample)
-      : (orderApprovalData.productionTaskData?.logosCutGiven !== undefined && Number(orderApprovalData.productionTaskData.logosCutGiven) > 0)
-      ? Number(orderApprovalData.productionTaskData.logosCutGiven)
-      : 1;
+        ? Number(orderApprovalData.productionTaskData.logosForSample)
+        : (orderApprovalData.productionTaskData?.givingForSample !== undefined && Number(orderApprovalData.productionTaskData.givingForSample) > 0)
+          ? Number(orderApprovalData.productionTaskData.givingForSample)
+          : (orderApprovalData.productionTaskData?.logosCutGiven !== undefined && Number(orderApprovalData.productionTaskData.logosCutGiven) > 0)
+            ? Number(orderApprovalData.productionTaskData.logosCutGiven)
+            : 1;
 
     const stockSampleLabel = `Stock Sample Received? (${stockSampleCount} pcs)`;
     const prodSampleLabel = `Production Logo Received? (${prodSampleCount} pcs)`;
@@ -3052,18 +3312,37 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     const printingSampleCount = orderApprovalData.printingStageData?.readyToPickupCount !== undefined
       ? Number(orderApprovalData.printingStageData.readyToPickupCount)
       : (orderApprovalData.printingStageData?.printedCount !== undefined
-          ? Number(orderApprovalData.printingStageData.printedCount)
-          : (orderApprovalData.printingStageData?.receivedCount !== undefined
-              ? Number(orderApprovalData.printingStageData.receivedCount)
-              : stockSampleCount || 1));
+        ? Number(orderApprovalData.printingStageData.printedCount)
+        : (orderApprovalData.printingStageData?.receivedCount !== undefined
+          ? Number(orderApprovalData.printingStageData.receivedCount)
+          : stockSampleCount || 1));
 
     const readyToPickSampleCount = orderApprovalData.sampleReadyToPickUpData?.stagingCount !== undefined
       ? Number(orderApprovalData.sampleReadyToPickUpData.stagingCount)
       : (orderApprovalData.sampleReadyToPickUpData?.readyToPickupCount !== undefined
-          ? Number(orderApprovalData.sampleReadyToPickUpData.readyToPickupCount)
-          : (orderApprovalData.sampleReadyToPickUpData?.verifiedPickupCount !== undefined
-              ? Number(orderApprovalData.sampleReadyToPickUpData.verifiedPickupCount)
-              : printingSampleCount || 1));
+        ? Number(orderApprovalData.sampleReadyToPickUpData.readyToPickupCount)
+        : (orderApprovalData.sampleReadyToPickUpData?.verifiedPickupCount !== undefined
+          ? Number(orderApprovalData.sampleReadyToPickUpData.verifiedPickupCount)
+          : printingSampleCount || 1));
+
+    const isPickStage = activeSub === 'ready-to-pick' || activeSub === 'ready-to-pick-up' || activeSub === 'ready-to-pickup';
+    let pickFromLabel = 'Stock Room';
+    let deliverToLabel = 'Printing Section';
+    if (activeSub === 'ready-to-pick' || activeSub === 'ready-to-pickup') {
+      pickFromLabel = 'Stock Room';
+      deliverToLabel = currentOrderStage === 'sample' ? 'Sample Printing Line' : 'Bulk Printing Line';
+    } else if (activeSub === 'ready-to-pick-up') {
+      if (currentOrderStage === 'sample') {
+        pickFromLabel = 'Printing Department';
+        deliverToLabel = 'Staging Room (for Client Approval)';
+      } else if (currentOrderStage === 'partial') {
+        pickFromLabel = 'Packaging Line';
+        deliverToLabel = 'Staging Room';
+      } else {
+        pickFromLabel = 'Packaging Line';
+        deliverToLabel = 'Ready to Deliver / Dispatch';
+      }
+    }
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -3102,16 +3381,72 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                 color: isCurrentStageApproved
                   ? '#059669'
                   : stageForm.stageStatus === 'Complete'
-                  ? '#059669'
-                  : stageForm.stageStatus === 'On Hold'
-                  ? '#dc2626'
-                  : '#d97706',
+                    ? '#059669'
+                    : stageForm.stageStatus === 'On Hold'
+                      ? '#dc2626'
+                      : '#d97706',
                 fontWeight: 700
               }}>
                 {isCurrentStageApproved ? 'Approved & Advanced' : (stageForm.stageStatus || 'In Progress')}
               </span>
             </div>
           </div>
+
+          {/* DIRECTIONAL PICKUP & HANDOVER ROUTE BANNER */}
+          {isPickStage && (
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
+                border: '1px solid #bfdbfe',
+                borderRadius: '12px',
+                padding: '14px 18px',
+                marginBottom: '22px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <span
+                  style={{
+                    background: '#0284c7',
+                    color: '#ffffff',
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.4px',
+                  }}
+                >
+                  📍 Pick From: {pickFromLabel}
+                </span>
+
+                <ArrowRight size={18} color="#64748b" />
+
+                <span
+                  style={{
+                    background: '#059669',
+                    color: '#ffffff',
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.4px',
+                  }}
+                >
+                  🎯 Deliver To: {deliverToLabel}
+                </span>
+              </div>
+
+              <div style={{ fontSize: '13px', color: '#334155', fontWeight: 600 }}>
+                Coordinator Handover Step • Collect items & deliver to destination
+              </div>
+            </div>
+          )}
 
           {/* 1. ORDER & LEAD DETAILS (4-column grid) */}
           <div className="form-grid-4" style={{ marginBottom: '20px' }}>
@@ -5386,40 +5721,40 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                   title={
                     isTopSubmitDisabled
                       ? (isSampleReadyToPickup && (stageForm.sampleRequirementMatch === false || stageForm.sampleRequirementMatch === 'no')
-                          ? "Garments do not match specifications ('No' selected). Submit is disabled; only Save and Refer Back are available."
-                          : isSampleReadyToPickup && stageForm.printingSampleReceived === 'no'
+                        ? "Garments do not match specifications ('No' selected). Submit is disabled; only Save and Refer Back are available."
+                        : isSampleReadyToPickup && stageForm.printingSampleReceived === 'no'
                           ? "Sample marked as not received from printing. Submit is disabled; only Save and Refer Back are available."
                           : isSamplePrinting && (stageForm.stockSampleReceived === 'no' || stageForm.prodSampleReceived === 'no' || stageForm.itemPrinted === 'no')
-                          ? "Check is 'No'. Submit is disabled; only Save and Refer Back are available."
-                          : isSampleStagingGround && stageForm.readyToPickSampleReceived === 'no'
-                          ? "Items marked as not received. Submit is disabled; only Save and Refer Back are available."
-                          : isSampleCustomerApproval && stageForm.customerApproved === 'no'
-                          ? "Customer approval is 'No'. Submit is disabled; only Save and Refer Back are available."
-                          : isSampleStagingGround && stageForm.readyToPickSampleReceived === 'yes' && !stageForm.rackNo?.trim()
-                          ? 'Please enter rack number to submit'
-                          : isSampleCustomerApproval && !stageForm.customerApproved
-                          ? 'Please select whether customer approved sample'
-                          : isSampleCustomerApproval && stageForm.customerApproved === 'yes' && (!stageForm.paymentStatus || stageForm.paymentStatus === 'not_received')
-                          ? 'Please select a valid payment status to submit'
-                          : isSampleCustomerApproval && stageForm.customerApproved === 'yes' && stageForm.paymentStatus === 'partial_received' && (!stageForm.partialQuantity || Number(stageForm.partialQuantity) <= 0)
-                          ? 'Please enter partial quantity to submit'
-                          : isPartialPaymentConfirmation && stageForm.partialPaidFully === 'no'
-                          ? "Customer has not cleared full payment ('No' selected). Submit is disabled; only Save and Refer Back are available."
-                          : isPartialPaymentConfirmation && (!stageForm.partialInvoiceNo || !String(stageForm.partialInvoiceNo).trim())
-                          ? 'Please enter invoice number to submit'
-                          : isPartialPaymentConfirmation && (!stageForm.partialAmountReceived || Number(stageForm.partialAmountReceived) <= 0)
-                          ? 'Please enter remaining amount received to submit'
-                          : isPartialQualityCheck && (stageForm.partialQcStitchingVerified === false || stageForm.partialQcPrintCuringVerified === false || stageForm.partialQcColorConsistencyVerified === false)
-                          ? "Quality check inspection standards not verified (unchecked). Submit is disabled; only Save and Refer Back are available."
-                          : isPartialPackaging && (stageForm.partialPackagingPolybagsVerified === false || stageForm.partialPackagingBarcodesAffixed === false)
-                          ? "Packaging and labeling standards not verified (unchecked). Submit is disabled; only Save and Refer Back are available."
-                          : isPartialStagingRoom && (stageForm.partialStagingBayStaged === false || stageForm.partialStagingCartonCountMatched === false)
-                          ? "Staging bay verification standards not verified (unchecked). Submit is disabled; only Save and Refer Back are available."
-                          : isPartialStagingRoom && (!stageForm.partialStagingRack || !String(stageForm.partialStagingRack).trim())
-                          ? "Please enter staging rack/bay identifier to submit."
-                          : isCompleteQualityCheck && (stageForm.completeQcAuditCompleted === false || stageForm.completeQcZeroDefectSignoff === false)
-                          ? "Final bulk QC standards not verified (unchecked). Submit is disabled; only Save and Refer Back are available."
-                          : "Cannot submit while check or radio is 'No'. Only Save and Refer Back are available.")
+                            ? "Check is 'No'. Submit is disabled; only Save and Refer Back are available."
+                            : isSampleStagingGround && stageForm.readyToPickSampleReceived === 'no'
+                              ? "Items marked as not received. Submit is disabled; only Save and Refer Back are available."
+                              : isSampleCustomerApproval && stageForm.customerApproved === 'no'
+                                ? "Customer approval is 'No'. Submit is disabled; only Save and Refer Back are available."
+                                : isSampleStagingGround && stageForm.readyToPickSampleReceived === 'yes' && !stageForm.rackNo?.trim()
+                                  ? 'Please enter rack number to submit'
+                                  : isSampleCustomerApproval && !stageForm.customerApproved
+                                    ? 'Please select whether customer approved sample'
+                                    : isSampleCustomerApproval && stageForm.customerApproved === 'yes' && (!stageForm.paymentStatus || stageForm.paymentStatus === 'not_received')
+                                      ? 'Please select a valid payment status to submit'
+                                      : isSampleCustomerApproval && stageForm.customerApproved === 'yes' && stageForm.paymentStatus === 'partial_received' && (!stageForm.partialQuantity || Number(stageForm.partialQuantity) <= 0)
+                                        ? 'Please enter partial quantity to submit'
+                                        : isPartialPaymentConfirmation && stageForm.partialPaidFully === 'no'
+                                          ? "Customer has not cleared full payment ('No' selected). Submit is disabled; only Save and Refer Back are available."
+                                          : isPartialPaymentConfirmation && (!stageForm.partialInvoiceNo || !String(stageForm.partialInvoiceNo).trim())
+                                            ? 'Please enter invoice number to submit'
+                                            : isPartialPaymentConfirmation && (!stageForm.partialAmountReceived || Number(stageForm.partialAmountReceived) <= 0)
+                                              ? 'Please enter remaining amount received to submit'
+                                              : isPartialQualityCheck && (stageForm.partialQcStitchingVerified === false || stageForm.partialQcPrintCuringVerified === false || stageForm.partialQcColorConsistencyVerified === false)
+                                                ? "Quality check inspection standards not verified (unchecked). Submit is disabled; only Save and Refer Back are available."
+                                                : isPartialPackaging && (stageForm.partialPackagingPolybagsVerified === false || stageForm.partialPackagingBarcodesAffixed === false)
+                                                  ? "Packaging and labeling standards not verified (unchecked). Submit is disabled; only Save and Refer Back are available."
+                                                  : isPartialStagingRoom && (stageForm.partialStagingBayStaged === false || stageForm.partialStagingCartonCountMatched === false)
+                                                    ? "Staging bay verification standards not verified (unchecked). Submit is disabled; only Save and Refer Back are available."
+                                                    : isPartialStagingRoom && (!stageForm.partialStagingRack || !String(stageForm.partialStagingRack).trim())
+                                                      ? "Please enter staging rack/bay identifier to submit."
+                                                      : isCompleteQualityCheck && (stageForm.completeQcAuditCompleted === false || stageForm.completeQcZeroDefectSignoff === false)
+                                                        ? "Final bulk QC standards not verified (unchecked). Submit is disabled; only Save and Refer Back are available."
+                                                        : "Cannot submit while check or radio is 'No'. Only Save and Refer Back are available.")
                       : ''
                   }
                   style={{
@@ -5447,56 +5782,89 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                {(isLeadManager || (isLeadManagerOrAdmin && searchParams.get('from')?.includes('/approvals'))) ? (
-                  isLeadSubmitted ? (
+                {isApprovalReview ? (
+                  <>
                     <button
                       type="button"
-                      disabled={true}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '9px 22px',
-                        borderRadius: '8px',
-                        background: '#10b981',
-                        border: 'none',
-                        color: '#fff',
-                        fontSize: '13.5px',
-                        fontWeight: 600,
-                        cursor: 'not-allowed',
-                        opacity: 0.95,
-                        boxShadow: '0 2px 6px rgba(16,185,129,0.2)'
+                      onClick={() => {
+                        if (isEditingItems) {
+                          alert('You have unsaved item edits. Please click "Save Items" or "Cancel" in the Add Item section first.');
+                          return;
+                        }
+                        setReferBackReason('');
+                        setReferModalOpen(true);
                       }}
-                      title="Order already submitted & approved"
-                    >
-                      <CheckCircle size={16} />
-                      <span>Submitted</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleLeadManagerAction('Approved')}
                       disabled={submittingLeadAction}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '6px',
-                        padding: '9px 24px',
+                        padding: '9px 20px',
                         borderRadius: '8px',
-                        background: '#059669',
-                        border: 'none',
-                        color: '#fff',
+                        background: '#fff',
+                        border: '1px solid #ef4444',
+                        color: '#dc2626',
                         fontSize: '13.5px',
                         fontWeight: 600,
                         cursor: submittingLeadAction ? 'not-allowed' : 'pointer',
-                        boxShadow: '0 2px 6px rgba(5,150,105,0.25)',
+                        boxShadow: '0 1px 3px rgba(239, 68, 68, 0.12)',
                         transition: 'all 0.15s ease'
                       }}
                     >
-                      <CheckCircle size={16} />
-                      <span>{submittingLeadAction ? 'Submitting...' : 'Submit'}</span>
+                      <RotateCcw size={15} />
+                      <span>Refer Back</span>
                     </button>
-                  )
+
+                    {isLeadSubmitted ? (
+                      <button
+                        type="button"
+                        disabled={true}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '9px 22px',
+                          borderRadius: '8px',
+                          background: '#10b981',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: '13.5px',
+                          fontWeight: 600,
+                          cursor: 'not-allowed',
+                          opacity: 0.95,
+                          boxShadow: '0 2px 6px rgba(16,185,129,0.2)'
+                        }}
+                        title="Order already submitted & approved"
+                      >
+                        <CheckCircle size={16} />
+                        <span>Submitted</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleLeadManagerAction('Approved')}
+                        disabled={submittingLeadAction}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '9px 24px',
+                          borderRadius: '8px',
+                          background: '#059669',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: '13.5px',
+                          fontWeight: 600,
+                          cursor: submittingLeadAction ? 'not-allowed' : 'pointer',
+                          boxShadow: '0 2px 6px rgba(5,150,105,0.25)',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <CheckCircle size={16} />
+                        <span>{submittingLeadAction ? 'Submitting...' : 'Submit'}</span>
+                      </button>
+                    )}
+                  </>
                 ) : (
                   isReadOnly ? (
                     <button
@@ -5680,44 +6048,62 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
 
           {(!isExecutionStageView || (hasExecutionStageTabs && executionActiveTab === 'order')) && (
             <form className="form-container" onSubmit={handleFormSubmit} ref={formRef}>
-              <fieldset disabled={isExecutionStageView} style={{ border: 'none', padding: 0, margin: 0, width: '100%' }}>
-            <div className="form-section">
-              <div className="form-section-title">Lead Form</div>
-              
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Order ID</label>
-                  <input
-                    type="text"
-                    disabled={isReadOnly}
-                    value={formData.orderId}
-                    onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
-                    placeholder="Auto-generated"
-                    style={{ background: 'rgba(0,0,0,0.02)', fontWeight: 600, color: '#1e40af' }}
-                  />
-                </div>
+              <fieldset disabled={isExecutionStageView && !isEditingItems} style={{ border: 'none', padding: 0, margin: 0, width: '100%' }}>
+              <div className="form-section">
+                <div className="form-section-title">Lead Form</div>
 
-                <div className="form-group">
-                  <label>Employee Name</label>
-                  <input
-                    type="text"
-                    disabled={isReadOnly}
-                    value={formData.employeeName !== undefined ? formData.employeeName : (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || ''))}
-                    onChange={(e) => setFormData({ ...formData, employeeName: e.target.value })}
-                    style={{ background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>Query</label>
-                  <select value={query} onChange={(e) => setQuery(e.target.value)} disabled={isReadOnly}>
-                    <option value="">Select query type...</option>
-                    <option value="lead">Lead</option>
-                    <option value="order">Order</option>
-                  </select>
-                </div>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>Order ID</label>
+                    <input
+                      type="text"
+                      disabled={isReadOnly}
+                      value={formData.orderId}
+                      onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
+                      placeholder="Auto-generated"
+                      style={{ background: 'rgba(0,0,0,0.02)', fontWeight: 600, color: '#1e40af' }}
+                    />
+                  </div>
 
-                {/* <div className="form-group">
+                  <div className="form-group">
+                    <label>Employee Name</label>
+                    <input
+                      type="text"
+                      disabled={isReadOnly}
+                      value={formData.employeeName !== undefined ? formData.employeeName : (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || ''))}
+                      onChange={(e) => setFormData({ ...formData, employeeName: e.target.value })}
+                      style={{ background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Query</label>
+                    <select value={query} onChange={(e) => setQuery(e.target.value)} disabled={isReadOnly}>
+                      <option value="">Select query type...</option>
+                      <option value="lead">Lead</option>
+                      <option value="order">Order</option>
+                    </select>
+                  </div>
+
+                  {((query || '').toLowerCase().trim() === 'lead' || (query || '').toLowerCase().trim() === 'order') && (
+                    <div className="form-group">
+                      <label>Source</label>
+                      <select
+                        disabled={isReadOnly}
+                        value={(formData.source || '').toLowerCase()}
+                        onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                      >
+                        <option value="">Select source...</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="ads">Ads</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="twitter">Twitter</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {/* <div className="form-group">
                   <label>Query Status</label>
                   <select value={queryStatus} onChange={(e) => setQueryStatus(e.target.value)}>
                     <option value="">Select status...</option>
@@ -5728,926 +6114,1105 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                   </select>
                 </div> */}
 
-                <div className="form-group">
-                  <label>Company Name {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <input
-                    type="text"
-                    required={(query || '').toLowerCase().trim() === 'order'}
-                    disabled={isReadOnly}
-                    value={formData.companyName}
-                    onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Client Name {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <input
-                    type="text"
-                    required={(query || '').toLowerCase().trim() === 'order'}
-                    disabled={isReadOnly}
-                    value={formData.clientName}
-                    onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Company Address {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <input
-                    type="text"
-                    required={(query || '').toLowerCase().trim() === 'order'}
-                    disabled={isReadOnly}
-                    value={formData.companyAddress}
-                    onChange={(e) => setFormData({ ...formData, companyAddress: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>State {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <select
-                    required={(query || '').toLowerCase().trim() === 'order'}
-                    disabled={isReadOnly}
-                    value={(formData.state || '').toUpperCase()}
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value.toUpperCase() })}
-                    style={{ textTransform: 'uppercase' }}
-                  >
-                    <option value="">SELECT STATE / UNION TERRITORY</option>
-                    {formData.state && !INDIAN_STATES.includes((formData.state || '').toUpperCase()) && (
-                      <option value={(formData.state || '').toUpperCase()}>
-                        {(formData.state || '').toUpperCase()}
-                      </option>
-                    )}
-                    {INDIAN_STATES.map((st) => (
-                      <option key={st} value={st}>
-                        {st}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Pincode {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
-                  <input
-                    type="text"
-                    required={(query || '').toLowerCase().trim() === 'order'}
-                    disabled={isReadOnly}
-                    value={formData.pincode}
-                    onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Phone Number *</label>
-                  <div>
+                  <div className="form-group">
+                    <label>Company Name {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
                     <input
-                      type="tel"
-                      required
+                      type="text"
+                      required={(query || '').toLowerCase().trim() === 'order'}
                       disabled={isReadOnly}
-                      value={formData.phoneNumber}
-                      onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-                      onBlur={() => setPhoneTouched(true)}
-                      placeholder="10-digit mobile number"
-                    />
-                    {phoneTouched && !/^\d{10}$/.test((formData.phoneNumber || '').trim()) && (
-                      <span style={{ color: '#ef4444', fontSize: '12px', display: 'block', marginTop: '4px' }}>
-                        Phone number must be of 10 digits
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="form-group" style={{ gridColumn: 2 }}>
-                  <label>Repeated Order</label>
-                  <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'default' : 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
-                      <input
-                        type="radio"
-                        name="repeatedOrder"
-                        value="Yes"
-                        disabled={isReadOnly}
-                        checked={formData.repeatedOrder === 'Yes'}
-                        onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
-                        style={{ width: 'auto', margin: 0, cursor: isReadOnly ? 'default' : 'pointer', accentColor: '#2563eb' }}
-                      />
-                      Yes
-                    </label>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'default' : 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
-                      <input
-                        type="radio"
-                        name="repeatedOrder"
-                        value="No"
-                        disabled={isReadOnly}
-                        checked={formData.repeatedOrder === 'No' || !formData.repeatedOrder}
-                        onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
-                        style={{ width: 'auto', margin: 0, cursor: isReadOnly ? 'default' : 'pointer', accentColor: '#2563eb' }}
-                      />
-                      No
-                    </label>
-                  </div>
-                </div>
-
-                {(queryStatus === 'phone not pick' || queryStatus === 'call back') && (
-                  <div className="form-group" style={{ gridColumn: 1 }}>
-                    <label>Schedule</label>
-                    <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                      <input
-                        type="date"
-                        disabled={isReadOnly}
-                        value={formData.scheduleDate}
-                        onChange={(e) => setFormData({ ...formData, scheduleDate: e.target.value })}
-                        style={{ flex: 1, padding: '10px' }}
-                      />
-                      <input
-                        type="time"
-                        disabled={isReadOnly}
-                        value={formData.scheduleTime}
-                        onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
-                        style={{ flex: 1, padding: '10px' }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="form-group" style={{ display: 'block', marginTop: '24px' }}>
-                <label style={{ display: 'block', marginBottom: '8px' }}>Additional Note</label>
-                <textarea 
-                  rows="4" 
-                  disabled={isReadOnly}
-                  value={formData.additionalNote}
-                  onChange={(e) => setFormData({ ...formData, additionalNote: e.target.value })}
-                  style={{ 
-                    width: '100%', padding: '12px 14px', borderRadius: '8px', 
-                    border: '1px solid #cbd5e1', background: 'white', color: '#334155', 
-                    resize: 'vertical', fontFamily: 'inherit', outline: 'none'
-                  }}
-                ></textarea>
-              </div>
-              
-              {!isSubmitted && !isLeadManager && (!editId || (!isReadOnly && (orderApprovalData?.query || 'lead').toLowerCase().trim() === 'lead')) && (
-                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '32px' }}>
-                  <button type="submit" name="save" className="btn-secondary" style={{ padding: '10px 24px' }}>
-                    Save
-                  </button>
-                  <button 
-                    type="submit" 
-                    name="submit" 
-                    className="btn-primary" 
-                    disabled={!canSubmit} 
-                    style={{ padding: '10px 24px', opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
-                  >
-                    Submit
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* MORE INFORMATION FORM */}
-            {(isSubmitted || editId || hasExecutionStageTabs) && (query || '').toLowerCase().trim() === 'order' && (
-              <div className="form-section" style={{ marginTop: '24px' }}>
-                <div className="form-section-title">Order Information</div>
-                
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Order Stage *</label>
-                    <input
-                      type="text"
-                      readOnly
-                      disabled
-                      value={(orderStage || 'sample').replace(/-/g, ' ')}
-                      style={{
-                        background: 'rgba(0,0,0,0.03)',
-                        color: '#334155',
-                        fontWeight: 600,
-                        textTransform: 'capitalize',
-                        cursor: 'not-allowed',
-                      }}
+                      value={formData.companyName}
+                      onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Sub Stage *</label>
+                    <label>Client Name {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
                     <input
                       type="text"
-                      readOnly
-                      disabled
-                      value={((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage).replace(/-/g, ' ')}
-                      style={{
-                        background: 'rgba(0,0,0,0.03)',
-                        color: '#334155',
-                        fontWeight: 600,
-                        textTransform: 'capitalize',
-                        cursor: 'not-allowed',
-                      }}
-                    />
-                  </div>
-
-                  {/* 1. Logo Design Attachment */}
-                  <div className="form-group">
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Paperclip size={15} style={{ color: '#2563eb' }} />
-                      <span>Logo Design (Max 5)</span>
-                    </label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input
-                          ref={logoDesignInputRef}
-                          type="file"
-                          multiple
-                          accept="image/*,application/pdf"
-                          onChange={(e) => handleFileChange('logoDesign', 'logoDesignName', e)}
-                          style={{ display: 'none' }}
-                          disabled={isReadOnly}
-                        />
-                        {!isReadOnly && (formData.logoDesignFiles?.length || 0) < 5 && (
-                          <button
-                            type="button"
-                            onClick={() => logoDesignInputRef.current?.click()}
-                            className="btn-secondary"
-                            style={{
-                              padding: '7px 12px',
-                              fontSize: '13px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              borderRadius: '8px',
-                              background: 'white',
-                              border: '1px solid #cbd5e1',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap'
-                            }}
-                          >
-                            <Upload size={14} />
-                            {(formData.logoDesignFiles?.length || 0) > 0 ? `Add Files (${formData.logoDesignFiles.length}/5)` : 'Upload Files'}
-                          </button>
-                        )}
-                        {(formData.logoDesignFiles?.length || 0) === 0 && (
-                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                            No file chosen
-                          </span>
-                        )}
-                      </div>
-                      {(formData.logoDesignFiles?.length || 0) > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {formData.logoDesignFiles.map((fileObj, idx) => (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
-                              <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>{idx + 1}.</span>
-                              <a
-                                href={fileObj.data}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                download={fileObj.name || `logo-design-${idx + 1}`}
-                                title={fileObj.name}
-                                style={{
-                                  fontSize: '12px',
-                                  color: '#2563eb',
-                                  fontWeight: 600,
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  textDecoration: 'underline',
-                                  maxWidth: '160px'
-                                }}
-                              >
-                                {fileObj.name || `File ${idx + 1}`}
-                              </a>
-                              {!isReadOnly && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveFile('logoDesign', 'logoDesignName', logoDesignInputRef, idx)}
-                                  style={{
-                                    border: 'none',
-                                    background: 'transparent',
-                                    color: '#ef4444',
-                                    cursor: 'pointer',
-                                    padding: '0 4px',
-                                    fontSize: '15px',
-                                    fontWeight: 'bold',
-                                    lineHeight: 1
-                                  }}
-                                  title="Remove file"
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 2. Digital Design Attachment */}
-                  <div className="form-group">
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Paperclip size={15} style={{ color: '#2563eb' }} />
-                      <span>Digital Design (Max 5)</span>
-                    </label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input
-                          ref={digitalDesignInputRef}
-                          type="file"
-                          multiple
-                          accept="image/*,application/pdf"
-                          onChange={(e) => handleFileChange('digitalDesign', 'digitalDesignName', e)}
-                          style={{ display: 'none' }}
-                          disabled={isReadOnly}
-                        />
-                        {!isReadOnly && (formData.digitalDesignFiles?.length || 0) < 5 && (
-                          <button
-                            type="button"
-                            onClick={() => digitalDesignInputRef.current?.click()}
-                            className="btn-secondary"
-                            style={{
-                              padding: '7px 12px',
-                              fontSize: '13px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              borderRadius: '8px',
-                              background: 'white',
-                              border: '1px solid #cbd5e1',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap'
-                            }}
-                          >
-                            <Upload size={14} />
-                            {(formData.digitalDesignFiles?.length || 0) > 0 ? `Add Files (${formData.digitalDesignFiles.length}/5)` : 'Upload Files'}
-                          </button>
-                        )}
-                        {(formData.digitalDesignFiles?.length || 0) === 0 && (
-                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                            No file chosen
-                          </span>
-                        )}
-                      </div>
-                      {(formData.digitalDesignFiles?.length || 0) > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {formData.digitalDesignFiles.map((fileObj, idx) => (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
-                              <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>{idx + 1}.</span>
-                              <a
-                                href={fileObj.data}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                download={fileObj.name || `digital-design-${idx + 1}`}
-                                title={fileObj.name}
-                                style={{
-                                  fontSize: '12px',
-                                  color: '#2563eb',
-                                  fontWeight: 600,
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  textDecoration: 'underline',
-                                  maxWidth: '160px'
-                                }}
-                              >
-                                {fileObj.name || `File ${idx + 1}`}
-                              </a>
-                              {!isReadOnly && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveFile('digitalDesign', 'digitalDesignName', digitalDesignInputRef, idx)}
-                                  style={{
-                                    border: 'none',
-                                    background: 'transparent',
-                                    color: '#ef4444',
-                                    cursor: 'pointer',
-                                    padding: '0 4px',
-                                    fontSize: '15px',
-                                    fontWeight: 'bold',
-                                    lineHeight: 1
-                                  }}
-                                  title="Remove file"
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Logo Name</label>
-                    <input
-                      type="text"
+                      required={(query || '').toLowerCase().trim() === 'order'}
                       disabled={isReadOnly}
-                      value={formData.logoName}
-                      onChange={(e) => setFormData({ ...formData, logoName: e.target.value })}
-                      placeholder="Enter logo name"
+                      value={formData.clientName}
+                      onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Total Quantity (pcs) *</label>
+                    <label>Company Address {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
+                    <input
+                      type="text"
+                      required={(query || '').toLowerCase().trim() === 'order'}
+                      disabled={isReadOnly}
+                      value={formData.companyAddress}
+                      onChange={(e) => setFormData({ ...formData, companyAddress: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>State {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
+                    <select
+                      required={(query || '').toLowerCase().trim() === 'order'}
+                      disabled={isReadOnly}
+                      value={(formData.state || '').toUpperCase()}
+                      onChange={(e) => setFormData({ ...formData, state: e.target.value.toUpperCase() })}
+                      style={{ textTransform: 'uppercase' }}
+                    >
+                      <option value="">SELECT STATE / UNION TERRITORY</option>
+                      {formData.state && !INDIAN_STATES.includes((formData.state || '').toUpperCase()) && (
+                        <option value={(formData.state || '').toUpperCase()}>
+                          {(formData.state || '').toUpperCase()}
+                        </option>
+                      )}
+                      {INDIAN_STATES.map((st) => (
+                        <option key={st} value={st}>
+                          {st}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Pincode {(query || '').toLowerCase().trim() === 'order' ? '*' : ''}</label>
+                    <input
+                      type="text"
+                      required={(query || '').toLowerCase().trim() === 'order'}
+                      disabled={isReadOnly}
+                      value={formData.pincode}
+                      onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Phone Number *</label>
                     <div>
                       <input
-                        type="number"
+                        type="tel"
                         required
                         disabled={isReadOnly}
-                        value={formData.totalQuantity}
-                        onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value })}
-                        style={{
-                          width: '100%',
-                          borderColor:
-                            items.length > 0 && orderTotalQty > 0
-                              ? itemsTotalQty === orderTotalQty
-                                ? '#22c55e'
-                                : itemsTotalQty > orderTotalQty
-                                ? '#ef4444'
-                                : '#f59e0b'
-                              : undefined,
-                        }}
+                        value={formData.phoneNumber}
+                        onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                        onBlur={() => setPhoneTouched(true)}
+                        placeholder="10-digit mobile number"
                       />
-                      {items.length > 0 && orderTotalQty > 0 && (
-                        <div style={{ marginTop: '5px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          {itemsTotalQty === orderTotalQty ? (
-                            <span style={{ color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <CheckCircle2 size={13} /> Matches Add Item total ({itemsTotalQty}/{orderTotalQty} pcs)
-                            </span>
-                          ) : itemsTotalQty > orderTotalQty ? (
-                            <span style={{ color: '#dc2626', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <AlertCircle size={13} /> Items total ({itemsTotalQty} pcs) exceeds Total Quantity ({orderTotalQty} pcs). Must equal ({orderTotalQty} === {orderTotalQty}).
-                            </span>
-                          ) : (
-                            <span style={{ color: '#d97706', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <AlertCircle size={13} /> Items total: {itemsTotalQty} / {orderTotalQty} pcs ({orderTotalQty - itemsTotalQty} pcs remaining to match)
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Price Per Piece *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      disabled={isReadOnly}
-                      value={formData.pricePerPiece}
-                      onChange={(e) => setFormData({ ...formData, pricePerPiece: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Total Amount *</label>
-                    <input
-                      type="number"
-                      required
-                      disabled={isReadOnly}
-                      value={formData.totalAmount}
-                      onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>GST (in percentage)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      disabled={isReadOnly}
-                      value={formData.gst}
-                      onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Net Amount *</label>
-                    <input
-                      type="number"
-                      required
-                      disabled={isReadOnly}
-                      value={formData.netAmount}
-                      onChange={(e) => setFormData({ ...formData, netAmount: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Advance Amount *</label>
-                    <input
-                      type="number"
-                      required
-                      disabled={isReadOnly}
-                      value={formData.advanceAmount}
-                      onChange={(e) => setFormData({ ...formData, advanceAmount: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Pending Amount *</label>
-                    <input
-                      type="number"
-                      required
-                      disabled={isReadOnly}
-                      value={formData.pendingAmount}
-                      onChange={(e) => setFormData({ ...formData, pendingAmount: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Urgency *</label>
-                    <select
-                      required
-                      disabled={isReadOnly}
-                      value={formData.urgency}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData((prev) => ({
-                          ...prev,
-                          urgency: val,
-                          ...(val.toLowerCase() !== 'yes' ? { deliveryDate: getDefaultDeliveryDate() } : {})
-                        }));
-                      }}
-                    >
-                      <option value="">Select urgency...</option>
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Delivery Date *</label>
-                    <input
-                      type="date"
-                      required
-                      value={formData.deliveryDate}
-                      onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })}
-                      disabled={isReadOnly || formData.urgency?.toLowerCase() !== 'yes'}
-                      style={
-                        isReadOnly || formData.urgency?.toLowerCase() !== 'yes'
-                          ? { background: 'rgba(0,0,0,0.03)', cursor: isReadOnly ? 'default' : 'not-allowed', color: '#64748b' }
-                          : {}
-                      }
-                      title={formData.urgency?.toLowerCase() !== 'yes' ? "Only editable when Urgency is 'Yes'" : ""}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Mode of Delivery</label>
-                    <select
-                      disabled={isReadOnly}
-                      value={formData.modeOfDelivery}
-                      onChange={(e) => setFormData({ ...formData, modeOfDelivery: e.target.value })}
-                    >
-                      <option value="">Select mode...</option>
-                      <option value="cash on delivery">Cash on Delivery</option>
-                      <option value="transportation">Transportation</option>
-                      <option value="courier">Courier</option>
-                      <option value="self pick up">Self Pick up</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: '32px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      {!isReadOnly && (
-                        <button type="button" onClick={handleAddItem} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Plus size={16} /> Add Item *
-                        </button>
-                      )}
-                      {orderTotalQty > 0 && (
-                        <span style={{
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          background: itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#dcfce7' : itemsTotalQty > orderTotalQty ? '#fee2e2' : '#fef3c7',
-                          color: itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#15803d' : itemsTotalQty > orderTotalQty ? '#b91c1c' : '#b45309',
-                          border: `1px solid ${itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#86efac' : itemsTotalQty > orderTotalQty ? '#fca5a5' : '#fde68a'}`
-                        }}>
-                          Items Total: {itemsTotalQty} / {orderTotalQty} pcs {itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '✓' : ''}
+                      {phoneTouched && !/^\d{10}$/.test((formData.phoneNumber || '').trim()) && (
+                        <span style={{ color: '#ef4444', fontSize: '12px', display: 'block', marginTop: '4px' }}>
+                          Phone number must be of 10 digits
                         </span>
                       )}
                     </div>
                   </div>
-                  
-                  {items.length > 0 && (
-                    <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      {items.map((item, itemIdx) => (
-                        <div
-                          key={item.id || item._id || `item-row-${itemIdx}`}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'flex-end',
-                            gap: '10px',
-                            padding: '14px 16px',
-                            background: '#f8fafc',
-                            borderRadius: '12px',
-                            border: '1px solid #e2e8f0',
-                            flexWrap: 'nowrap',
-                            width: '100%',
-                            boxSizing: 'border-box',
-                            overflowX: 'auto',
-                          }}
-                        >
-                          <div style={{ flex: '1.1 1 115px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Item *</label>
-                            <select
-                              required
-                              disabled={isReadOnly}
-                              value={item.itemType || (isTshirt(item) ? 't-shirt' : (item.item ? 'others' : ''))}
-                              onChange={(e) => {
-                                const selected = e.target.value;
-                                if (selected === 't-shirt') {
-                                  handleItemChange(item.id, {
-                                    itemType: 't-shirt',
-                                    item: 'T-Shirt',
-                                  });
-                                } else if (selected === 'others') {
-                                  handleItemChange(item.id, {
-                                    itemType: 'others',
-                                    item: item.enterItem || '',
-                                  });
-                                } else {
-                                  handleItemChange(item.id, {
-                                    itemType: '',
-                                    item: '',
-                                    printingType: '',
-                                    sublimationOption: '',
-                                  });
-                                }
-                              }}
-                              style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
-                            >
-                              <option value="">Select...</option>
-                              <option value="t-shirt">T-Shirt</option>
-                              <option value="others">Others</option>
-                            </select>
-                          </div>
 
-                          {(item.itemType === 'others' || (!isTshirt(item) && item.item && item.item !== '')) && (
-                            <div style={{ flex: '1.2 1 120px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Enter Item *</label>
-                              <input
-                                type="text"
-                                required
-                                disabled={isReadOnly}
-                                placeholder="Enter item..."
-                                value={item.enterItem || (item.item !== 'T-Shirt' && item.item !== 'others' ? item.item : '')}
-                                onChange={(e) => handleItemChange(item.id, {
-                                  enterItem: e.target.value,
-                                  item: e.target.value,
-                                })}
-                                style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
-                              />
+                  <div className="form-group" style={{ gridColumn: 2 }}>
+                    <label>Repeated Order</label>
+                    <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'default' : 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
+                        <input
+                          type="radio"
+                          name="repeatedOrder"
+                          value="Yes"
+                          disabled={isReadOnly}
+                          checked={formData.repeatedOrder === 'Yes'}
+                          onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
+                          style={{ width: 'auto', margin: 0, cursor: isReadOnly ? 'default' : 'pointer', accentColor: '#2563eb' }}
+                        />
+                        Yes
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'default' : 'pointer', fontWeight: 500, fontSize: '14px', margin: 0, color: '#334155' }}>
+                        <input
+                          type="radio"
+                          name="repeatedOrder"
+                          value="No"
+                          disabled={isReadOnly}
+                          checked={formData.repeatedOrder === 'No' || !formData.repeatedOrder}
+                          onChange={(e) => setFormData({ ...formData, repeatedOrder: e.target.value })}
+                          style={{ width: 'auto', margin: 0, cursor: isReadOnly ? 'default' : 'pointer', accentColor: '#2563eb' }}
+                        />
+                        No
+                      </label>
+                    </div>
+                  </div>
+
+                  {(queryStatus === 'phone not pick' || queryStatus === 'call back') && (
+                    <div className="form-group" style={{ gridColumn: 1 }}>
+                      <label>Schedule</label>
+                      <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                        <input
+                          type="date"
+                          disabled={isReadOnly}
+                          value={formData.scheduleDate}
+                          onChange={(e) => setFormData({ ...formData, scheduleDate: e.target.value })}
+                          style={{ flex: 1, padding: '10px' }}
+                        />
+                        <input
+                          type="time"
+                          disabled={isReadOnly}
+                          value={formData.scheduleTime}
+                          onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
+                          style={{ flex: 1, padding: '10px' }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-group" style={{ display: 'block', marginTop: '24px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px' }}>Additional Note</label>
+                  <textarea
+                    rows="4"
+                    disabled={isReadOnly}
+                    value={formData.additionalNote}
+                    onChange={(e) => setFormData({ ...formData, additionalNote: e.target.value })}
+                    style={{
+                      width: '100%', padding: '12px 14px', borderRadius: '8px',
+                      border: '1px solid #cbd5e1', background: 'white', color: '#334155',
+                      resize: 'vertical', fontFamily: 'inherit', outline: 'none'
+                    }}
+                  ></textarea>
+                </div>
+
+                {!isSubmitted && !isLeadManager && !isApprovalReview && (!editId || (!isReadOnly && (orderApprovalData?.query || 'lead').toLowerCase().trim() === 'lead')) && (
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '32px' }}>
+                    <button type="submit" name="save" className="btn-secondary" style={{ padding: '10px 24px' }}>
+                      Save
+                    </button>
+                    <button
+                      type="submit"
+                      name="submit"
+                      className="btn-primary"
+                      disabled={!canSubmit}
+                      style={{ padding: '10px 24px', opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
+                    >
+                      Submit
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* MORE INFORMATION FORM */}
+              {(isSubmitted || editId || hasExecutionStageTabs) && (query || '').toLowerCase().trim() === 'order' && (
+                <div className="form-section" style={{ marginTop: '24px' }}>
+                  <div className="form-section-title">Order Information</div>
+
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label>Order Stage *</label>
+                      {isCEO ? (
+                        <select
+                          value={(orderStage || 'sample').toLowerCase()}
+                          onChange={handleOrderStageChange}
+                          disabled={isReadOnly}
+                        >
+                          <option value="sample">Sample</option>
+                          <option value="partial">Partial</option>
+                          <option value="complete">Complete</option>
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          readOnly
+                          disabled
+                          value={(orderStage || 'sample').replace(/-/g, ' ')}
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            textTransform: 'capitalize',
+                            cursor: 'not-allowed',
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    <div className="form-group">
+                      <label>Sub Stage *</label>
+                      {isCEO ? (
+                        <select
+                          value={((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage.toLowerCase().replace(/\s+/g, '-'))}
+                          onChange={handleSubStageChange}
+                          disabled={isReadOnly}
+                        >
+                          {(SUB_STAGE_OPTIONS_BY_ORDER_STAGE[(orderStage || 'sample').toLowerCase()] || []).map((opt) => (
+                            <option key={opt.slug} value={opt.slug}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          readOnly
+                          disabled
+                          value={((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage).replace(/-/g, ' ')}
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            textTransform: 'capitalize',
+                            cursor: 'not-allowed',
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    {/* 1. Logo Design Attachment */}
+                    <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Paperclip size={15} style={{ color: '#2563eb' }} />
+                        <span>Logo Design (Max 5)</span>
+                      </label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input
+                            ref={logoDesignInputRef}
+                            type="file"
+                            multiple
+                            accept="image/*,application/pdf"
+                            onChange={(e) => handleFileChange('logoDesign', 'logoDesignName', e)}
+                            style={{ display: 'none' }}
+                            disabled={isReadOnly}
+                          />
+                          {!isReadOnly && (formData.logoDesignFiles?.length || 0) < 5 && (
+                            <button
+                              type="button"
+                              onClick={() => logoDesignInputRef.current?.click()}
+                              className="btn-secondary"
+                              style={{
+                                padding: '7px 12px',
+                                fontSize: '13px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                borderRadius: '8px',
+                                background: 'white',
+                                border: '1px solid #cbd5e1',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              <Upload size={14} />
+                              {(formData.logoDesignFiles?.length || 0) > 0 ? `Add Files (${formData.logoDesignFiles.length}/5)` : 'Upload Files'}
+                            </button>
+                          )}
+                          {(formData.logoDesignFiles?.length || 0) === 0 && (
+                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                              No file chosen
+                            </span>
+                          )}
+                        </div>
+                        {(formData.logoDesignFiles?.length || 0) > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {formData.logoDesignFiles.map((fileObj, idx) => (
+                              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                                <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>{idx + 1}.</span>
+                                <a
+                                  href={fileObj.data}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={fileObj.name || `logo-design-${idx + 1}`}
+                                  title={fileObj.name}
+                                  style={{
+                                    fontSize: '12px',
+                                    color: '#2563eb',
+                                    fontWeight: 600,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    textDecoration: 'underline',
+                                    maxWidth: '160px'
+                                  }}
+                                >
+                                  {fileObj.name || `File ${idx + 1}`}
+                                </a>
+                                {!isReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveFile('logoDesign', 'logoDesignName', logoDesignInputRef, idx)}
+                                    style={{
+                                      border: 'none',
+                                      background: 'transparent',
+                                      color: '#ef4444',
+                                      cursor: 'pointer',
+                                      padding: '0 4px',
+                                      fontSize: '15px',
+                                      fontWeight: 'bold',
+                                      lineHeight: 1
+                                    }}
+                                    title="Remove file"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 2. Digital Design Attachment */}
+                    <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Paperclip size={15} style={{ color: '#2563eb' }} />
+                        <span>Digital Design (Max 5)</span>
+                      </label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input
+                            ref={digitalDesignInputRef}
+                            type="file"
+                            multiple
+                            accept="image/*,application/pdf"
+                            onChange={(e) => handleFileChange('digitalDesign', 'digitalDesignName', e)}
+                            style={{ display: 'none' }}
+                            disabled={isReadOnly}
+                          />
+                          {!isReadOnly && (formData.digitalDesignFiles?.length || 0) < 5 && (
+                            <button
+                              type="button"
+                              onClick={() => digitalDesignInputRef.current?.click()}
+                              className="btn-secondary"
+                              style={{
+                                padding: '7px 12px',
+                                fontSize: '13px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                borderRadius: '8px',
+                                background: 'white',
+                                border: '1px solid #cbd5e1',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              <Upload size={14} />
+                              {(formData.digitalDesignFiles?.length || 0) > 0 ? `Add Files (${formData.digitalDesignFiles.length}/5)` : 'Upload Files'}
+                            </button>
+                          )}
+                          {(formData.digitalDesignFiles?.length || 0) === 0 && (
+                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                              No file chosen
+                            </span>
+                          )}
+                        </div>
+                        {(formData.digitalDesignFiles?.length || 0) > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {formData.digitalDesignFiles.map((fileObj, idx) => (
+                              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                                <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>{idx + 1}.</span>
+                                <a
+                                  href={fileObj.data}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={fileObj.name || `digital-design-${idx + 1}`}
+                                  title={fileObj.name}
+                                  style={{
+                                    fontSize: '12px',
+                                    color: '#2563eb',
+                                    fontWeight: 600,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    textDecoration: 'underline',
+                                    maxWidth: '160px'
+                                  }}
+                                >
+                                  {fileObj.name || `File ${idx + 1}`}
+                                </a>
+                                {!isReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveFile('digitalDesign', 'digitalDesignName', digitalDesignInputRef, idx)}
+                                    style={{
+                                      border: 'none',
+                                      background: 'transparent',
+                                      color: '#ef4444',
+                                      cursor: 'pointer',
+                                      padding: '0 4px',
+                                      fontSize: '15px',
+                                      fontWeight: 'bold',
+                                      lineHeight: 1
+                                    }}
+                                    title="Remove file"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Logo Name</label>
+                      <input
+                        type="text"
+                        disabled={isReadOnly}
+                        value={formData.logoName}
+                        onChange={(e) => setFormData({ ...formData, logoName: e.target.value })}
+                        placeholder="Enter logo name"
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Total Quantity (pcs) *</label>
+                      <div>
+                        <input
+                          type="number"
+                          required
+                          disabled={isReadOnly}
+                          value={formData.totalQuantity}
+                          onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value })}
+                          style={{
+                            width: '100%',
+                            borderColor:
+                              items.length > 0 && orderTotalQty > 0
+                                ? itemsTotalQty === orderTotalQty
+                                  ? '#22c55e'
+                                  : itemsTotalQty > orderTotalQty
+                                    ? '#ef4444'
+                                    : '#f59e0b'
+                                : undefined,
+                          }}
+                        />
+                        {items.length > 0 && orderTotalQty > 0 && (
+                          <div style={{ marginTop: '5px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {itemsTotalQty === orderTotalQty ? (
+                              <span style={{ color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <CheckCircle2 size={13} /> Matches Add Item total ({itemsTotalQty}/{orderTotalQty} pcs)
+                              </span>
+                            ) : itemsTotalQty > orderTotalQty ? (
+                              <span style={{ color: '#dc2626', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <AlertCircle size={13} /> Items total ({itemsTotalQty} pcs) exceeds Total Quantity ({orderTotalQty} pcs). Must equal ({orderTotalQty} === {orderTotalQty}).
+                              </span>
+                            ) : (
+                              <span style={{ color: '#d97706', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <AlertCircle size={13} /> Items total: {itemsTotalQty} / {orderTotalQty} pcs ({orderTotalQty - itemsTotalQty} pcs remaining to match)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Price Per Piece *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        disabled={isReadOnly}
+                        value={formData.pricePerPiece}
+                        onChange={(e) => setFormData({ ...formData, pricePerPiece: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Total Amount *</label>
+                      <input
+                        type="number"
+                        required
+                        disabled={isReadOnly}
+                        value={formData.totalAmount}
+                        onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>GST (in percentage)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        disabled={isReadOnly}
+                        value={formData.gst}
+                        onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Net Amount *</label>
+                      <input
+                        type="number"
+                        required
+                        disabled={isReadOnly}
+                        value={formData.netAmount}
+                        onChange={(e) => setFormData({ ...formData, netAmount: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Advance Amount *</label>
+                      <input
+                        type="number"
+                        required
+                        disabled={isReadOnly}
+                        value={formData.advanceAmount}
+                        onChange={(e) => setFormData({ ...formData, advanceAmount: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Pending Amount *</label>
+                      <input
+                        type="number"
+                        required
+                        disabled={isReadOnly}
+                        value={formData.pendingAmount}
+                        onChange={(e) => setFormData({ ...formData, pendingAmount: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Urgency *</label>
+                      <select
+                        required
+                        disabled={isReadOnly}
+                        value={formData.urgency}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData((prev) => ({
+                            ...prev,
+                            urgency: val,
+                            ...(val.toLowerCase() !== 'yes' ? { deliveryDate: getDefaultDeliveryDate() } : {})
+                          }));
+                        }}
+                      >
+                        <option value="">Select urgency...</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Delivery Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={formData.deliveryDate}
+                        onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })}
+                        disabled={isReadOnly || formData.urgency?.toLowerCase() !== 'yes'}
+                        style={
+                          isReadOnly || formData.urgency?.toLowerCase() !== 'yes'
+                            ? { background: 'rgba(0,0,0,0.03)', cursor: isReadOnly ? 'default' : 'not-allowed', color: '#64748b' }
+                            : {}
+                        }
+                        title={formData.urgency?.toLowerCase() !== 'yes' ? "Only editable when Urgency is 'Yes'" : ""}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Mode of Delivery</label>
+                      <select
+                        disabled={isReadOnly}
+                        value={formData.modeOfDelivery}
+                        onChange={(e) => setFormData({ ...formData, modeOfDelivery: e.target.value })}
+                      >
+                        <option value="">Select mode...</option>
+                        <option value="cash on delivery">Cash on Delivery</option>
+                        <option value="transportation">Transportation</option>
+                        <option value="courier">Courier</option>
+                        <option value="self pick up">Self Pick up</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '32px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        {!isItemsReadOnly && (
+                          <button type="button" onClick={handleAddItem} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Plus size={16} /> Add Item *
+                          </button>
+                        )}
+                        {orderTotalQty > 0 && (
+                          <span style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            background: itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#dcfce7' : itemsTotalQty > orderTotalQty ? '#fee2e2' : '#fef3c7',
+                            color: itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#15803d' : itemsTotalQty > orderTotalQty ? '#b91c1c' : '#b45309',
+                            border: `1px solid ${itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#86efac' : itemsTotalQty > orderTotalQty ? '#fca5a5' : '#fde68a'}`
+                          }}>
+                            Items Total: {itemsTotalQty} / {orderTotalQty} pcs {itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '✓' : ''}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Top Right Action Button: Lead Manager can edit Add Item section */}
+                      {canEditItemsAsManager && isReadOnly && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {!isEditingItems ? (
+                            <button
+                              type="button"
+                              onClick={handleStartEditItems}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '7px 14px',
+                                borderRadius: '8px',
+                                background: '#ffffff',
+                                border: '1px solid #0284c7',
+                                color: '#0284c7',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                boxShadow: '0 1px 2px rgba(2, 132, 199, 0.08)',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <Edit2 size={14} />
+                              <span>Edit Items</span>
+                            </button>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <button
+                                type="button"
+                                onClick={handleCancelEditItems}
+                                disabled={isSavingItems}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '7px 14px',
+                                  borderRadius: '8px',
+                                  background: '#f8fafc',
+                                  border: '1px solid #cbd5e1',
+                                  color: '#475569',
+                                  fontSize: '13px',
+                                  fontWeight: 600,
+                                  cursor: isSavingItems ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                <X size={14} />
+                                <span>Cancel</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleSaveItems}
+                                disabled={isSavingItems}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '7px 16px',
+                                  borderRadius: '8px',
+                                  background: '#16a34a',
+                                  border: 'none',
+                                  color: '#ffffff',
+                                  fontSize: '13px',
+                                  fontWeight: 600,
+                                  cursor: isSavingItems ? 'not-allowed' : 'pointer',
+                                  boxShadow: '0 2px 4px rgba(22, 163, 74, 0.2)',
+                                }}
+                              >
+                                <Check size={14} />
+                                <span>{isSavingItems ? 'Saving...' : 'Save Items'}</span>
+                              </button>
                             </div>
                           )}
+                        </div>
+                      )}
+                    </div>
 
-                          {(isTshirt(item) || item.itemType === 'others') && (
-                            <div style={{ flex: '1.2 1 125px', minWidth: '115px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Printing Type</label>
+                    {items.length > 0 && (
+                      <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {items.map((item, itemIdx) => (
+                          <div
+                            key={item.id || item._id || `item-row-${itemIdx}`}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-end',
+                              gap: '10px',
+                              padding: '14px 16px',
+                              background: '#f8fafc',
+                              borderRadius: '12px',
+                              border: '1px solid #e2e8f0',
+                              flexWrap: 'nowrap',
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              overflowX: 'auto',
+                            }}
+                          >
+                            <div style={{ flex: '1.1 1 115px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Item *</label>
                               <select
-                                disabled={isReadOnly}
-                                value={item.printingType || ''}
+                                required
+                                disabled={isItemsReadOnly}
+                                value={item.itemType || (isTshirt(item) ? 't-shirt' : (item.item ? 'others' : ''))}
                                 onChange={(e) => {
-                                  const val = e.target.value;
-                                  handleItemChange(item.id, {
-                                    printingType: val,
-                                    ...(val !== 'Sublimation' ? { sublimationOption: '', sublimation: '' } : {})
-                                  });
+                                  const selected = e.target.value;
+                                  if (selected === 't-shirt') {
+                                    handleItemChange(item.id, {
+                                      itemType: 't-shirt',
+                                      item: 'T-Shirt',
+                                    });
+                                  } else if (selected === 'others') {
+                                    handleItemChange(item.id, {
+                                      itemType: 'others',
+                                      item: item.enterItem || '',
+                                      printingType: '',
+                                      sublimationOption: '',
+                                    });
+                                  } else {
+                                    handleItemChange(item.id, {
+                                      itemType: '',
+                                      item: '',
+                                      printingType: '',
+                                      sublimationOption: '',
+                                    });
+                                  }
                                 }}
                                 style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                               >
                                 <option value="">Select...</option>
-                                <option value="DTF">DTF</option>
-                                <option value="Sublimation">Sublimation</option>
-                                <option value="Embroidery">Embroidery</option>
+                                <option value="t-shirt">T-Shirt</option>
+                                <option value="others">Others</option>
                               </select>
                             </div>
-                          )}
 
-                          {isTshirt(item) && (item.printingType || '') === 'Sublimation' && (
-                            <div style={{ flex: '0.8 1 80px', minWidth: '75px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Option</label>
+                            {(item.itemType === 'others' || (!isTshirt(item) && item.item && item.item !== '')) && (
+                              <div style={{ flex: '1.2 1 120px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Enter Item *</label>
+                                <input
+                                  type="text"
+                                  required
+                                  disabled={isItemsReadOnly}
+                                  placeholder="Enter item..."
+                                  value={item.enterItem || (item.item !== 'T-Shirt' && item.item !== 'others' ? item.item : '')}
+                                  onChange={(e) => handleItemChange(item.id, {
+                                    enterItem: e.target.value,
+                                    item: e.target.value,
+                                  })}
+                                  style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                                />
+                              </div>
+                            )}
+
+                            {isTshirt(item) && (
+                              <div style={{ flex: '1.2 1 125px', minWidth: '115px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Printing Type</label>
+                                <select
+                                  disabled={isItemsReadOnly}
+                                  value={item.printingType || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    handleItemChange(item.id, {
+                                      printingType: val,
+                                      ...(val !== 'Sublimation' ? { sublimationOption: '', sublimation: '' } : {})
+                                    });
+                                  }}
+                                  style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                                >
+                                  <option value="">Select...</option>
+                                  <option value="DTF">DTF</option>
+                                  <option value="Sublimation">Sublimation</option>
+                                  <option value="Embroidery">Embroidery</option>
+                                </select>
+                              </div>
+                            )}
+
+                            {isTshirt(item) && (item.printingType || '') === 'Sublimation' && (
+                              <div style={{ flex: '0.8 1 80px', minWidth: '75px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Option</label>
+                                <select
+                                  disabled={isItemsReadOnly}
+                                  value={item.sublimationOption || ''}
+                                  onChange={(e) => handleItemChange(item.id, 'sublimationOption', e.target.value)}
+                                  style={{ padding: '8px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                                >
+                                  <option value="">Select...</option>
+                                  <option value="1/2">1/2</option>
+                                  <option value="1">1</option>
+                                </select>
+                              </div>
+                            )}
+
+                            <div style={{ flex: '1 1 95px', minWidth: '85px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Fabric *</label>
+                              <input
+                                type="text"
+                                required
+                                disabled={isItemsReadOnly}
+                                value={item.fabric || ''}
+                                onChange={(e) => handleItemChange(item.id, 'fabric', e.target.value)}
+                                style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                              />
+                            </div>
+                            <div style={{ flex: '0.8 1 70px', minWidth: '60px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Quantity *</label>
+                              <input
+                                type="number"
+                                required
+                                disabled={isItemsReadOnly}
+                                value={item.quantity || ''}
+                                onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
+                                style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                              />
+                            </div>
+                            <div style={{ flex: '0.8 1 75px', minWidth: '65px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Size *</label>
                               <select
-                                disabled={isReadOnly}
-                                value={item.sublimationOption || ''}
-                                onChange={(e) => handleItemChange(item.id, 'sublimationOption', e.target.value)}
-                                style={{ padding: '8px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                                required
+                                disabled={isItemsReadOnly}
+                                value={item.size || ''}
+                                onChange={(e) => handleItemChange(item.id, 'size', e.target.value)}
+                                style={{ padding: '8px 6px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                               >
                                 <option value="">Select...</option>
-                                <option value="1/2">1/2</option>
-                                <option value="1">1</option>
+                                <option value="S">S</option>
+                                <option value="M">M</option>
+                                <option value="L">L</option>
+                                <option value="XL">XL</option>
+                                <option value="XXL">XXL</option>
+                                <option value="XXXL">XXXL</option>
+                                {item.size && !['S', 'M', 'L', 'XL', 'XXL', 'XXXL'].includes(item.size) && (
+                                  <option value={item.size}>{item.size}</option>
+                                )}
                               </select>
                             </div>
-                          )}
-
-                          <div style={{ flex: '1 1 95px', minWidth: '85px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Fabric *</label>
-                            <input
-                              type="text"
-                              required
-                              disabled={isReadOnly}
-                              value={item.fabric || ''}
-                              onChange={(e) => handleItemChange(item.id, 'fabric', e.target.value)}
-                              style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
-                            />
+                            <div style={{ flex: '1 1 95px', minWidth: '85px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Color *</label>
+                              <input
+                                type="text"
+                                required
+                                disabled={isItemsReadOnly}
+                                value={item.color || ''}
+                                onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
+                                style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                              />
+                            </div>
+                            {!isItemsReadOnly && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(item.id)}
+                                title="Remove item"
+                                style={{
+                                  flex: '0 0 auto',
+                                  height: '36px',
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#ef4444',
+                                  cursor: 'pointer',
+                                  padding: '6px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  marginBottom: '1px',
+                                  borderRadius: '6px',
+                                }}
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            )}
                           </div>
-                          <div style={{ flex: '0.8 1 70px', minWidth: '60px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Quantity *</label>
-                            <input
-                              type="number"
-                              required
-                              disabled={isReadOnly}
-                              value={item.quantity || ''}
-                              onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
-                              style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
-                            />
-                          </div>
-                          <div style={{ flex: '0.8 1 75px', minWidth: '65px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Size *</label>
-                            <select
-                              required
-                              disabled={isReadOnly}
-                              value={item.size || ''}
-                              onChange={(e) => handleItemChange(item.id, 'size', e.target.value)}
-                              style={{ padding: '8px 6px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
-                            >
-                              <option value="">Select...</option>
-                              <option value="S">S</option>
-                              <option value="M">M</option>
-                              <option value="L">L</option>
-                              <option value="XL">XL</option>
-                              <option value="XXL">XXL</option>
-                              <option value="XXXL">XXXL</option>
-                              {item.size && !['S', 'M', 'L', 'XL', 'XXL', 'XXXL'].includes(item.size) && (
-                                <option value={item.size}>{item.size}</option>
-                              )}
-                            </select>
-                          </div>
-                          <div style={{ flex: '1 1 95px', minWidth: '85px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Color *</label>
-                            <input
-                              type="text"
-                              required
-                              disabled={isReadOnly}
-                              value={item.color || ''}
-                              onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
-                              style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
-                            />
-                          </div>
-                          {!isReadOnly && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItem(item.id)}
-                              title="Remove item"
-                              style={{
-                                flex: '0 0 auto',
-                                height: '36px',
-                                background: 'none',
-                                border: 'none',
-                                color: '#ef4444',
-                                cursor: 'pointer',
-                                padding: '6px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginBottom: '1px',
-                                borderRadius: '6px',
-                              }}
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                
-                {!isExecutionStageView && !isLeadManager && !isApprovalReview && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px' }}>
-                    {editId && isReadOnly && (
-                      <button
-                        type="button"
-                        onClick={() => setIsEditing(true)}
-                        className="btn-primary"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 28px' }}
-                      >
-                        <Edit2 size={16} /> Edit Order
-                      </button>
+                        ))}
+                      </div>
                     )}
+                  </div>
 
-                    {editId && !isReadOnly && (
-                      <>
+                  {!isExecutionStageView && !isLeadManager && !isApprovalReview && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px' }}>
+                      {editId && isReadOnly && (
                         <button
                           type="button"
-                          onClick={handleCancelEdit}
-                          className="btn-secondary"
-                          style={{ padding: '10px 24px' }}
+                          onClick={() => setIsEditing(true)}
+                          className="btn-primary"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 28px' }}
                         >
-                          Cancel
+                          <Edit2 size={16} /> Edit Order
                         </button>
+                      )}
+
+                      {editId && !isReadOnly && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleCancelEdit}
+                            className="btn-secondary"
+                            style={{ padding: '10px 24px' }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveExistingOrder}
+                            className="btn-primary"
+                            style={{ padding: '10px 32px' }}
+                          >
+                            {(orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order' && (query || '').toLowerCase().trim() === 'order'
+                              ? 'Submit'
+                              : 'Save Changes'}
+                          </button>
+                        </>
+                      )}
+
+                      {!editId && (
                         <button
                           type="button"
-                          onClick={handleSaveExistingOrder}
+                          onClick={handleOrderSubmit}
                           className="btn-primary"
                           style={{ padding: '10px 32px' }}
                         >
-                          {(orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order' && (query || '').toLowerCase().trim() === 'order'
-                            ? 'Submit'
-                            : 'Save Changes'}
+                          Submit
                         </button>
-                      </>
-                    )}
-
-                    {!editId && (
-                      <button
-                        type="button"
-                        onClick={handleOrderSubmit}
-                        className="btn-primary"
-                        style={{ padding: '10px 32px' }}
-                      >
-                        Submit
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Refer Back with additional note at the bottom of the form for Lead Manager / Approval Review */}
-                {editId && (isLeadManager || (isLeadManagerOrAdmin && searchParams.get('from')?.includes('/approvals'))) && !isExecutionStageView && (
-                  <div className="lead-manager-refer-back-box" style={{
-                    marginTop: '24px'
-                  }}>
-                    {leadAppr.note && (
-                      <div style={{
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '6px',
-                        padding: '8px 12px',
-                        marginBottom: '12px',
-                        fontSize: '13px',
-                        color: '#334155'
-                      }}>
-                        <strong style={{ color: '#475569' }}>
-                          Previous Manager Note:
-                        </strong>{' '}
-                        <span>&ldquo;{leadAppr.note}&rdquo;</span>
-                        {leadAppr.author && (
-                          <span style={{ fontSize: '11.5px', color: '#64748b', marginLeft: '8px' }}>
-                            — {leadAppr.author} {leadAppr.updatedAt ? `on ${new Date(leadAppr.updatedAt).toLocaleDateString()}` : ''}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    <div style={{ marginBottom: '12px' }}>
-                      <textarea
-                        value={leadManagerNote}
-                        onChange={(e) => setLeadManagerNote(e.target.value)}
-                        placeholder="Additional note (mandatory with every refer back)..."
-                        rows={2}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          borderRadius: '6px',
-                          border: '1px solid #cbd5e1',
-                          fontSize: '13.5px',
-                          fontFamily: 'inherit',
-                          resize: 'vertical',
-                          boxSizing: 'border-box',
-                          background: '#ffffff'
-                        }}
-                      />
+                      )}
                     </div>
+                  )}
+                </div>
+              )}
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleLeadManagerAction('Referred Back')}
-                        disabled={submittingLeadAction}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '8px 20px',
-                          borderRadius: '6px',
-                          background: '#fff',
-                          border: '1px solid #ef4444',
-                          color: '#dc2626',
-                          fontSize: '13.5px',
-                          fontWeight: 600,
-                          cursor: submittingLeadAction ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        <RotateCcw size={15} />
-                        <span>{submittingLeadAction ? 'Processing...' : 'Refer Back'}</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            
               </fieldset>
             </form>
+          )}
+
+          {/* Refer Back Modal for Lead Manager / Approval Review */}
+          {referModalOpen && (
+            <div
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                backdropFilter: 'blur(3px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+                padding: '20px',
+              }}
+              onClick={() => setReferModalOpen(false)}
+            >
+              <div
+                style={{
+                  background: '#ffffff',
+                  borderRadius: '16px',
+                  width: '100%',
+                  maxWidth: '460px',
+                  boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                  border: '1px solid #e2e8f0',
+                  overflow: 'hidden',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '16px 20px',
+                    borderBottom: '1px solid #e2e8f0',
+                  }}
+                >
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                      Refer Back Order
+                    </h3>
+                    <p style={{ margin: '3px 0 0 0', fontSize: '12.5px', color: '#64748b' }}>
+                      Order #{formData.orderId || orderApprovalData?.sampleId || 'ORD'} • {formData.clientName || 'Client'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReferModalOpen(false)}
+                    style={{
+                      border: 'none',
+                      background: '#f1f5f9',
+                      borderRadius: '8px',
+                      padding: '6px',
+                      cursor: 'pointer',
+                      color: '#475569',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div style={{ padding: '20px' }}>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#334155',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Reason for Referral (Mandatory) <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <textarea
+                    autoFocus
+                    rows={4}
+                    value={referBackReason}
+                    onChange={(e) => setReferBackReason(e.target.value)}
+                    placeholder="Enter instructions or changes required for the sales executive..."
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '13.5px',
+                      fontFamily: 'inherit',
+                      resize: 'vertical',
+                      boxSizing: 'border-box',
+                      background: '#ffffff',
+                      outline: 'none',
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      gap: '12px',
+                      marginTop: '20px',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setReferModalOpen(false)}
+                      className="btn-secondary"
+                      style={{ padding: '8px 18px', fontSize: '13px' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={submittingLeadAction}
+                      onClick={async () => {
+                        if (!referBackReason.trim()) {
+                          alert('Additional note is mandatory with every refer back.');
+                          return;
+                        }
+                        await handleLeadManagerAction('Referred Back', referBackReason);
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 20px',
+                        borderRadius: '8px',
+                        background: '#dc2626',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: submittingLeadAction ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      <RotateCcw size={14} />
+                      <span>{submittingLeadAction ? 'Submitting...' : 'Confirm Referral'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* ACTIVITY LOG SECTION (Shown in all opened applications across all profiles and stages) */}
@@ -6769,13 +7334,12 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                         <div className="task-col-center">
                           <span className="task-status-label">Status</span>
                           <span
-                            className={`task-status-pill ${
-                              leadAppr.status === 'Approved'
-                                ? 'approved'
-                                : leadAppr.status === 'Referred Back'
+                            className={`task-status-pill ${leadAppr.status === 'Approved'
+                              ? 'approved'
+                              : leadAppr.status === 'Referred Back'
                                 ? 'referred'
                                 : 'pending'
-                            }`}
+                              }`}
                           >
                             {leadAppr.status || 'Pending'}
                           </span>
@@ -6785,9 +7349,8 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                           <span className="task-note-label">Lead Manager Notes</span>
                           {leadAppr.note ? (
                             <div
-                              className={`task-note-content ${
-                                leadAppr.status === 'Referred Back' ? 'referred' : ''
-                              }`}
+                              className={`task-note-content ${leadAppr.status === 'Referred Back' ? 'referred' : ''
+                                }`}
                             >
                               {leadAppr.note}
                             </div>
@@ -6811,13 +7374,12 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                         <div className="task-col-center">
                           <span className="task-status-label">Status</span>
                           <span
-                            className={`task-status-pill ${
-                              stockAppr.status === 'Approved'
-                                ? 'approved'
-                                : stockAppr.status === 'Referred Back'
+                            className={`task-status-pill ${stockAppr.status === 'Approved'
+                              ? 'approved'
+                              : stockAppr.status === 'Referred Back'
                                 ? 'referred'
                                 : 'pending'
-                            }`}
+                              }`}
                           >
                             {stockAppr.status || 'Pending'}
                           </span>
@@ -6827,9 +7389,8 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                           <span className="task-note-label">Stock Room Notes</span>
                           {stockAppr.note ? (
                             <div
-                              className={`task-note-content ${
-                                stockAppr.status === 'Referred Back' ? 'referred' : ''
-                              }`}
+                              className={`task-note-content ${stockAppr.status === 'Referred Back' ? 'referred' : ''
+                                }`}
                             >
                               {stockAppr.note}
                             </div>
@@ -6854,13 +7415,12 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                           <div className="task-col-center">
                             <span className="task-status-label">Status</span>
                             <span
-                              className={`task-status-pill ${
-                                prodAppr.status === 'Approved'
-                                  ? 'approved'
-                                  : prodAppr.status === 'Referred Back'
+                              className={`task-status-pill ${prodAppr.status === 'Approved'
+                                ? 'approved'
+                                : prodAppr.status === 'Referred Back'
                                   ? 'referred'
                                   : 'pending'
-                              }`}
+                                }`}
                             >
                               {prodAppr.status || 'Pending'}
                             </span>
@@ -6870,9 +7430,8 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                             <span className="task-note-label">Production Notes</span>
                             {prodAppr.note ? (
                               <div
-                                className={`task-note-content ${
-                                  prodAppr.status === 'Referred Back' ? 'referred' : ''
-                                }`}
+                                className={`task-note-content ${prodAppr.status === 'Referred Back' ? 'referred' : ''
+                                  }`}
                               >
                                 {prodAppr.note}
                               </div>
@@ -6912,6 +7471,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                   if (d.orderId || formData.orderId) initChanges.push(`Order ID: ${d.orderId || formData.orderId}`);
                   if (d.employeeName || formData.employeeName) initChanges.push(`Employee Name: ${d.employeeName || formData.employeeName}`);
                   initChanges.push(`Query Type: ${isOrd ? 'order' : 'lead'}`);
+                  if (d.source || formData.source) initChanges.push(`Source: ${d.source || formData.source}`);
                   if (d.companyName || formData.companyName) initChanges.push(`Company Name: ${d.companyName || formData.companyName}`);
                   if (d.clientName || formData.clientName) initChanges.push(`Client Name: ${d.clientName || formData.clientName}`);
                   if (d.phoneNumber || formData.phoneNumber) initChanges.push(`Phone Number: ${d.phoneNumber || formData.phoneNumber}`);
@@ -7288,14 +7848,14 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                       combinedLogs.map((logItem, idx) => {
                         const timeStr = logItem.timestamp
                           ? new Date(logItem.timestamp).toLocaleString('en-IN', {
-                              day: '2-digit',
-                              month: 'short',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                              hour12: true,
-                            })
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: true,
+                          })
                           : '—';
                         const isReferBack = /refer/i.test(logItem.action || '');
                         const isEdit = /edit/i.test(logItem.action || '');
@@ -7468,6 +8028,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
     { key: 'companyAddress', label: 'Company Address' },
     { key: 'state', label: 'State' },
     { key: 'pincode', label: 'Pincode' },
+    { key: 'source', label: 'Source' },
     { key: 'repeatedOrder', label: 'Repeated Order' },
     { key: 'additionalNote', label: 'Additional Note' },
     { key: 'logoName', label: 'Logo Name' },
@@ -7656,6 +8217,7 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                   {visibleColumns.companyAddress && <th style={{ padding: '10px 12px' }}>Company Address</th>}
                   {visibleColumns.state && <th style={{ padding: '10px 12px' }}>State</th>}
                   {visibleColumns.pincode && <th style={{ padding: '10px 12px' }}>Pincode</th>}
+                  {visibleColumns.source && <th style={{ padding: '10px 12px' }}>Source</th>}
                   {visibleColumns.repeatedOrder && <th style={{ padding: '10px 12px' }}>Repeated Order</th>}
                   {visibleColumns.additionalNote && <th style={{ padding: '10px 12px' }}>Additional Note</th>}
                   {visibleColumns.logoName && <th style={{ padding: '10px 12px' }}>Logo Name</th>}
@@ -7759,13 +8321,25 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                       )}
                       {!isPrintingListView && !isReadyToPickListView && !isStagingRoomListView && !isCustomerApprovalListView && visibleColumns.clearanceStatus && (
                         <td style={{ padding: '12px' }}>
-                          <span style={{ color: (item.leadApproval?.status || item.approvalStatus) === 'Approved' ? '#059669' : (item.leadApproval?.status || item.approvalStatus) === 'Referred Back' ? '#dc2626' : '#d97706', fontWeight: 600, fontSize: '13px' }}>
-                            {(item.leadApproval?.status || item.approvalStatus) === 'Approved'
-                              ? 'Approved'
-                              : (item.leadApproval?.status || item.approvalStatus) === 'Referred Back'
-                              ? 'Referred Back'
-                              : 'Pending'}
-                          </span>
+                          {(() => {
+                            const status =
+                              (item.leadApproval?.status === 'Approved' || item.approvalStatus === 'Approved')
+                                ? 'Approved'
+                                : (item.leadApproval?.status === 'Referred Back' || item.approvalStatus === 'Referred Back')
+                                  ? 'Referred Back'
+                                  : 'Pending';
+                            return (
+                              <span
+                                style={{
+                                  color: status === 'Approved' ? '#059669' : status === 'Referred Back' ? '#dc2626' : '#d97706',
+                                  fontWeight: 600,
+                                  fontSize: '13px',
+                                }}
+                              >
+                                {status}
+                              </span>
+                            );
+                          })()}
                         </td>
                       )}
                       {visibleColumns.query && (
@@ -7791,6 +8365,11 @@ if (location.pathname.startsWith('/order/embroidery/sample') || location.pathnam
                       {visibleColumns.pincode && (
                         <td style={{ padding: '12px', color: '#475569' }}>
                           {item.pincode || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.source && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.source ? item.source.charAt(0).toUpperCase() + item.source.slice(1) : '—'}
                         </td>
                       )}
                       {visibleColumns.repeatedOrder && (

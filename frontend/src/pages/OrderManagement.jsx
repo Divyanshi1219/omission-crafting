@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Plus, Trash2, ArrowLeft, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2, ArrowLeft, ArrowRight, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import './OrderManagement.css';
@@ -136,6 +136,39 @@ const SUB_STAGES_BY_ORDER_STAGE = {
     'Delivered',
     'Customer Support'
   ]
+};
+
+const SUB_STAGE_OPTIONS_BY_ORDER_STAGE = {
+  sample: [
+    { label: 'Order', slug: 'order' },
+    { label: 'DTF Pending', slug: 'dtf-pending' },
+    { label: 'Stock', slug: 'stock' },
+    { label: 'Printing', slug: 'printing' },
+    { label: 'Ready to Pick Up', slug: 'ready-to-pick-up' },
+    { label: 'Staging Room', slug: 'staging-room' },
+    { label: 'Customer Approval Awaiting', slug: 'customer-approval-awaiting' },
+  ],
+  partial: [
+    { label: 'Order', slug: 'order' },
+    { label: 'DTF Pending', slug: 'dtf-pending' },
+    { label: 'Stock', slug: 'stock' },
+    { label: 'Printing', slug: 'printing' },
+    { label: 'Quality Check', slug: 'quality-check' },
+    { label: 'Packaging', slug: 'packaging' },
+    { label: 'Staging Room', slug: 'staging-room' },
+    { label: 'Payment Confirmation', slug: 'payment-confirmation' },
+  ],
+  complete: [
+    { label: 'Order', slug: 'order' },
+    { label: 'DTF Pending', slug: 'dtf-pending' },
+    { label: 'Stock', slug: 'stock' },
+    { label: 'Printing', slug: 'printing' },
+    { label: 'Quality Check', slug: 'quality-check' },
+    { label: 'Packaging', slug: 'packaging' },
+    { label: 'Delivery Pending', slug: 'delivery-pending' },
+    { label: 'Delivered', slug: 'delivered' },
+    { label: 'Customer Support', slug: 'customer-support' },
+  ],
 };
 
 const MAJOR_STAGES_ORDER = ['sample', 'partial', 'complete'];
@@ -309,7 +342,9 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
   const subStageMatches =
     itemSub === normTargetSub ||
     ((itemSub === 'staging-room' || itemSub === 'staging-ground') &&
-      (normTargetSub === 'staging-room' || normTargetSub === 'staging-ground'));
+      (normTargetSub === 'staging-room' || normTargetSub === 'staging-ground')) ||
+    ((itemSub === 'ready-to-pick' || itemSub === 'ready-to-pickup') &&
+      (normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup'));
 
   if (!stageMatches || !subStageMatches) {
     return { matches: false, status: 'none', isCompleted: false };
@@ -406,10 +441,10 @@ const STAGE_ROUTE_MAP = {
   '/order/sample/order': 'Order',
   '/order/sample/dtf-pending': 'DTF Pending',
   '/order/sample/stock': 'Stock',
-  '/order/sample/ready-to-pick': 'Ready to Pick Up',
-  '/order/sample/ready-to-pickup': 'Ready to Pick Up',
+  '/order/sample/ready-to-pick': 'Ready to Pick (From Stock)',
+  '/order/sample/ready-to-pickup': 'Ready to Pick (From Stock)',
   '/order/sample/printing': 'Printing',
-  '/order/sample/ready-to-pick-up': 'Ready to Pick Up',
+  '/order/sample/ready-to-pick-up': 'Ready to Pick (From Printing)',
   '/order/sample/staging-room': 'Staging Room',
   '/order/sample/staging-ground': 'Staging Room',
   '/order/sample/customer-approval-awaiting': 'Customer Approval Awaiting',
@@ -421,12 +456,12 @@ const STAGE_ROUTE_MAP = {
   '/order/partial/order': 'Order',
   '/order/partial/dtf-pending': 'DTF Pending',
   '/order/partial/stock': 'Stock',
-  '/order/partial/ready-to-pick': 'Ready to Pick Up',
-  '/order/partial/ready-to-pickup': 'Ready to Pick Up',
+  '/order/partial/ready-to-pick': 'Ready to Pick (From Stock)',
+  '/order/partial/ready-to-pickup': 'Ready to Pick (From Stock)',
   '/order/partial/printing': 'Printing',
   '/order/partial/quality-check': 'Quality Check',
   '/order/partial/packaging': 'Packaging',
-  '/order/partial/ready-to-pick-up': 'Ready to Pick Up',
+  '/order/partial/ready-to-pick-up': 'Ready to Pick (From Packaging)',
   '/order/partial/staging-room': 'Staging Room',
   '/order/partial/payment-confirmation': 'Payment Confirmation',
 
@@ -437,12 +472,12 @@ const STAGE_ROUTE_MAP = {
   '/order/complete/order': 'Order',
   '/order/complete/dtf-pending': 'DTF Pending',
   '/order/complete/stock': 'Stock',
-  '/order/complete/ready-to-pick': 'Ready to Pick Up',
-  '/order/complete/ready-to-pickup': 'Ready to Pick Up',
+  '/order/complete/ready-to-pick': 'Ready to Pick (From Stock)',
+  '/order/complete/ready-to-pickup': 'Ready to Pick (From Stock)',
   '/order/complete/printing': 'Printing',
   '/order/complete/quality-check': 'Quality Check',
   '/order/complete/packaging': 'Packaging',
-  '/order/complete/ready-to-pick-up': 'Ready to Pick Up',
+  '/order/complete/ready-to-pick-up': 'Ready to Pick (From Packaging)',
   '/order/complete/delivery-pending': 'Ready to Deliver',
   '/order/complete/delivered': 'Delivered',
   '/order/complete/customer-support': 'Customer Support',
@@ -474,7 +509,12 @@ const getDefaultDeliveryDate = () => {
 function OrderManagement() {
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.id === 'admin' || currentUser?.role === 'CEO' || (currentUser?.name || '').toLowerCase().startsWith('adam');
+  const isCEO = currentUser?.role === 'CEO' || currentUser?.id === 'admin' || (currentUser?.name || '').toLowerCase().startsWith('adam');
   const isSales = currentUser?.role === 'Sales Executive' || currentUser?.id?.startsWith('sales');
+  const isCoordinator =
+    currentUser?.id === 'coordinator' ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase().includes('coordinator')) ||
+    Boolean(currentUser?.department && currentUser.department.toLowerCase().includes('coordinator'));
   const isLeadManager =
     currentUser?.id === 'lead_manager' ||
     Boolean(currentUser?.role && currentUser.role.toLowerCase().includes('lead manager'));
@@ -518,6 +558,9 @@ function OrderManagement() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isEditing, setIsEditing] = useState(searchParams.get('edit') === 'true');
   const [items, setItems] = useState([]);
+  const [isEditingItems, setIsEditingItems] = useState(false);
+  const [itemsBackup, setItemsBackup] = useState([]);
+  const [isSavingItems, setIsSavingItems] = useState(false);
 
   const [masterItems, setMasterItems] = useState([
     { name: 'T-Shirt' },
@@ -567,9 +610,12 @@ function OrderManagement() {
     setIsEditing(searchParams.get('edit') === 'true');
   }, [searchParams]);
 
-  let isReadOnly = isApprovalReview ? true : (isLeadManager ? true : Boolean(editId && !isEditing));
+  let isReadOnly = isApprovalReview ? true : (isLeadManager || isCoordinator ? true : Boolean(editId && !isEditing));
+  const isItemsReadOnly = isEditingItems ? false : isReadOnly;
+  const canEditItemsAsManager = Boolean(editId && (isLeadManager || isApprovalReview || isAdmin));
 
   const [formData, setFormData] = useState({
+    source: '',
     companyName: '',
     clientName: '',
     companyAddress: '',
@@ -664,6 +710,7 @@ function OrderManagement() {
     companyAddress: false,
     state: false,
     pincode: false,
+    source: false,
     repeatedOrder: false,
     additionalNote: false,
     logoName: false,
@@ -889,6 +936,7 @@ function OrderManagement() {
     if (orderApprovalData) {
       const d = orderApprovalData;
       setFormData({
+        source: d.source || '',
         companyName: d.companyName || '',
         clientName: d.clientName || '',
         companyAddress: d.companyAddress || '',
@@ -936,6 +984,34 @@ function OrderManagement() {
   const handleCancelEdit = () => {
     setIsEditing(false);
     resetFormToCurrentOrder();
+  };
+
+  const handleOrderStageChange = (e) => {
+    const newStage = e.target.value.toLowerCase();
+    setOrderStage(newStage);
+    const validOptions = SUB_STAGE_OPTIONS_BY_ORDER_STAGE[newStage] || [];
+    const currentSubSlug = (!subStage || subStage === 'new' || subStage === 'leads')
+      ? 'order'
+      : subStage.toLowerCase().replace(/\s+/g, '-');
+    const exists = validOptions.find(opt => opt.slug === currentSubSlug);
+    if (exists) {
+      setSelectedStage(exists.label);
+    } else {
+      const firstOpt = validOptions[0] || { label: 'Order', slug: 'order' };
+      setSubStage(firstOpt.slug);
+      setSelectedStage(firstOpt.label);
+    }
+  };
+
+  const handleSubStageChange = (e) => {
+    const newSubSlug = e.target.value;
+    setSubStage(newSubSlug);
+    const activeStageKey = (orderStage || 'sample').toLowerCase();
+    const validOptions = SUB_STAGE_OPTIONS_BY_ORDER_STAGE[activeStageKey] || [];
+    const matched = validOptions.find(opt => opt.slug === newSubSlug);
+    if (matched) {
+      setSelectedStage(matched.label);
+    }
   };
 
   const handleSaveExistingOrder = async () => {
@@ -1009,42 +1085,89 @@ function OrderManagement() {
     try {
       const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
       const wasLeadBefore = (orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order';
+      const prevStage = (orderApprovalData?.orderStage || 'sample').toLowerCase();
+      const prevSub = (orderApprovalData?.subStage || 'order').toLowerCase().replace(/\s+/g, '-');
+      const targetOrderStage = isLeadQuery ? '' : (orderStage || 'sample').toLowerCase();
+      const targetSubStage = isLeadQuery ? 'leads' : ((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage.toLowerCase().replace(/\s+/g, '-'));
+      const stageChangedByCEO = isCEO && !isLeadQuery && (targetOrderStage !== prevStage || targetSubStage !== prevSub);
+
       const payload = {
         _id: editId,
         employeeName: currentEmpName,
         createdBy: currentUser?.id || 'sales',
-        performedBy: currentUser?.name || currentEmpName,
-        performedByRole: currentUser?.role || 'Sales Executive',
-        performedById: currentUser?.id || 'sales',
-        logAction: (wasLeadBefore && !isLeadQuery)
-          ? 'Lead Converted to Order & Submitted'
-          : (isLeadQuery ? 'Lead Edited' : 'Order Edited'),
+        performedBy: currentUser?.name || (isCEO ? 'Adam' : currentEmpName),
+        performedByRole: isCEO ? 'CEO' : (currentUser?.role || 'Sales Executive'),
+        performedById: currentUser?.id || (isCEO ? 'admin' : 'sales'),
+        logAction: stageChangedByCEO
+          ? `Stage override to ${targetOrderStage.toUpperCase()} → ${targetSubStage} by CEO`
+          : ((wasLeadBefore && !isLeadQuery)
+            ? 'Lead Converted to Order & Submitted'
+            : (isLeadQuery ? 'Lead Edited' : 'Order Edited')),
         query: isLeadQuery ? 'lead' : 'order',
         queryStatus,
-        orderStage: isLeadQuery ? '' : (orderStage || 'sample'),
-        subStage: isLeadQuery ? 'leads' : (subStage || 'order'),
+        orderStage: targetOrderStage,
+        subStage: targetSubStage,
         ...formData,
         employeeName: currentEmpName,
         orderId: formData.orderId,
         items,
-        approvalStatus: isLeadQuery ? 'Lead' : ((wasLeadBefore && !isLeadQuery) ? 'Pending' : (orderApprovalData?.approvalStatus || 'Pending')),
+        approvalStatus: isLeadQuery
+          ? 'Lead'
+          : (isCEO
+            ? 'Approved'
+            : ((wasLeadBefore && !isLeadQuery) ? 'Pending' : (orderApprovalData?.approvalStatus || 'Pending'))),
         leadApproval: isLeadQuery ? {
           status: 'Not Applicable',
           note: '',
           author: '',
+        } : (isCEO ? {
+          status: 'Approved',
+          note: stageChangedByCEO ? `Approved & stage moved to ${targetOrderStage} → ${targetSubStage} by CEO` : (orderApprovalData?.leadApproval?.note || 'Approved by CEO'),
+          author: currentUser?.name ? `${currentUser.name} (CEO)` : 'Adam (CEO)',
+          updatedAt: new Date(),
         } : ((wasLeadBefore && !isLeadQuery) ? {
           status: 'Pending',
           note: '',
           author: '',
           resubmittedAt: new Date(),
-        } : (orderApprovalData?.leadApproval || { status: 'Pending', note: '', author: '' })),
+        } : (orderApprovalData?.leadApproval || { status: 'Pending', note: '', author: '' }))),
       };
+
+      if (isCEO && !isLeadQuery) {
+        payload.stockApproval = {
+          status: 'Approved',
+          note: 'Cleared by CEO override',
+          author: currentUser?.name ? `${currentUser.name} (CEO)` : 'Adam (CEO)',
+          updatedAt: new Date(),
+        };
+        payload.productionApproval = {
+          status: 'Approved',
+          note: 'Cleared by CEO override',
+          author: currentUser?.name ? `${currentUser.name} (CEO)` : 'Adam (CEO)',
+          updatedAt: new Date(),
+        };
+        if (!payload.stockTaskStage || payload.stockTaskStage !== 'completed') {
+          payload.stockTaskStage = 'completed';
+        }
+        if (targetSubStage === 'printing') {
+          payload.productionTaskStage = 'logo_printing';
+        } else if (['quality-check', 'packaging', 'staging-room', 'payment-confirmation', 'delivery-pending', 'delivered', 'customer-support'].includes(targetSubStage)) {
+          payload.productionTaskStage = 'completed';
+        }
+      }
+
       const res = await api.post('/api/leads', payload);
-      alert(isLeadQuery ? 'Lead updated successfully!' : ((wasLeadBefore && !isLeadQuery) ? 'Order submitted successfully!\nSent to Lead Manager for approval.' : 'Order updated successfully!'));
+      alert(isLeadQuery ? 'Lead updated successfully!' : ((wasLeadBefore && !isLeadQuery) ? 'Order submitted successfully!\nSent to Lead Manager for approval.' : (stageChangedByCEO ? `Order stage moved to ${targetOrderStage.toUpperCase()} → ${targetSubStage} successfully!` : 'Order updated successfully!')));
       if (res.data?.data) {
         setOrderApprovalData(res.data.data);
       }
       setIsEditing(false);
+
+      if (isCEO && !isLeadQuery) {
+        navigate(`/order/${targetOrderStage}/${targetSubStage}`);
+        return;
+      }
+
       if (!isLeadQuery && searchParams.get('from')?.includes('/order/leads')) {
         const targetStage = orderStage || 'sample';
         const targetSub = !subStage || subStage === 'new' || subStage === 'leads' ? 'order' : subStage.replace(/\s+/g, '-');
@@ -1178,6 +1301,10 @@ function OrderManagement() {
 
   const handleLeadManagerAction = async (status, noteOverride = '') => {
     if (!editId || submittingLeadAction) return;
+    if (isEditingItems) {
+      alert('You have unsaved item edits. Please click "Save Items" or "Cancel" in the Add Item section first.');
+      return;
+    }
     if (status === 'Approved' && isLeadSubmitted) return;
 
     const finalNote = (noteOverride || leadManagerNote || '').trim();
@@ -1435,6 +1562,7 @@ function OrderManagement() {
               setItems(d.items || []);
               setFormData({
                 employeeName: d.employeeName || '',
+                source: d.source || '',
                 companyName: d.companyName || '',
                 clientName: d.clientName || '',
                 companyAddress: d.companyAddress || '',
@@ -1498,6 +1626,7 @@ function OrderManagement() {
         setPhoneTouched(false);
         setFormData({
           employeeName: currentUser?.name || '',
+          source: '',
           companyName: '',
           clientName: '',
           companyAddress: '',
@@ -1625,6 +1754,11 @@ function OrderManagement() {
   }, [formData.totalAmount, formData.netAmount, formData.gst, formData.advanceAmount]);
 
   const getActiveDefinition = () => {
+    if (orderStage) {
+      const os = orderStage.toLowerCase().trim();
+      if (['sample', 'partial', 'complete'].includes(os)) return os;
+    }
+
     const stageParam = (searchParams.get('stage') || '').toLowerCase().trim();
     if (['sample', 'partial', 'complete'].includes(stageParam)) return stageParam;
 
@@ -1637,10 +1771,6 @@ function OrderManagement() {
 
     if (orderApprovalData?.orderStage) {
       const os = orderApprovalData.orderStage.toLowerCase().trim();
-      if (['sample', 'partial', 'complete'].includes(os)) return os;
-    }
-    if (orderStage) {
-      const os = orderStage.toLowerCase().trim();
       if (['sample', 'partial', 'complete'].includes(os)) return os;
     }
     if (location.pathname.startsWith('/order/embroidery/sample') || location.pathname.includes('/order/sample') || location.pathname.includes('/sample/')) return 'sample';
@@ -1671,7 +1801,7 @@ function OrderManagement() {
   useEffect(() => {
     if (editId) {
       const activeStages = getCurrentStages();
-      const currentSub = (orderApprovalData?.subStage || subStage || '').toLowerCase().replace(/\s+/g, '-');
+      const currentSub = (subStage || orderApprovalData?.subStage || '').toLowerCase().replace(/\s+/g, '-');
       if (currentSub) {
         const matched = activeStages.find(s => s.toLowerCase().replace(/\s+/g, '-') === currentSub);
         if (matched) {
@@ -1776,6 +1906,7 @@ function OrderManagement() {
 
     setFormData({
       employeeName: currentUser?.name || '',
+      source: '',
       companyName: '',
       clientName: '',
       companyAddress: '',
@@ -2169,6 +2300,102 @@ function OrderManagement() {
 
   const handleRemoveItem = (id) => {
     setItems(items.filter(item => item.id !== id));
+  };
+
+  const handleStartEditItems = () => {
+    setItemsBackup(JSON.parse(JSON.stringify(items || [])));
+    setIsEditingItems(true);
+  };
+
+  const handleCancelEditItems = () => {
+    if (itemsBackup && Array.isArray(itemsBackup)) {
+      setItems(itemsBackup);
+    }
+    setIsEditingItems(false);
+  };
+
+  const handleSaveItems = async () => {
+    if (!editId || isSavingItems) return;
+
+    if (!items || items.length === 0) {
+      alert('Please add at least one item using "Add Item".');
+      return;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const itemVal = (it.item || it.enterItem || '').trim();
+      if (!itemVal || !(it.fabric || '').trim() || !it.quantity || Number(it.quantity) <= 0 || !(it.size || '').trim() || !(it.color || '').trim()) {
+        alert(`Please fill in all mandatory fields for Item #${i + 1} (Item, Fabric, Quantity, Size, and Color).`);
+        return;
+      }
+    }
+
+    const currentItemsTotalQty = items.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0);
+    const targetOrderTotalQty = Number(formData.totalQuantity || orderApprovalData?.totalQuantity || 0);
+
+    if (targetOrderTotalQty > 0 && currentItemsTotalQty !== targetOrderTotalQty) {
+      alert(`Validation Error: Total quantity in "Add Item" (${currentItemsTotalQty} pcs) must equal Total Quantity (${targetOrderTotalQty} pcs).`);
+      return;
+    }
+
+    setIsSavingItems(true);
+    setActionSuccessMsg('');
+
+    try {
+      const actorName = currentUser?.name || 'Lead Manager';
+      const actorRole = isLeadManager ? 'Lead Manager' : (currentUser?.role || 'Lead Manager');
+      const actorId = currentUser?.id || 'lead_manager';
+
+      const cleanItems = items.map((it) => {
+        const itemObj = {
+          item: it.item || (it.itemType === 't-shirt' ? 'T-Shirt' : it.enterItem || ''),
+          itemType: it.itemType || '',
+          enterItem: it.enterItem || '',
+          printingType: it.printingType || '',
+          sublimationOption: it.sublimationOption || '',
+          collarType: it.collarType || '',
+          neckType: it.neckType || '',
+          fabric: it.fabric || '',
+          quantity: Number(it.quantity) || 0,
+          size: it.size || '',
+          color: it.color || '',
+        };
+        if (it._id && typeof it._id === 'string' && it._id.length === 24) {
+          itemObj._id = it._id;
+        }
+        return itemObj;
+      });
+
+      const payload = {
+        items: cleanItems,
+        performedBy: actorName,
+        performedByRole: actorRole,
+        performedById: actorId,
+        logAction: 'Order Items Edited by Lead Manager',
+        logDetails: `Order items updated by ${actorName} (${actorRole}) during approval review.`,
+      };
+
+      const res = await api.put(`/api/leads/${editId}`, payload);
+      if (res.data?.success) {
+        setOrderApprovalData(res.data.data);
+        if (Array.isArray(res.data.data?.items)) {
+          setItems(res.data.data.items);
+        }
+        setIsEditingItems(false);
+        setActiveActivityTab('application');
+        const successNotice = 'Items updated successfully! Changes saved and recorded in Activity Log.';
+        setActionSuccessMsg(successNotice);
+        setTimeout(() => setActionSuccessMsg(''), 5000);
+      } else {
+        alert(res.data?.message || 'Failed to update items.');
+      }
+    } catch (err) {
+      console.error('Error saving items:', err);
+      alert(err.response?.data?.message || 'Failed to save items. Please try again.');
+    } finally {
+      setIsSavingItems(false);
+    }
   };
 
   const canSubmit = Boolean(query);
@@ -3098,6 +3325,25 @@ function OrderManagement() {
           ? Number(orderApprovalData.sampleReadyToPickUpData.verifiedPickupCount)
           : printingSampleCount || 1));
 
+    const isPickStage = activeSub === 'ready-to-pick' || activeSub === 'ready-to-pick-up' || activeSub === 'ready-to-pickup';
+    let pickFromLabel = 'Stock Room';
+    let deliverToLabel = 'Printing Section';
+    if (activeSub === 'ready-to-pick' || activeSub === 'ready-to-pickup') {
+      pickFromLabel = 'Stock Room';
+      deliverToLabel = currentOrderStage === 'sample' ? 'Sample Printing Line' : 'Bulk Printing Line';
+    } else if (activeSub === 'ready-to-pick-up') {
+      if (currentOrderStage === 'sample') {
+        pickFromLabel = 'Printing Department';
+        deliverToLabel = 'Staging Room (for Client Approval)';
+      } else if (currentOrderStage === 'partial') {
+        pickFromLabel = 'Packaging Line';
+        deliverToLabel = 'Staging Room';
+      } else {
+        pickFromLabel = 'Packaging Line';
+        deliverToLabel = 'Ready to Deliver / Dispatch';
+      }
+    }
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {/* SINGLE UNIFIED FORM CARD */}
@@ -3145,6 +3391,62 @@ function OrderManagement() {
               </span>
             </div>
           </div>
+
+          {/* DIRECTIONAL PICKUP & HANDOVER ROUTE BANNER */}
+          {isPickStage && (
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
+                border: '1px solid #bfdbfe',
+                borderRadius: '12px',
+                padding: '14px 18px',
+                marginBottom: '22px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <span
+                  style={{
+                    background: '#0284c7',
+                    color: '#ffffff',
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.4px',
+                  }}
+                >
+                  📍 Pick From: {pickFromLabel}
+                </span>
+
+                <ArrowRight size={18} color="#64748b" />
+
+                <span
+                  style={{
+                    background: '#059669',
+                    color: '#ffffff',
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.4px',
+                  }}
+                >
+                  🎯 Deliver To: {deliverToLabel}
+                </span>
+              </div>
+
+              <div style={{ fontSize: '13px', color: '#334155', fontWeight: 600 }}>
+                Coordinator Handover Step • Collect items & deliver to destination
+              </div>
+            </div>
+          )}
 
           {/* 1. ORDER & LEAD DETAILS (4-column grid) */}
           <div className="form-grid-4" style={{ marginBottom: '20px' }}>
@@ -5485,6 +5787,10 @@ function OrderManagement() {
                     <button
                       type="button"
                       onClick={() => {
+                        if (isEditingItems) {
+                          alert('You have unsaved item edits. Please click "Save Items" or "Cancel" in the Add Item section first.');
+                          return;
+                        }
                         setReferBackReason('');
                         setReferModalOpen(true);
                       }}
@@ -5742,7 +6048,7 @@ function OrderManagement() {
 
           {(!isExecutionStageView || (hasExecutionStageTabs && executionActiveTab === 'order')) && (
             <form className="form-container" onSubmit={handleFormSubmit} ref={formRef}>
-              <fieldset disabled={isExecutionStageView} style={{ border: 'none', padding: 0, margin: 0, width: '100%' }}>
+              <fieldset disabled={isExecutionStageView && !isEditingItems} style={{ border: 'none', padding: 0, margin: 0, width: '100%' }}>
               <div className="form-section">
                 <div className="form-section-title">Lead Form</div>
 
@@ -5778,6 +6084,24 @@ function OrderManagement() {
                       <option value="order">Order</option>
                     </select>
                   </div>
+
+                  {((query || '').toLowerCase().trim() === 'lead' || (query || '').toLowerCase().trim() === 'order') && (
+                    <div className="form-group">
+                      <label>Source</label>
+                      <select
+                        disabled={isReadOnly}
+                        value={(formData.source || '').toLowerCase()}
+                        onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                      >
+                        <option value="">Select source...</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="ads">Ads</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="twitter">Twitter</option>
+                      </select>
+                    </div>
+                  )}
 
                   {/* <div className="form-group">
                   <label>Query Status</label>
@@ -5971,36 +6295,62 @@ function OrderManagement() {
                   <div className="form-grid">
                     <div className="form-group">
                       <label>Order Stage *</label>
-                      <input
-                        type="text"
-                        readOnly
-                        disabled
-                        value={(orderStage || 'sample').replace(/-/g, ' ')}
-                        style={{
-                          background: 'rgba(0,0,0,0.03)',
-                          color: '#334155',
-                          fontWeight: 600,
-                          textTransform: 'capitalize',
-                          cursor: 'not-allowed',
-                        }}
-                      />
+                      {isCEO ? (
+                        <select
+                          value={(orderStage || 'sample').toLowerCase()}
+                          onChange={handleOrderStageChange}
+                          disabled={isReadOnly}
+                        >
+                          <option value="sample">Sample</option>
+                          <option value="partial">Partial</option>
+                          <option value="complete">Complete</option>
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          readOnly
+                          disabled
+                          value={(orderStage || 'sample').replace(/-/g, ' ')}
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            textTransform: 'capitalize',
+                            cursor: 'not-allowed',
+                          }}
+                        />
+                      )}
                     </div>
 
                     <div className="form-group">
                       <label>Sub Stage *</label>
-                      <input
-                        type="text"
-                        readOnly
-                        disabled
-                        value={((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage).replace(/-/g, ' ')}
-                        style={{
-                          background: 'rgba(0,0,0,0.03)',
-                          color: '#334155',
-                          fontWeight: 600,
-                          textTransform: 'capitalize',
-                          cursor: 'not-allowed',
-                        }}
-                      />
+                      {isCEO ? (
+                        <select
+                          value={((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage.toLowerCase().replace(/\s+/g, '-'))}
+                          onChange={handleSubStageChange}
+                          disabled={isReadOnly}
+                        >
+                          {(SUB_STAGE_OPTIONS_BY_ORDER_STAGE[(orderStage || 'sample').toLowerCase()] || []).map((opt) => (
+                            <option key={opt.slug} value={opt.slug}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          readOnly
+                          disabled
+                          value={((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage).replace(/-/g, ' ')}
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            textTransform: 'capitalize',
+                            cursor: 'not-allowed',
+                          }}
+                        />
+                      )}
                     </div>
 
                     {/* 1. Logo Design Attachment */}
@@ -6367,9 +6717,9 @@ function OrderManagement() {
                   </div>
 
                   <div style={{ marginTop: '32px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {!isReadOnly && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        {!isItemsReadOnly && (
                           <button type="button" onClick={handleAddItem} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <Plus size={16} /> Add Item *
                           </button>
@@ -6388,6 +6738,82 @@ function OrderManagement() {
                           </span>
                         )}
                       </div>
+
+                      {/* Top Right Action Button: Lead Manager can edit Add Item section */}
+                      {canEditItemsAsManager && isReadOnly && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {!isEditingItems ? (
+                            <button
+                              type="button"
+                              onClick={handleStartEditItems}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '7px 14px',
+                                borderRadius: '8px',
+                                background: '#ffffff',
+                                border: '1px solid #0284c7',
+                                color: '#0284c7',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                boxShadow: '0 1px 2px rgba(2, 132, 199, 0.08)',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <Edit2 size={14} />
+                              <span>Edit Items</span>
+                            </button>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <button
+                                type="button"
+                                onClick={handleCancelEditItems}
+                                disabled={isSavingItems}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '7px 14px',
+                                  borderRadius: '8px',
+                                  background: '#f8fafc',
+                                  border: '1px solid #cbd5e1',
+                                  color: '#475569',
+                                  fontSize: '13px',
+                                  fontWeight: 600,
+                                  cursor: isSavingItems ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                <X size={14} />
+                                <span>Cancel</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleSaveItems}
+                                disabled={isSavingItems}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '7px 16px',
+                                  borderRadius: '8px',
+                                  background: '#16a34a',
+                                  border: 'none',
+                                  color: '#ffffff',
+                                  fontSize: '13px',
+                                  fontWeight: 600,
+                                  cursor: isSavingItems ? 'not-allowed' : 'pointer',
+                                  boxShadow: '0 2px 4px rgba(22, 163, 74, 0.2)',
+                                }}
+                              >
+                                <Check size={14} />
+                                <span>{isSavingItems ? 'Saving...' : 'Save Items'}</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {items.length > 0 && (
@@ -6413,7 +6839,7 @@ function OrderManagement() {
                               <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Item *</label>
                               <select
                                 required
-                                disabled={isReadOnly}
+                                disabled={isItemsReadOnly}
                                 value={item.itemType || (isTshirt(item) ? 't-shirt' : (item.item ? 'others' : ''))}
                                 onChange={(e) => {
                                   const selected = e.target.value;
@@ -6452,7 +6878,7 @@ function OrderManagement() {
                                 <input
                                   type="text"
                                   required
-                                  disabled={isReadOnly}
+                                  disabled={isItemsReadOnly}
                                   placeholder="Enter item..."
                                   value={item.enterItem || (item.item !== 'T-Shirt' && item.item !== 'others' ? item.item : '')}
                                   onChange={(e) => handleItemChange(item.id, {
@@ -6468,7 +6894,7 @@ function OrderManagement() {
                               <div style={{ flex: '1.2 1 125px', minWidth: '115px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                 <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Printing Type</label>
                                 <select
-                                  disabled={isReadOnly}
+                                  disabled={isItemsReadOnly}
                                   value={item.printingType || ''}
                                   onChange={(e) => {
                                     const val = e.target.value;
@@ -6491,7 +6917,7 @@ function OrderManagement() {
                               <div style={{ flex: '0.8 1 80px', minWidth: '75px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                 <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Option</label>
                                 <select
-                                  disabled={isReadOnly}
+                                  disabled={isItemsReadOnly}
                                   value={item.sublimationOption || ''}
                                   onChange={(e) => handleItemChange(item.id, 'sublimationOption', e.target.value)}
                                   style={{ padding: '8px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
@@ -6508,7 +6934,7 @@ function OrderManagement() {
                               <input
                                 type="text"
                                 required
-                                disabled={isReadOnly}
+                                disabled={isItemsReadOnly}
                                 value={item.fabric || ''}
                                 onChange={(e) => handleItemChange(item.id, 'fabric', e.target.value)}
                                 style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
@@ -6519,7 +6945,7 @@ function OrderManagement() {
                               <input
                                 type="number"
                                 required
-                                disabled={isReadOnly}
+                                disabled={isItemsReadOnly}
                                 value={item.quantity || ''}
                                 onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
                                 style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
@@ -6529,7 +6955,7 @@ function OrderManagement() {
                               <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Size *</label>
                               <select
                                 required
-                                disabled={isReadOnly}
+                                disabled={isItemsReadOnly}
                                 value={item.size || ''}
                                 onChange={(e) => handleItemChange(item.id, 'size', e.target.value)}
                                 style={{ padding: '8px 6px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
@@ -6551,13 +6977,13 @@ function OrderManagement() {
                               <input
                                 type="text"
                                 required
-                                disabled={isReadOnly}
+                                disabled={isItemsReadOnly}
                                 value={item.color || ''}
                                 onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
                                 style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                               />
                             </div>
-                            {!isReadOnly && (
+                            {!isItemsReadOnly && (
                               <button
                                 type="button"
                                 onClick={() => handleRemoveItem(item.id)}
@@ -7045,6 +7471,7 @@ function OrderManagement() {
                   if (d.orderId || formData.orderId) initChanges.push(`Order ID: ${d.orderId || formData.orderId}`);
                   if (d.employeeName || formData.employeeName) initChanges.push(`Employee Name: ${d.employeeName || formData.employeeName}`);
                   initChanges.push(`Query Type: ${isOrd ? 'order' : 'lead'}`);
+                  if (d.source || formData.source) initChanges.push(`Source: ${d.source || formData.source}`);
                   if (d.companyName || formData.companyName) initChanges.push(`Company Name: ${d.companyName || formData.companyName}`);
                   if (d.clientName || formData.clientName) initChanges.push(`Client Name: ${d.clientName || formData.clientName}`);
                   if (d.phoneNumber || formData.phoneNumber) initChanges.push(`Phone Number: ${d.phoneNumber || formData.phoneNumber}`);
@@ -7601,6 +8028,7 @@ function OrderManagement() {
     { key: 'companyAddress', label: 'Company Address' },
     { key: 'state', label: 'State' },
     { key: 'pincode', label: 'Pincode' },
+    { key: 'source', label: 'Source' },
     { key: 'repeatedOrder', label: 'Repeated Order' },
     { key: 'additionalNote', label: 'Additional Note' },
     { key: 'logoName', label: 'Logo Name' },
@@ -7789,6 +8217,7 @@ function OrderManagement() {
                   {visibleColumns.companyAddress && <th style={{ padding: '10px 12px' }}>Company Address</th>}
                   {visibleColumns.state && <th style={{ padding: '10px 12px' }}>State</th>}
                   {visibleColumns.pincode && <th style={{ padding: '10px 12px' }}>Pincode</th>}
+                  {visibleColumns.source && <th style={{ padding: '10px 12px' }}>Source</th>}
                   {visibleColumns.repeatedOrder && <th style={{ padding: '10px 12px' }}>Repeated Order</th>}
                   {visibleColumns.additionalNote && <th style={{ padding: '10px 12px' }}>Additional Note</th>}
                   {visibleColumns.logoName && <th style={{ padding: '10px 12px' }}>Logo Name</th>}
@@ -7936,6 +8365,11 @@ function OrderManagement() {
                       {visibleColumns.pincode && (
                         <td style={{ padding: '12px', color: '#475569' }}>
                           {item.pincode || '—'}
+                        </td>
+                      )}
+                      {visibleColumns.source && (
+                        <td style={{ padding: '12px', color: '#475569' }}>
+                          {item.source ? item.source.charAt(0).toUpperCase() + item.source.slice(1) : '—'}
                         </td>
                       )}
                       {visibleColumns.repeatedOrder && (

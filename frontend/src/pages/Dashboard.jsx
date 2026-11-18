@@ -97,6 +97,11 @@ function Dashboard() {
   const isLeadManager =
     currentUser?.id === "lead_manager" ||
     Boolean(currentUser?.role && currentUser.role.toLowerCase() === "lead manager");
+  const isCoordinator =
+    currentUser?.id === "coordinator" ||
+    Boolean(currentUser?.role && currentUser.role.toLowerCase() === "coordinator") ||
+    Boolean(currentUser?.department && currentUser.department.toLowerCase() === "coordinator");
+
   const isOnlyOrderManagement = isSales || isProduction || isLeadManager;
   const isOnlyInventory = isStock;
 

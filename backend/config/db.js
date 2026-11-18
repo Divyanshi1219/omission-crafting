@@ -22,6 +22,44 @@ const connectDB = async () => {
     const conn = await mongoose.connect(uri);
     console.log(`✅ MongoDB Connected successfully: ${conn.connection.host}`);
     console.log(`📂 Using database: ${conn.connection.name}`);
+
+    // Auto-apply database indexes & background cleanup of heavy base64 strings
+    try {
+      const db = mongoose.connection.db;
+      const leadsColl = db.collection("leads");
+
+      leadsColl.createIndex({ orderId: 1 }).catch(() => {});
+      leadsColl.createIndex({ updatedAt: -1, createdAt: -1 }).catch(() => {});
+      leadsColl.createIndex({ query: 1, updatedAt: -1 }).catch(() => {});
+      leadsColl.createIndex({ orderStage: 1, subStage: 1, updatedAt: -1 }).catch(() => {});
+
+      // Sanitize oversized base64 strings from printingStageData attachments
+      leadsColl.updateMany(
+        { "printingStageData.attachments.url": { $exists: true } },
+        [
+          {
+            $set: {
+              "printingStageData.attachments": {
+                $map: {
+                  input: { $ifNull: ["$printingStageData.attachments", []] },
+                  as: "a",
+                  in: {
+                    name: { $ifNull: ["$$a.name", ""] },
+                    size: { $ifNull: ["$$a.size", ""] },
+                    type: { $ifNull: ["$$a.type", ""] },
+                    stage: "printing",
+                  },
+                },
+              },
+            },
+          },
+        ]
+      ).catch((e) => console.warn("Background printingStageData cleanup warning:", e.message));
+
+      console.log("⚡ Database indexes and storage optimizations active.");
+    } catch (optErr) {
+      console.warn("⚠️ Optimization setup warning:", optErr.message);
+    }
   } catch (error) {
     console.error(`❌ MongoDB Connection Error: ${error.message}`);
   }

@@ -43,6 +43,11 @@ const leadSchema = new mongoose.Schema(
       type: String,
       default: "New",
     },
+    source: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     companyName: {
       type: String,
       default: "",
@@ -371,8 +376,19 @@ leadSchema.pre("save", function () {
       }));
     }
   }
+  if (this.printingStageData) {
+    if (Array.isArray(this.printingStageData.attachments)) {
+      this.printingStageData.attachments = this.printingStageData.attachments.map(a => ({
+        name: a?.name || "",
+        size: a?.size || "",
+        type: a?.type || "",
+        stage: "printing"
+      }));
+    }
+  }
 });
 
+leadSchema.index({ orderId: 1 });
 leadSchema.index({ updatedAt: -1, createdAt: -1 });
 leadSchema.index({ query: 1, updatedAt: -1, createdAt: -1 });
 leadSchema.index({ orderStage: 1, subStage: 1, updatedAt: -1 });
