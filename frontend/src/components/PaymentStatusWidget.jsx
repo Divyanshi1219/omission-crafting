@@ -29,9 +29,23 @@ export default function PaymentStatusWidget({ leads = [] }) {
     leads.forEach((l) => {
       const stage = (l.orderStage || "").toLowerCase().trim();
       const sub = (l.subStage || "").toLowerCase().trim().replace(/_/g, "-");
-      const total = Number(l.totalAmount) || 0;
-      const advance = Number(l.advanceAmount) || 0;
-      let pending = Number(l.pendingAmount);
+      const netVal = Number(l.netAmount) || 0;
+      const subTotal = Number(l.totalAmount) || 0;
+      const total = netVal > 0 ? netVal : subTotal;
+      const advance = Number(l.customerApprovalData?.amountReceived) ||
+        Number(l.customerApprovalData?.amountPaid) ||
+        Number(l.advanceAmount) || 0;
+      
+      let pending;
+      if (l.customerApprovalData?.paymentStatus === "fully_received" || l.partialPaymentConfirmationData?.paymentStatus === "fully_received" || l.isCompleted) {
+        pending = 0;
+      } else if (l.customerApprovalData?.balanceRemaining !== undefined && !isNaN(Number(l.customerApprovalData.balanceRemaining))) {
+        pending = Number(l.customerApprovalData.balanceRemaining);
+      } else if (l.pendingAmount !== undefined && !isNaN(Number(l.pendingAmount))) {
+        pending = Number(l.pendingAmount);
+      } else {
+        pending = Math.max(0, total - advance);
+      }
       
       // Sanitize unrealistic spam test values or missing pending
       if (isNaN(pending) || pending < 0 || (total > 0 && pending > total * 2) || pending > 50000000) {
@@ -50,6 +64,8 @@ export default function PaymentStatusWidget({ leads = [] }) {
         orderStage: l.orderStage || "sample",
         subStage: l.subStage || "order",
         totalAmount: total,
+        subtotalAmount: subTotal,
+        gst: Number(l.gst) || 0,
         advanceAmount: advance,
         pendingAmount: pending,
         isDtfPartial: stage === "partial" && (sub.includes("payment") || sub === "payment-confirmation" || sub === "payment status"),
@@ -81,6 +97,16 @@ export default function PaymentStatusWidget({ leads = [] }) {
       const sub = (l.subStage || "").toLowerCase().trim().replace(/_/g, "-");
       if (stage === "partial" && (sub.includes("payment") || sub === "payment-confirmation" || sub === "payment status")) {
         if (!dtfPartialList.some((x) => x._id === l._id)) {
+          const netVal = Number(l.netAmount) || 0;
+          const subTotal = Number(l.totalAmount) || 0;
+          const total = netVal > 0 ? netVal : subTotal;
+          const advance = Number(l.customerApprovalData?.amountReceived) ||
+            Number(l.customerApprovalData?.amountPaid) ||
+            Number(l.advanceAmount) || 0;
+          let pending = l.customerApprovalData?.balanceRemaining !== undefined
+            ? Number(l.customerApprovalData.balanceRemaining)
+            : (Number(l.pendingAmount) || 0);
+
           dtfPartialList.push({
             _id: l._id,
             orderId: l.orderId || l.orderNo || `ORD-${l._id?.slice(-5)}`,
@@ -88,12 +114,14 @@ export default function PaymentStatusWidget({ leads = [] }) {
             companyName: l.companyName || "Company",
             orderStage: "partial",
             subStage: "payment-confirmation",
-            totalAmount: Number(l.totalAmount) || 0,
-            advanceAmount: Number(l.advanceAmount) || 0,
-            pendingAmount: Number(l.pendingAmount) || 0,
+            totalAmount: total,
+            subtotalAmount: subTotal,
+            gst: Number(l.gst) || 0,
+            advanceAmount: advance,
+            pendingAmount: pending,
             isDtfPartial: true,
-            isPending: true,
-            isFullyPaid: false
+            isPending: pending > 0,
+            isFullyPaid: pending <= 0
           });
         }
       }
@@ -368,7 +396,12 @@ export default function PaymentStatusWidget({ leads = [] }) {
                     </span>
                   </td>
                   <td className="payment-amount-cell">
-                    ₹{Math.round(item.totalAmount).toLocaleString("en-IN")}
+                    <div>₹{Math.round(item.totalAmount).toLocaleString("en-IN")}</div>
+                    {item.gst > 0 && item.subtotalAmount > 0 && item.subtotalAmount !== item.totalAmount && (
+                      <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 400 }}>
+                        Base: ₹{Math.round(item.subtotalAmount).toLocaleString("en-IN")} + {item.gst}% GST
+                      </div>
+                    )}
                   </td>
                   <td className="payment-amount-cell" style={{ color: "#059669" }}>
                     ₹{Math.round(item.advanceAmount).toLocaleString("en-IN")}

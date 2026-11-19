@@ -1165,9 +1165,23 @@ function Dashboard() {
       const tierOver7 = { count: 0, amount: 0, label: "Over 7 Days", color: "#ef4444", orders: [] };
 
       list.forEach((l) => {
-        const tot = Number(l.totalAmount) || 0;
-        const adv = Number(l.advanceAmount) || 0;
-        let pend = Number(l.pendingAmount);
+        const netVal = Number(l.netAmount) || 0;
+        const subTotal = Number(l.totalAmount) || 0;
+        const tot = netVal > 0 ? netVal : subTotal;
+        const adv = Number(l.customerApprovalData?.amountReceived) ||
+          Number(l.customerApprovalData?.amountPaid) ||
+          Number(l.advanceAmount) || 0;
+
+        let pend;
+        if (l.customerApprovalData?.paymentStatus === "fully_received" || l.partialPaymentConfirmationData?.paymentStatus === "fully_received" || l.isCompleted) {
+          pend = 0;
+        } else if (l.customerApprovalData?.balanceRemaining !== undefined && !isNaN(Number(l.customerApprovalData.balanceRemaining))) {
+          pend = Number(l.customerApprovalData.balanceRemaining);
+        } else if (l.pendingAmount !== undefined && !isNaN(Number(l.pendingAmount))) {
+          pend = Number(l.pendingAmount);
+        } else {
+          pend = Math.max(0, tot - adv);
+        }
 
         // Sanitize unrealistic spam values
         if (isNaN(pend) || pend < 0 || (tot > 0 && pend > tot * 2) || pend > 50000000) {
@@ -1223,8 +1237,18 @@ function Dashboard() {
       };
     };
 
-    // Filter DTF Partial leads matching sidebar photo
+    // Helper to identify Embroidery orders (excluded from DTF stage views)
+    const isEmbroideryOrder = (order) => {
+      if (!order) return false;
+      if (String(order.printingType || "").toLowerCase().trim() === "embroidery") return true;
+      if (Array.isArray(order.items) && order.items.some((it) => String(it?.printingType || "").toLowerCase().trim() === "embroidery")) return true;
+      return false;
+    };
+
+    // Filter DTF Partial leads matching sidebar photo (excluding Embroidery and Referred Back orders)
     const dtfPartialLeads = allLeadsList.filter((l) => {
+      if (isEmbroideryOrder(l)) return false;
+      if (l.approvalStatus === "Referred Back") return false;
       const stage = (l.orderStage || "").toLowerCase().trim();
       const sub = (l.subStage || "").toLowerCase().trim().replace(/_/g, "-");
       return (

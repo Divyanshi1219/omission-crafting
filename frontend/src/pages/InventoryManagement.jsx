@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Upload,
   Download,
@@ -173,6 +174,7 @@ const DEFAULT_SAMPLE_ACTIVITIES = [
 ];
 
 export default function InventoryManagement() {
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
 
   // Navigation State: 'list' (Screenshot 2) | 'form' (Screenshot 1)
@@ -290,6 +292,7 @@ export default function InventoryManagement() {
         const orders = res.data.data
           .filter((l) => l.orderId || l.query === "order")
           .map((l) => ({
+            ...l,
             orderId: l.orderId || `ORD-${String(l._id).slice(-5).toUpperCase()}`,
             clientName: l.clientName || l.companyName || "Client Order",
             companyName: l.companyName || "",
@@ -2130,7 +2133,26 @@ export default function InventoryManagement() {
       </div>
 
       {/* Live Graphical Analytics: Order Placed, In Stock, Reserved, Sizes, Valuation */}
-      <InventoryAnalyticsPanel stocks={stockRoomData} leads={detectedOrders} />
+      <InventoryAnalyticsPanel
+        stocks={stockRoomData}
+        leads={detectedOrders}
+        onSelectCategory={(category) => {
+          if (category === "available") {
+            setStatusFilter("In stock");
+            document.querySelector(".erp-table-card")?.scrollIntoView({ behavior: "smooth" });
+          } else if (category === "low_stock") {
+            setStatusFilter("Low stock");
+            document.querySelector(".erp-table-card")?.scrollIntoView({ behavior: "smooth" });
+          } else if (category === "total") {
+            setStatusFilter("all");
+            document.querySelector(".erp-table-card")?.scrollIntoView({ behavior: "smooth" });
+          } else if (category === "reserved") {
+            navigate("/stock-room/view/active-reserved");
+          } else if (category === "overdue") {
+            navigate("/stock-room/view/overdue-reserved");
+          }
+        }}
+      />
 
       {/* Main Table Card (Screenshot 2) */}
       <div className="erp-table-card">

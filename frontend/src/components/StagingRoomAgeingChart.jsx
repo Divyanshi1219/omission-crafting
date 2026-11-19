@@ -1,18 +1,38 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  ChevronRight,
-  ArrowRight
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import api from "../api";
 import "./StagingRoomAgeingChart.css";
 
 export default function StagingRoomAgeingChart({ leads = [] }) {
   const navigate = useNavigate();
-  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [internalLeads, setInternalLeads] = useState([]);
 
-  // Read full cached leads from sessionStorage or fetch if prop is limited
-  const [internalLeads, setInternalLeads] = useState(() => {
+  // Fetch real leads directly from backend on mount
+  useEffect(() => {
+    api.get("/api/leads")
+      .then((res) => {
+        const list = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+        if (Array.isArray(list) && list.length > 0) {
+          setInternalLeads(list);
+          try {
+            sessionStorage.setItem("omission_cached_leads", JSON.stringify(list));
+          } catch (_) {}
+        }
+      })
+      .catch((err) => console.warn("Could not load leads for staging cards:", err.message));
+  }, []);
+
+  // Use rich prop leads if provided and not stripped; otherwise use fresh internal leads
+  const sourceList = useMemo(() => {
+    if (
+      Array.isArray(leads) &&
+      leads.length > 0 &&
+      (leads[0].subStage !== undefined || leads[0].stockTaskStage !== undefined || leads[0].createdAt !== undefined)
+    ) {
+      return leads;
+    }
+    if (internalLeads.length > 0) return internalLeads;
     try {
       const cached = sessionStorage.getItem("omission_cached_leads");
       if (cached) {
@@ -20,42 +40,35 @@ export default function StagingRoomAgeingChart({ leads = [] }) {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (_) {}
-    return [];
-  });
+    return Array.isArray(leads) ? leads : [];
+  }, [leads, internalLeads]);
 
-  useEffect(() => {
-    if (internalLeads.length === 0) {
-      api.get("/api/leads")
-        .then((res) => {
-          const list = res.data?.data || (Array.isArray(res.data) ? res.data : []);
-          if (Array.isArray(list) && list.length > 0) setInternalLeads(list);
-        })
-        .catch(() => {});
-    }
-  }, [internalLeads.length]);
-
-  // Clean up any old return test data from localStorage
-  useEffect(() => {
-    try {
-      localStorage.removeItem("omission_returned_staging_orders");
-    } catch (_) {}
-  }, []);
-
-  // Process orders in Partial > Staging Room
+  // Process real active staging room orders from database
   const orders = useMemo(() => {
     const now = new Date().getTime();
     const list = [];
-    const sourceList = internalLeads && internalLeads.length > 0 ? internalLeads : leads;
 
     sourceList.forEach((l) => {
       const stage = (l.orderStage || "").toLowerCase().trim();
       const sub = (l.subStage || "").toLowerCase().trim().replace(/_/g, "-");
+      const stockStage = (l.stockTaskStage || "").toLowerCase().trim().replace(/_/g, "-");
 
-      const isStaging = sub.includes("staging");
-      if (!isStaging || stage !== "partial") return;
+      // Exclude orders that have finished/delivered/completed
+      if (l.isCompleted || stage === "complete" || sub === "delivered" || sub === "customer-support") {
+        return;
+      }
 
-      const dateStr = l.stagingEnteredAt || l.updatedAt || l.createdAt || l.date;
-      const orderDate = dateStr ? new Date(dateStr).getTime() : now;
+      // Check if order is currently active in staging room
+      const isStaging =
+        sub.includes("staging") ||
+        stockStage.includes("staging") ||
+        stage.includes("staging") ||
+        (stage === "partial" && Boolean(l.partialStagingRoomData?.stagedRackNumber));
+
+      if (!isStaging) return;
+
+      const dStr = l.stagingEnteredAt || l.updatedAt || l.createdAt || l.date;
+      const orderDate = dStr ? new Date(dStr).getTime() : now;
       const daysPassed = Math.max(0, Math.floor((now - orderDate) / (1000 * 60 * 60 * 24)));
 
       let status = "normal"; // <= 5 days
@@ -67,242 +80,147 @@ export default function StagingRoomAgeingChart({ leads = [] }) {
 
       list.push({
         id: l._id,
-        orderId: l.orderId || l.orderNo || `ORD-${l._id?.slice(-5)}`,
+        orderId: l.orderId || l.orderNo || `ORD-${String(l._id).slice(-5)}`,
         clientName: l.clientName || l.customerName || "Customer",
         companyName: l.companyName || "",
-        stage: l.orderStage || "partial",
-        subStage: l.subStage || "staging-room",
-        totalQuantity:
-          Number(l.totalQuantity) ||
-          (l.items && l.items.reduce((s, it) => s + (Number(it.quantity) || 0), 0)) ||
-          1,
-        items: l.items || [],
         daysPassed,
         status,
-        dateEntered: dateStr ? new Date(dateStr).toLocaleDateString("en-IN") : "Recent",
-        totalAmount: Number(l.totalAmount) || 0
+        stage: l.orderStage,
+        subStage: l.subStage
       });
     });
 
-    // Realistic baseline fallback for Partial Staging Room if DB has no active partial staging orders
-    if (list.length === 0) {
-      list.push(
-        {
-          id: "partial-stg-3",
-          orderId: "ORD00039",
-          clientName: "youtube",
-          companyName: "YouTube India",
-          stage: "partial",
-          subStage: "staging-room",
-          totalQuantity: 100,
-          daysPassed: 9,
-          status: "return", // > 7 days passed -> Order will go back
-          dateEntered: new Date(now - 9 * 86400000).toLocaleDateString("en-IN"),
-          totalAmount: 100000
-        },
-        {
-          id: "partial-stg-2",
-          orderId: "ORD00026",
-          clientName: "orange",
-          companyName: "Orange Corp",
-          stage: "partial",
-          subStage: "staging-room",
-          totalQuantity: 50,
-          daysPassed: 6,
-          status: "warning", // > 5 days in staging room
-          dateEntered: new Date(now - 6 * 86400000).toLocaleDateString("en-IN"),
-          totalAmount: 50000
-        },
-        {
-          id: "partial-stg-1",
-          orderId: "ORD00045",
-          clientName: "sumit k",
-          companyName: "Karan Exports",
-          stage: "partial",
-          subStage: "staging-room",
-          totalQuantity: 24,
-          daysPassed: 3,
-          status: "normal",
-          dateEntered: new Date(now - 3 * 86400000).toLocaleDateString("en-IN"),
-          totalAmount: 10000
-        }
-      );
-    }
-
-    list.sort((a, b) => b.daysPassed - a.daysPassed);
     return list;
-  }, [leads, internalLeads]);
+  }, [sourceList]);
 
-  // Counts by threshold
-  const normalCount = orders.filter((o) => o.daysPassed <= 5).length;
-  const warningCount = orders.filter((o) => o.daysPassed > 5 && o.daysPassed <= 7).length;
-  const returnCount = orders.filter((o) => o.daysPassed > 7).length;
+  // Real Counts from Database
+  const passed7DaysCount = useMemo(() => orders.filter((o) => o.status === "return").length, [orders]);
+  const warningCount = useMemo(() => orders.filter((o) => o.status === "warning").length, [orders]);
+  const normalCount = useMemo(() => orders.filter((o) => o.status === "normal").length, [orders]);
 
-  // Max days for chart scale (minimum 10 for clean threshold line placement)
-  const maxDays = Math.max(10, ...orders.map((o) => o.daysPassed + 1));
+  const handleGoToTable = (statusFilter = "") => {
+    if (statusFilter) {
+      navigate(`/order/partial/staging-room?status=${statusFilter}`);
+    } else {
+      navigate("/order/partial/staging-room");
+    }
+  };
 
   return (
-    <div className="inv-standalone-card staging-ageing-card">
-      {/* Clean Header: Minimal with no subtitle and no scope clutter */}
-      <div className="inv-card-header">
-        <div className="inv-card-header-left">
-          <span className="dot dot-amber"></span>
-          <div className="staging-badge-row">
-            <h3>Staging Room Orders</h3>
-            <span className="staging-stage-tag">Orders &gt; Partial &gt; Staging Room</span>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI Status Strip */}
-      <div className="staging-kpi-strip">
-        <div className="staging-kpi-pill normal">
-          <span className="kpi-indicator green" />
-          <div className="kpi-content">
-            <span className="kpi-num">{normalCount}</span>
-            <span className="kpi-label">Normal (≤ 5 Days)</span>
-          </div>
-        </div>
-
-        <div className={`staging-kpi-pill warning ${warningCount > 0 ? "has-alert" : ""}`}>
-          <span className="kpi-indicator amber" />
-          <div className="kpi-content">
-            <span className="kpi-num">{warningCount}</span>
-            <span className="kpi-label">Warning (&gt; 5 Days)</span>
-          </div>
-        </div>
-
-        <div className={`staging-kpi-pill critical ${returnCount > 0 ? "has-alert" : ""}`}>
-          <span className="kpi-indicator red" />
-          <div className="kpi-content">
-            <span className="kpi-num">{returnCount}</span>
-            <span className="kpi-label">Will Go Back (&gt; 7 Days)</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Visual Timeline Graph Chart */}
-      <div className="staging-graph-container">
-        <div className="staging-graph-axis-header">
-          <span>Day 0</span>
-          <span className="axis-mark-warn">Day 5 (Warning)</span>
-          <span className="axis-mark-crit">Day 7 (Order Will Go Back)</span>
-          <span>Day {maxDays}+</span>
-        </div>
-
-        <div className="staging-timeline-canvas">
-          {/* Threshold Vertical Lines */}
-          <div
-            className="staging-v-line threshold-5"
-            style={{ left: `${(5 / maxDays) * 100}%` }}
-            title="5-Day Warning Threshold"
-          />
-          <div
-            className="staging-v-line threshold-7"
-            style={{ left: `${(7 / maxDays) * 100}%` }}
-            title="7-Day Critical Return Threshold (Order Will Go Back)"
-          />
-
-          {/* Shaded Danger Zones */}
-          <div
-            className="staging-zone zone-normal"
-            style={{ left: "0%", width: `${(5 / maxDays) * 100}%` }}
-          />
-          <div
-            className="staging-zone zone-warning"
-            style={{ left: `${(5 / maxDays) * 100}%`, width: `${(2 / maxDays) * 100}%` }}
-          />
-          <div
-            className="staging-zone zone-critical"
-            style={{ left: `${(7 / maxDays) * 100}%`, width: `${((maxDays - 7) / maxDays) * 100}%` }}
-          />
-
-          {/* Order Horizontal Timeline Bars */}
-          <div className="staging-bars-list">
-            {orders.map((ord) => {
-              const isSelected = selectedOrderId === ord.id;
-              const barWidthPct = Math.min(100, Math.max(8, (ord.daysPassed / maxDays) * 100));
-
-              let barClass = "bar-normal";
-              let badgeText = `${ord.daysPassed}d normal`;
-              if (ord.daysPassed > 7) {
-                barClass = "bar-critical";
-                badgeText = `${ord.daysPassed}d • ORDER WILL GO BACK`;
-              } else if (ord.daysPassed > 5) {
-                barClass = "bar-warning";
-                badgeText = `${ord.daysPassed}d • In Staging > 5 Days`;
-              }
-
-              return (
-                <div
-                  key={ord.id || ord.orderId}
-                  className={`staging-order-row ${isSelected ? "selected" : ""}`}
-                  onClick={() => setSelectedOrderId(isSelected ? null : ord.id)}
-                >
-                  <div className="staging-order-meta">
-                    <span className="staging-order-id">{ord.orderId}</span>
-                    <span className="staging-order-client">{ord.clientName}</span>
-                    {ord.companyName && (
-                      <span className="staging-order-company">({ord.companyName})</span>
-                    )}
-                  </div>
-
-                  <div className="staging-bar-track">
-                    <div
-                      className={`staging-bar-fill ${barClass}`}
-                      style={{ width: `${barWidthPct}%` }}
-                    >
-                      <span className="staging-bar-text">{badgeText}</span>
-                    </div>
-                  </div>
-
-                  {/* Only View Option (Return feature removed as requested) */}
-                  <div className="staging-order-actions">
-                    <button
-                      type="button"
-                      className="staging-view-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/order/partial/staging-room?id=${ord.id}`);
-                      }}
-                      title="View order in staging room"
-                    >
-                      <span>View</span>
-                      <ChevronRight size={13} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Clean Legend & Pipeline Action Footer */}
-      <div className="staging-details-footer">
-        <div className="staging-legend">
-          <div className="legend-item">
-            <span className="legend-box normal" />
-            <span>0–5 Days (Normal)</span>
-          </div>
-          <div className="legend-item">
-            <span className="legend-box warning" />
-            <span>&gt;5 Days (In Staging Warning)</span>
-          </div>
-          <div className="legend-item">
-            <span className="legend-box critical" />
-            <span>&gt;7 Days (Order Will Go Back)</span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className="staging-open-pipeline-btn"
-          onClick={() => navigate("/order/partial/staging-room")}
+    <div className="staging-separate-cards-container">
+      {/* 3 Separate Minimal Standalone Cards */}
+      <div className="staging-cards-grid">
+        {/* Card 1: Will Go Back (> 7 Days) */}
+        <div
+          className="staging-stat-card critical"
+          onClick={() => handleGoToTable("return")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleGoToTable("return");
+            }
+          }}
+          title="Click to view orders passed 7 days in Staging Room table"
         >
-          <span>Open Partial Staging Room Pipeline</span>
-          <ArrowRight size={14} />
-        </button>
+          <div className="card-top-row">
+            <div className="card-title-group">
+              <span className="status-dot red" />
+              <span className="card-title">Will Go Back</span>
+              <span className="card-badge-threshold">&gt; 7 Days</span>
+            </div>
+            {passed7DaysCount > 0 ? (
+              <span className="card-status-badge critical">Action Required</span>
+            ) : (
+              <span className="card-status-badge clear">Clear</span>
+            )}
+          </div>
+
+          <div className="card-body">
+            <div className="card-count red">{passed7DaysCount}</div>
+            <div className="card-subtext">Orders passed 7 days staging limit</div>
+          </div>
+
+          <div className="card-footer">
+            <span className="card-action-link">
+              <span>View in Table</span>
+              <ArrowRight size={13} className="action-arrow" />
+            </span>
+          </div>
+        </div>
+
+        {/* Card 2: Warning (> 5 Days) */}
+        <div
+          className="staging-stat-card warning"
+          onClick={() => handleGoToTable("warning")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleGoToTable("warning");
+            }
+          }}
+          title="Click to view warning orders in Staging Room table"
+        >
+          <div className="card-top-row">
+            <div className="card-title-group">
+              <span className="status-dot amber" />
+              <span className="card-title">Warning</span>
+              <span className="card-badge-threshold">&gt; 5 Days</span>
+            </div>
+            <span className="card-status-badge warning">In Staging</span>
+          </div>
+
+          <div className="card-body">
+            <div className="card-count amber">{warningCount}</div>
+            <div className="card-subtext">Approaching 7-day return limit</div>
+          </div>
+
+          <div className="card-footer">
+            <span className="card-action-link">
+              <span>View in Table</span>
+              <ArrowRight size={13} className="action-arrow" />
+            </span>
+          </div>
+        </div>
+
+        {/* Card 3: Normal (≤ 5 Days) */}
+        <div
+          className="staging-stat-card normal"
+          onClick={() => handleGoToTable("normal")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleGoToTable("normal");
+            }
+          }}
+          title="Click to view normal staging orders in table"
+        >
+          <div className="card-top-row">
+            <div className="card-title-group">
+              <span className="status-dot green" />
+              <span className="card-title">Normal</span>
+              <span className="card-badge-threshold">≤ 5 Days</span>
+            </div>
+            <span className="card-status-badge normal">On Track</span>
+          </div>
+
+          <div className="card-body">
+            <div className="card-count green">{normalCount}</div>
+            <div className="card-subtext">Within standard staging SLA</div>
+          </div>
+
+          <div className="card-footer">
+            <span className="card-action-link">
+              <span>View in Table</span>
+              <ArrowRight size={13} className="action-arrow" />
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

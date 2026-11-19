@@ -1607,6 +1607,12 @@ router.patch("/:id/stage-transition", async (req, res) => {
         if (fromSubStage === "customer-approval-awaiting" || toSubStage === "customer-approval-awaiting") {
           lead.customerApprovalData = { ...(lead.customerApprovalData || {}), ...stageData };
           lead.markModified("customerApprovalData");
+          if (stageData?.balanceRemaining !== undefined && !isNaN(Number(stageData.balanceRemaining))) {
+            lead.pendingAmount = Number(stageData.balanceRemaining);
+          }
+          if (stageData?.amountReceived !== undefined && !isNaN(Number(stageData.amountReceived))) {
+            lead.advanceAmount = Number(stageData.amountReceived);
+          }
         }
       }
 
@@ -1634,6 +1640,9 @@ router.patch("/:id/stage-transition", async (req, res) => {
         if (fromSubStage === "payment-confirmation" || toSubStage === "payment-confirmation") {
           lead.partialPaymentConfirmationData = { ...(lead.partialPaymentConfirmationData || {}), ...stageData };
           lead.markModified("partialPaymentConfirmationData");
+          if (stageData?.balancePending !== undefined && !isNaN(Number(stageData.balancePending))) {
+            lead.pendingAmount = Number(stageData.balancePending);
+          }
         }
       }
 
@@ -1695,6 +1704,9 @@ router.patch("/:id/stage-transition", async (req, res) => {
           const fullQty = lead.totalQuantity || 100;
           const recAmount = Number(stageData?.amountReceived) || Number(lead.netAmount || lead.totalAmount) || 0;
 
+          lead.pendingAmount = 0;
+          lead.advanceAmount = recAmount;
+
           lead.stockApproval = {
             status: "Pending",
             note: comment || `Full payment received (₹${recAmount}). Complete stage bulk allocation: ${fullQty} pcs.`,
@@ -1751,6 +1763,9 @@ router.patch("/:id/stage-transition", async (req, res) => {
           const partialQty = Number(stageData?.partialQuantity) || Math.floor((lead.totalQuantity || 100) / 2) || 50;
           const recAmount = Number(stageData?.amountReceived) || 0;
           const balAmount = Number(stageData?.balanceRemaining) || Math.max(0, (lead.netAmount || lead.totalAmount || 0) - recAmount);
+
+          lead.pendingAmount = balAmount;
+          lead.advanceAmount = recAmount;
 
           lead.stockApproval = {
             status: "Pending",
@@ -1825,6 +1840,9 @@ router.patch("/:id/stage-transition", async (req, res) => {
       const partialQty = Number(lead.customerApprovalData?.partialQuantity) || Number(lead.stockTaskData?.batchQuantity) || Math.floor(totalQty / 2);
       const remainingQty = Math.max(0, totalQty - partialQty);
       const remAmount = Number(stageData?.remainingAmountReceived) || Number(stageData?.partialAmountReceived) || Number(lead.customerApprovalData?.balanceRemaining) || 0;
+
+      lead.pendingAmount = 0;
+      lead.advanceAmount = Number(lead.netAmount || lead.totalAmount || 0);
 
       lead.stockApproval = {
         status: "Pending",

@@ -235,6 +235,8 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
     itemSub = 'order';
   } else if (itemSub === 'dtf' || itemSub === 'dtf-pending-workspace') {
     itemSub = 'dtf-pending';
+  } else if (itemSub === 'payment-status' || itemSub === 'payment_status') {
+    itemSub = 'payment-confirmation';
   }
 
   // Dedicated handling for Embroidery in DTF / Standard Order Management:
@@ -5029,6 +5031,9 @@ function OrderManagement() {
                     <div style={{ background: '#ffffff', padding: '10px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                       <span style={{ fontSize: '11.5px', color: '#64748b', display: 'block', fontWeight: 600, textTransform: 'uppercase' }}>Total Order Net Value</span>
                       <strong style={{ fontSize: '15px', color: '#059669' }}>₹{totalOrderAmount.toLocaleString()}</strong>
+                      {orderApprovalData?.gst > 0 && orderApprovalData?.totalAmount && Number(orderApprovalData.totalAmount) !== totalOrderAmount && (
+                        <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Base: ₹{Number(orderApprovalData.totalAmount).toLocaleString()} + {orderApprovalData.gst}% GST</span>
+                      )}
                     </div>
                     <div style={{ background: '#ffffff', padding: '10px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                       <span style={{ fontSize: '11.5px', color: '#64748b', display: 'block', fontWeight: 600, textTransform: 'uppercase' }}>Advance / Partial Received</span>
