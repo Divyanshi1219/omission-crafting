@@ -913,6 +913,10 @@
   padding: 16px 14px 38px 14px;
 }
 
+.main-content:has(.coordinator-dashboard-root) {
+  padding: 16px 24px 38px 24px;
+}
+
 
 /* =========================================================
    DASHBOARD PAGE

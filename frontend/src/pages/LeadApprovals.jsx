@@ -284,24 +284,7 @@ export default function LeadApprovals() {
 
       {/* Header */}
       <div className="approvals-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <button
-            type="button"
-            className="back-to-order-btn"
-            onClick={() => {
-              if (window.history.state && window.history.state.idx > 0) {
-                navigate(-1);
-              } else {
-                navigate('/');
-              }
-            }}
-            title="Go to previous page"
-          >
-            <ArrowLeft size={16} />
-            <span>Back</span>
-          </button>
-          <h1 className="approvals-title" style={{ margin: 0 }}>Lead Approval</h1>
-        </div>
+        <h1 className="approvals-title" style={{ margin: 0 }}>Order Approval</h1>
         <div className="header-right">
           <div className="search-input-wrapper">
             <Search size={16} className="search-icon" />

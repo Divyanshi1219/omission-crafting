@@ -40,11 +40,22 @@ import {
 } from "lucide-react";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
+import { getAllEmployeeNames, getStaticEmployeeNames } from "../utils/employeeList";
 import "./Approvals.css";
 import "./Tasks/TasksPage.css";
 
 export default function Approvals({ defaultTab = "all" }) {
-  const { currentUser } = useAuth();
+  const { currentUser, profiles } = useAuth();
+  const [employeeList, setEmployeeList] = useState(() => getStaticEmployeeNames());
+
+  useEffect(() => {
+    getAllEmployeeNames(profiles).then((names) => {
+      if (Array.isArray(names) && names.length > 0) {
+        setEmployeeList(names);
+      }
+    });
+  }, [profiles]);
+
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -88,14 +99,14 @@ export default function Approvals({ defaultTab = "all" }) {
   const taskSubMenus = useMemo(() => {
     if (isCoordinator) {
       return [
-        { key: "ready-to-pick", label: "Ready to Pick (From Stock)", path: "/tasks/ready-to-pick" },
+        { key: "ready-to-pick", label: "From Stock", path: "/tasks/ready-to-pick" },
       ];
     }
     if (isStockProfile) {
       return [
         { key: "all", label: "ALL", path: "/tasks/all" },
         { key: "verification", label: "Verification", path: "/tasks/verification" },
-        { key: "ready-to-pick", label: "Ready to Pick", path: "/tasks/ready-to-pick" },
+        { key: "ready-to-pick", label: "From Stock", path: "/tasks/ready-to-pick" },
         { key: "staging-room", label: "Staging Room", path: "/tasks/staging-room" },
       ];
     }
@@ -109,12 +120,12 @@ export default function Approvals({ defaultTab = "all" }) {
     return [
       { key: "all", label: "ALL", path: "/tasks/all" },
       { key: "verification", label: "Verification", path: "/tasks/verification" },
-      { key: "ready-to-pick", label: "Ready to Pick", path: "/tasks/ready-to-pick" },
+      { key: "ready-to-pick", label: "From Stock", path: "/tasks/ready-to-pick" },
       { key: "staging-room", label: "Staging Room", path: "/tasks/staging-room" },
       { key: "logo-printing", label: "Logo Printing", path: "/tasks/logo-printing" },
       { key: "logo-cutting", label: "Logo Cutting", path: "/tasks/logo-cutting" },
     ];
-  }, [isStockProfile, isProdProfile]);
+  }, [isStockProfile, isProdProfile, isCoordinator]);
 
   // Active Role View perspective: "stock" (Case 1) | "production" (Case 2) | "all" (Admin Master)
   const [roleView, setRoleView] = useState(() => {
@@ -343,7 +354,10 @@ export default function Approvals({ defaultTab = "all" }) {
     logosForPrinting: "",
     sampleLogosCount: 0,
     note: "",
+    assignedTo: "",
   });
+
+  const [stockAssignedTo, setStockAssignedTo] = useState("");
 
   useEffect(() => {
     if (selectedOrder) {
@@ -381,7 +395,10 @@ export default function Approvals({ defaultTab = "all" }) {
         logosForPrinting: forPrint,
         sampleLogosCount: sampleCount,
         note: prevData.note || "",
+        assignedTo: prevData.assignedTo || selectedOrder.assignedTo || "",
       });
+
+      setStockAssignedTo(selectedOrder.stockTaskData?.assignedTo || selectedOrder.assignedTo || "");
     }
   }, [selectedOrder]);
 
@@ -419,7 +436,7 @@ export default function Approvals({ defaultTab = "all" }) {
     const stage = getStockStage(order);
     if (stage === "completed") return { label: "Completed", color: "#059669", bg: "#f8fafc", border: "#cbd5e1" };
     if (stage === "staging_room") return { label: "Staging Room", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
-    if (stage === "ready_to_pick") return { label: "Ready to Pick", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
+    if (stage === "ready_to_pick") return { label: "From Stock", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
     return { label: "Verification", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
   };
 
@@ -946,6 +963,7 @@ export default function Approvals({ defaultTab = "all" }) {
           stage: activeProdStage,
           comment: prodForm.note.trim(),
           author: currentUser?.name || "Marcus Vance",
+          assignedTo: prodForm.assignedTo || selectedOrder?.assignedTo || "",
           productionTaskData: {
             printingSubmitted: activeProdStage === "logo_printing" ? (actionType === "submit") : true,
             receivedNoOfLogos: prodForm.receivedNoOfLogos !== "no",
@@ -956,6 +974,7 @@ export default function Approvals({ defaultTab = "all" }) {
             logosForPrinting: Number(prodForm.logosForPrinting) || 0,
             sampleLogosCount: Number(prodForm.sampleLogosCount) || 0,
             note: prodForm.note.trim(),
+            assignedTo: prodForm.assignedTo || selectedOrder?.assignedTo || "",
           }
         };
 
@@ -996,7 +1015,7 @@ export default function Approvals({ defaultTab = "all" }) {
     // For stock room:
     if (roleView === "stock" || isStockProfile) {
       if (currentTaskTab === "all") {
-        alert("Cannot submit or refer back from ALL view. Please select the specific stage (Verification, Ready to Pick, or Staging Room).");
+        alert("Cannot submit or refer back from ALL view. Please select the specific stage (Verification, From Stock, or Staging Room).");
         return;
       }
 
@@ -1030,6 +1049,7 @@ export default function Approvals({ defaultTab = "all" }) {
             stage: "verification",
             comment: stockNote.trim(),
             author: currentUser?.name || "Elena Rostova",
+            assignedTo: stockAssignedTo || selectedOrder?.assignedTo || "",
             stockTaskData: {
               itemsStockData,
               isStockAvailable: allAvailable,
@@ -1037,6 +1057,7 @@ export default function Approvals({ defaultTab = "all" }) {
               stockDepreciation: overallDeprec,
               verificationSubmitted: actionType === "submit",
               verifiedAt: new Date(),
+              assignedTo: stockAssignedTo || selectedOrder?.assignedTo || "",
             }
           };
         } else if (activeStage === "ready_to_pick") {
@@ -1058,6 +1079,7 @@ export default function Approvals({ defaultTab = "all" }) {
             stage: "ready_to_pick",
             comment: stockNote.trim(),
             author: currentUser?.name || "Elena Rostova",
+            assignedTo: stockAssignedTo || selectedOrder?.assignedTo || "",
             stockTaskData: {
               readyToPickReceived: readyToPickReceived === "yes",
               readyToPickAttachments: readyToPickReceived === "yes" ? readyToPickAttachments : [],
@@ -1066,16 +1088,17 @@ export default function Approvals({ defaultTab = "all" }) {
               readyToPickNotReceivedCount: readyToPickReceived === "no" ? (Number(readyToPickNotReceivedCount) || 0) : 0,
               readyToPickSubmitted: actionType === "submit",
               readyToPickAt: new Date(),
+              assignedTo: stockAssignedTo || selectedOrder?.assignedTo || "",
             }
           };
         } else if (activeStage === "staging_room") {
           if (actionType === "submit" && stagingSampleCorrect === "no") {
-            alert("Sample count is marked as incorrect. Please refer back to Ready to Pick or verify sample count before submitting clearance.");
+            alert("Sample count is marked as incorrect. Please refer back to From Stock or verify sample count before submitting clearance.");
             setSubmittingAction(false);
             return;
           }
           if (actionType === "refer_back" && !stockNote.trim()) {
-            alert("Please provide correction notes explaining why this order is being referred back to Ready to Pick.");
+            alert("Please provide correction notes explaining why this order is being referred back to From Stock.");
             setSubmittingAction(false);
             return;
           }
@@ -1085,11 +1108,13 @@ export default function Approvals({ defaultTab = "all" }) {
             stage: "staging_room",
             comment: stockNote.trim(),
             author: currentUser?.name || "Elena Rostova",
+            assignedTo: stockAssignedTo || selectedOrder?.assignedTo || "",
             stockTaskData: {
               stagingSampleCorrect: stagingSampleCorrect === "yes",
               stagingNotReceivedCount: stagingSampleCorrect === "no" ? (Number(stagingNotReceivedCount) || 0) : 0,
               stagingSubmitted: actionType === "submit",
               stagingApprovedAt: new Date(),
+              assignedTo: stockAssignedTo || selectedOrder?.assignedTo || "",
             }
           };
         }
@@ -1108,7 +1133,7 @@ export default function Approvals({ defaultTab = "all" }) {
           if (activeStage === "verification") {
             showToast(
               actionType === "submit"
-                ? `Order #${selectedOrder.orderId || "Order"} verified and moved to Ready to Pick!`
+                ? `Order #${selectedOrder.orderId || "Order"} verified and moved to From Stock!`
                 : `Order #${selectedOrder.orderId || "Order"} referred back to Sales.`
             );
             setSelectedOrder(null);
@@ -1133,7 +1158,7 @@ export default function Approvals({ defaultTab = "all" }) {
             showToast(
               actionType === "submit"
                 ? "Submitted"
-                : `Order #${selectedOrder.orderId || "Order"} referred back to Ready to Pick.`
+                : `Order #${selectedOrder.orderId || "Order"} referred back to From Stock.`
             );
             setSelectedOrder(null);
             setSearchParams({});
@@ -1204,7 +1229,7 @@ export default function Approvals({ defaultTab = "all" }) {
         };
         const res = await api.patch(`/api/leads/${orderId}/stock-task`, payload);
         if (res.data?.success) {
-          showToast(actionType === "submit" ? "Submitted" : `Order #${order.orderId || "Order"} referred back to Ready to Pick.`);
+          showToast(actionType === "submit" ? "Submitted" : `Order #${order.orderId || "Order"} referred back to From Stock.`);
           handleCloseTaskModal();
           if (selectedOrder) {
             handleBackToList();
@@ -1780,7 +1805,7 @@ export default function Approvals({ defaultTab = "all" }) {
                   currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
                     ? "Search verification..."
                     : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
-                    ? "Search ready to pick..."
+                    ? "Search from stock..."
                     : currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room"
                     ? (currentTaskTab === "embroidery-staging-room" ? "Search embroidery staging room..." : "Search staging room...")
                     : currentTaskTab === "logo-printing"
@@ -3134,7 +3159,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                             <span>
                               {roleView === "stock"
                                 ? (currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
-                                  ? "Submit to Ready to Pick"
+                                  ? "Submit to From Stock"
                                   : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
                                   ? (isOrderEmbroidery(selectedOrder) || currentTaskTab === "embroidery-ready-to-pick" ? "Submit to Embroidery Staging Room" : "Submit to Staging Room")
                                   : (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room")
@@ -3295,7 +3320,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                           {currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
                             ? "Verification"
                             : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
-                            ? "Ready to Pick"
+                            ? "From Stock"
                             : currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room"
                             ? (isOrderEmbroidery(selectedOrder) || currentTaskTab === "embroidery-staging-room" ? "Embroidery Staging Room" : "Staging Room")
                             : `Overview (${stageBadge.label})`}
@@ -3374,6 +3399,41 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                           style={{ fontSize: "14px" }}
                         />
                       </div>
+
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Assigned To</label>
+                        {isViewOnlyStock ? (
+                          <input
+                            type="text"
+                            readOnly
+                            value={stockAssignedTo || "Unassigned"}
+                            className="read-only-input bold"
+                            style={{ fontSize: "14px", backgroundColor: "#f8fafc" }}
+                          />
+                        ) : (
+                          <select
+                            value={stockAssignedTo}
+                            onChange={(e) => setStockAssignedTo(e.target.value)}
+                            style={{
+                              width: "100%",
+                              padding: "8px 12px",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              backgroundColor: "#ffffff",
+                              fontSize: "13.5px",
+                              fontWeight: 600,
+                              color: "#0f172a",
+                              outline: "none",
+                              boxSizing: "border-box"
+                            }}
+                          >
+                            <option value="">-- Unassigned (Optional) --</option>
+                            {employeeList.map((name) => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
                     </div>
 
                     {/* BATCH ALLOCATION SUMMARY BANNER (For Partial & Complete Runs) */}
@@ -3419,7 +3479,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                           }}
                         >
                           {allocationDiff === 0
-                            ? "✓ Fully Allocated (Ready to Pick)"
+                            ? "✓ Fully Allocated"
                             : allocationDiff > 0
                             ? `⚠ ${allocationDiff} pcs remaining to allocate across items`
                             : `⚠ ${Math.abs(allocationDiff)} pcs over target`}
@@ -4549,6 +4609,41 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                           className="read-only-input bold"
                           style={{ fontSize: "14px" }}
                         />
+                      </div>
+
+                      <div className="form-field">
+                        <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Assigned To</label>
+                        {isViewOnlyProd ? (
+                          <input
+                            type="text"
+                            readOnly
+                            value={prodForm.assignedTo || "Unassigned"}
+                            className="read-only-input bold"
+                            style={{ fontSize: "14px", backgroundColor: "#f8fafc" }}
+                          />
+                        ) : (
+                          <select
+                            value={prodForm.assignedTo || ""}
+                            onChange={(e) => setProdForm({ ...prodForm, assignedTo: e.target.value })}
+                            style={{
+                              width: "100%",
+                              padding: "8px 12px",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              backgroundColor: "#ffffff",
+                              fontSize: "13.5px",
+                              fontWeight: 600,
+                              color: "#0f172a",
+                              outline: "none",
+                              boxSizing: "border-box"
+                            }}
+                          >
+                            <option value="">-- Unassigned (Optional) --</option>
+                            {employeeList.map((name) => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                          </select>
+                        )}
                       </div>
                     </div>
 
@@ -5908,12 +6003,12 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                 )}
                 {taskActionModal.taskType === "ready_to_pick" &&
                   (taskActionModal.actionType === "submit"
-                    ? `Ready to Pick: Stock Clearance #${taskActionModal.order?.orderId || ""}`
-                    : `Ready to Pick: Refer Back #${taskActionModal.order?.orderId || ""}`)}
+                    ? `From Stock: Stock Clearance #${taskActionModal.order?.orderId || ""}`
+                    : `From Stock: Refer Back #${taskActionModal.order?.orderId || ""}`)}
                 {taskActionModal.taskType === "staging_room" &&
                   (taskActionModal.actionType === "submit"
                     ? `Staging Room: Stock Approval #${taskActionModal.order?.orderId || ""}`
-                    : `Staging Room: Return to Ready to Pick #${taskActionModal.order?.orderId || ""}`)}
+                    : `Staging Room: Return to From Stock #${taskActionModal.order?.orderId || ""}`)}
                 {taskActionModal.taskType === "logo_cutting" &&
                   (taskActionModal.actionType === "submit"
                     ? `Logo Cutting: Production Approval #${taskActionModal.order?.orderId || ""}`

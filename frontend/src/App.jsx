@@ -93,6 +93,11 @@ function AppContent({ darkMode, setDarkMode }) {
             />
 
             <Route
+              path="/coordinator"
+              element={<CoordinatorDashboard />}
+            />
+
+            <Route
               path="/employees"
               element={isAdmin ? <AllEmployees /> : <Navigate to="/" replace />}
             />

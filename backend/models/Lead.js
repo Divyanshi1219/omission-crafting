@@ -21,6 +21,11 @@ const leadSchema = new mongoose.Schema(
       default: "Divyanshi",
       trim: true,
     },
+    assignedTo: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     printingType: {
       type: String,
       default: "",

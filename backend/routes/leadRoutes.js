@@ -336,6 +336,7 @@ const computeLeadChanges = (existing, incoming) => {
   const changes = [];
   const fieldDefs = [
     { key: "employeeName", label: "Employee Name" },
+    { key: "assignedTo", label: "Assigned To" },
     { key: "query", label: "Query Type" },
     { key: "orderStage", label: "Order Stage" },
     { key: "subStage", label: "Sub Stage" },
@@ -831,6 +832,7 @@ router.post("/", async (req, res) => {
             orderStage: updated.orderStage || "sample",
             subStage: updated.subStage || "",
             status: "In Progress",
+            ...(updated.assignedTo ? { assignedTo: updated.assignedTo } : {}),
           }
         );
       } catch (e) {
@@ -959,6 +961,10 @@ router.patch("/:id/approval", async (req, res) => {
     }
     if (!lead.productionApproval) {
       lead.productionApproval = { status: "Pending", note: "", author: "", updatedAt: null };
+    }
+
+    if (req.body.assignedTo !== undefined) {
+      lead.assignedTo = req.body.assignedTo;
     }
 
     if (isLeadManager) {
@@ -1152,7 +1158,7 @@ router.patch("/:id/approval", async (req, res) => {
           title: `Order #${orderIdStr} - ${lead.companyName || lead.clientName || "Approved Order"}`,
           companyName: lead.companyName || "",
           clientName: lead.clientName || "",
-          assignedTo: author || (isStock ? "Elena Rostova" : "Marcus Vance"),
+          assignedTo: lead.assignedTo || author || (isStock ? "Elena Rostova" : "Marcus Vance"),
           department: deptName,
           priority,
           status: "open",
@@ -1186,12 +1192,20 @@ router.patch("/:id/approval", async (req, res) => {
 // PATCH /api/leads/:id/stock-task - Advance or refer back Stock Room task
 router.patch("/:id/stock-task", async (req, res) => {
   try {
-    const { action, stage, stockTaskData, comment, author } = req.body;
+    const { action, stage, stockTaskData, comment, author, assignedTo } = req.body;
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
 
+    const targetAssignedTo = assignedTo !== undefined ? assignedTo : stockTaskData?.assignedTo;
+    if (targetAssignedTo !== undefined) {
+      lead.assignedTo = targetAssignedTo;
+    }
+
     if (stockTaskData) {
       lead.stockTaskData = { ...(lead.stockTaskData || {}), ...stockTaskData };
+      if (targetAssignedTo !== undefined) {
+        lead.stockTaskData.assignedTo = targetAssignedTo;
+      }
       if (comment) lead.stockTaskData.note = comment;
       lead.markModified("stockTaskData");
     }
@@ -1280,6 +1294,9 @@ router.patch("/:id/stock-task", async (req, res) => {
     if (comment) {
       logChanges.push(`Note: "${comment}"`);
     }
+    if (targetAssignedTo) {
+      logChanges.push(`Assigned To: ${targetAssignedTo}`);
+    }
     if (movedToPrinting) {
       logChanges.push(`Stage Transition: Moved from Stock Room Clearance to ${formatStageLabel(lead.orderStage || "sample")} → Printing`);
     }
@@ -1329,6 +1346,7 @@ router.patch("/:id/stock-task", async (req, res) => {
           orderStage: lead.orderStage || "sample",
           subStage: lead.subStage || "",
           notes: lead.stockTaskData?.batchNote || lead.productionTaskData?.batchNote || "",
+          ...(lead.assignedTo ? { assignedTo: lead.assignedTo } : {}),
         }
       );
     } catch (e) {
@@ -1345,12 +1363,20 @@ router.patch("/:id/stock-task", async (req, res) => {
 // PATCH /api/leads/:id/production-task - Advance or refer back Production Room task
 router.patch("/:id/production-task", async (req, res) => {
   try {
-    const { action, stage, productionTaskData, comment, author } = req.body;
+    const { action, stage, productionTaskData, comment, author, assignedTo } = req.body;
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
 
+    const targetAssignedTo = assignedTo !== undefined ? assignedTo : productionTaskData?.assignedTo;
+    if (targetAssignedTo !== undefined) {
+      lead.assignedTo = targetAssignedTo;
+    }
+
     if (productionTaskData) {
       lead.productionTaskData = { ...(lead.productionTaskData || {}), ...productionTaskData };
+      if (targetAssignedTo !== undefined) {
+        lead.productionTaskData.assignedTo = targetAssignedTo;
+      }
       if (comment) lead.productionTaskData.note = comment;
       lead.markModified("productionTaskData");
     }
@@ -1474,6 +1500,9 @@ router.patch("/:id/production-task", async (req, res) => {
     if (comment) {
       logChanges.push(`Note: "${comment}"`);
     }
+    if (targetAssignedTo) {
+      logChanges.push(`Assigned To: ${targetAssignedTo}`);
+    }
     if (movedToPrinting) {
       logChanges.push(`Stage Transition: Moved from Stock Room & Production Clearance to ${formatStageLabel(lead.orderStage || "sample")} → Printing`);
     }
@@ -1519,6 +1548,7 @@ router.patch("/:id/production-task", async (req, res) => {
           orderStage: lead.orderStage || "sample",
           subStage: lead.subStage || "",
           notes: lead.stockTaskData?.batchNote || lead.productionTaskData?.batchNote || "",
+          ...(lead.assignedTo ? { assignedTo: lead.assignedTo } : {}),
         }
       );
     } catch (e) {
@@ -1544,11 +1574,17 @@ router.patch("/:id/stage-transition", async (req, res) => {
       stageData,
       comment,
       author,
-      role
+      role,
+      assignedTo
     } = req.body;
 
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+
+    const targetAssignedTo = assignedTo !== undefined ? assignedTo : stageData?.assignedTo;
+    if (targetAssignedTo !== undefined) {
+      lead.assignedTo = targetAssignedTo;
+    }
 
     const activeStage = fromStage || lead.orderStage || "sample";
     const prevStageDisplay = `${formatStageLabel(activeStage)} → ${formatSubStageLabel(fromSubStage || lead.subStage || "order")}`;
@@ -1908,6 +1944,9 @@ router.patch("/:id/stage-transition", async (req, res) => {
     if (comment) {
       stageChanges.push(`Note: "${comment}"`);
     }
+    if (targetAssignedTo) {
+      stageChanges.push(`Assigned To: ${targetAssignedTo}`);
+    }
 
     lead.activityLogs.push({
       action:
@@ -1944,6 +1983,7 @@ router.patch("/:id/stage-transition", async (req, res) => {
           orderStage: lead.orderStage || "sample",
           subStage: lead.subStage || "",
           notes: lead.stockTaskData?.batchNote || lead.productionTaskData?.batchNote || "",
+          ...(lead.assignedTo ? { assignedTo: lead.assignedTo } : {}),
         }
       );
     } catch (e) {

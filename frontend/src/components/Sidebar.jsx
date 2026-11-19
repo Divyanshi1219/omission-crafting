@@ -149,45 +149,90 @@ function Sidebar() {
     }));
   };
 
-  const sampleItems = [
-    { name: 'All', path: '/order/sample/all' },
-    { name: 'Order', path: '/order/sample/order' },
-    { name: 'DTF Pending', path: '/order/sample/dtf-pending' },
-    { name: 'Stock', path: '/order/sample/stock' },
-    { name: 'Ready to Pick (From Stock)', path: '/order/sample/ready-to-pick' },
-    { name: 'Printing', path: '/order/sample/printing' },
-    { name: 'Ready to Pick (From Printing)', path: '/order/sample/ready-to-pick-up' },
-    { name: 'Staging Room', path: '/order/sample/staging-room' },
-    { name: 'Customer Approval Awaiting', path: '/order/sample/customer-approval-awaiting' },
-  ];
+  const sampleItems = isCoordinator
+    ? [
+        { name: 'All', path: '/order/sample/all' },
+        { name: 'Order', path: '/order/sample/order' },
+        { name: 'DTF Pending', path: '/order/sample/dtf-pending' },
+        { name: 'Stock', path: '/order/sample/stock' },
+        { name: 'From Stock', path: '/order/sample/ready-to-pick' },
+        { name: 'From Production', path: '/order/sample/ready-to-pick-production' },
+        { name: 'Printing', path: '/order/sample/printing' },
+        { name: 'From Printing', path: '/order/sample/ready-to-pick-up' },
+        { name: 'Staging Room', path: '/order/sample/staging-room' },
+        { name: 'Customer Approval Awaiting', path: '/order/sample/customer-approval-awaiting' },
+      ]
+    : [
+        { name: 'All', path: '/order/sample/all' },
+        { name: 'Order', path: '/order/sample/order' },
+        { name: 'DTF Pending', path: '/order/sample/dtf-pending' },
+        { name: 'Stock', path: '/order/sample/stock' },
+        { name: 'Ready to Pick', path: '/order/sample/ready-to-pick' },
+        { name: 'Printing', path: '/order/sample/printing' },
+        { name: 'Ready to Pick Up', path: '/order/sample/ready-to-pick-up' },
+        { name: 'Staging Room', path: '/order/sample/staging-room' },
+        { name: 'Customer Approval Awaiting', path: '/order/sample/customer-approval-awaiting' },
+      ];
 
-  const partialItems = [
-    { name: 'All', path: '/order/partial/all' },
-    { name: 'Order', path: '/order/partial/order' },
-    { name: 'DTF Pending', path: '/order/partial/dtf-pending' },
-    { name: 'Stock', path: '/order/partial/stock' },
-    { name: 'Ready to Pick (From Stock)', path: '/order/partial/ready-to-pick' },
-    { name: 'Printing', path: '/order/partial/printing' },
-    { name: 'Quality Check', path: '/order/partial/quality-check' },
-    { name: 'Packaging', path: '/order/partial/packaging' },
-    { name: 'Ready to Pick (From Packaging)', path: '/order/partial/ready-to-pick-up' },
-    { name: 'Staging Room', path: '/order/partial/staging-room' },
-    { name: 'Payment Confirmation', path: '/order/partial/payment-confirmation' },
-  ];
+  const partialItems = isCoordinator
+    ? [
+        { name: 'All', path: '/order/partial/all' },
+        { name: 'Order', path: '/order/partial/order' },
+        { name: 'DTF Pending', path: '/order/partial/dtf-pending' },
+        { name: 'Stock', path: '/order/partial/stock' },
+        { name: 'From Stock', path: '/order/partial/ready-to-pick' },
+        { name: 'From Production', path: '/order/partial/ready-to-pick-production' },
+        { name: 'Printing', path: '/order/partial/printing' },
+        { name: 'From Printing', path: '/order/partial/ready-to-pick-printing' },
+        { name: 'Quality Check', path: '/order/partial/quality-check' },
+        { name: 'Packaging', path: '/order/partial/packaging' },
+        { name: 'From Packaging', path: '/order/partial/ready-to-pick-up' },
+        { name: 'Staging Room', path: '/order/partial/staging-room' },
+        { name: 'Payment Confirmation', path: '/order/partial/payment-confirmation' },
+      ]
+    : [
+        { name: 'All', path: '/order/partial/all' },
+        { name: 'Order', path: '/order/partial/order' },
+        { name: 'DTF Pending', path: '/order/partial/dtf-pending' },
+        { name: 'Stock', path: '/order/partial/stock' },
+        { name: 'Ready to Pick', path: '/order/partial/ready-to-pick' },
+        { name: 'Printing', path: '/order/partial/printing' },
+        { name: 'Quality Check', path: '/order/partial/quality-check' },
+        { name: 'Packaging', path: '/order/partial/packaging' },
+        { name: 'Ready to Pick Up', path: '/order/partial/ready-to-pick-up' },
+        { name: 'Staging Room', path: '/order/partial/staging-room' },
+        { name: 'Payment Confirmation', path: '/order/partial/payment-confirmation' },
+      ];
 
-  const completeItems = [
-    { name: 'All', path: '/order/complete/all' },
-    { name: 'Order', path: '/order/complete/order' },
-    { name: 'DTF Pending', path: '/order/complete/dtf-pending' },
-    { name: 'Stock', path: '/order/complete/stock' },
-    { name: 'Ready to Pick (From Stock)', path: '/order/complete/ready-to-pick' },
-    { name: 'Printing', path: '/order/complete/printing' },
-    { name: 'Quality Check', path: '/order/complete/quality-check' },
-    { name: 'Packaging', path: '/order/complete/packaging' },
-    { name: 'Ready to Pick (From Packaging)', path: '/order/complete/ready-to-pick-up' },
-    { name: 'Ready to Deliver', path: '/order/complete/delivery-pending' },
-    { name: 'Delivered', path: '/order/complete/delivered' },
-  ];
+  const completeItems = isCoordinator
+    ? [
+        { name: 'All', path: '/order/complete/all' },
+        { name: 'Order', path: '/order/complete/order' },
+        { name: 'DTF Pending', path: '/order/complete/dtf-pending' },
+        { name: 'Stock', path: '/order/complete/stock' },
+        { name: 'From Stock', path: '/order/complete/ready-to-pick' },
+        { name: 'From Production', path: '/order/complete/ready-to-pick-production' },
+        { name: 'Printing', path: '/order/complete/printing' },
+        { name: 'From Printing', path: '/order/complete/ready-to-pick-printing' },
+        { name: 'Quality Check', path: '/order/complete/quality-check' },
+        { name: 'Packaging', path: '/order/complete/packaging' },
+        { name: 'From Packaging', path: '/order/complete/ready-to-pick-up' },
+        { name: 'Ready to Deliver', path: '/order/complete/delivery-pending' },
+        { name: 'Delivered', path: '/order/complete/delivered' },
+      ]
+    : [
+        { name: 'All', path: '/order/complete/all' },
+        { name: 'Order', path: '/order/complete/order' },
+        { name: 'DTF Pending', path: '/order/complete/dtf-pending' },
+        { name: 'Stock', path: '/order/complete/stock' },
+        { name: 'Ready to Pick', path: '/order/complete/ready-to-pick' },
+        { name: 'Printing', path: '/order/complete/printing' },
+        { name: 'Quality Check', path: '/order/complete/quality-check' },
+        { name: 'Packaging', path: '/order/complete/packaging' },
+        { name: 'Ready to Pick Up', path: '/order/complete/ready-to-pick-up' },
+        { name: 'Ready to Deliver', path: '/order/complete/delivery-pending' },
+        { name: 'Delivered', path: '/order/complete/delivered' },
+      ];
 
   const displaySampleItems = isCoordinator
     ? sampleItems.filter((it) => it.path.includes('/ready-to-pick'))
@@ -595,7 +640,7 @@ function Sidebar() {
                             }
                           >
                             <span className="childmenu-dot"></span>
-                            {isCoordinator ? "Ready to Pick (From Stock)" : "Ready to Pick"}
+                            From Stock
                           </NavLink>
 
                           {!isCoordinator && (
@@ -646,7 +691,7 @@ function Sidebar() {
                             }
                           >
                             <span className="childmenu-dot"></span>
-                            {isCoordinator ? "Ready to Pick (From Stock)" : "Ready to Pick"}
+                            From Stock
                           </NavLink>
 
                           {!isCoordinator && (
