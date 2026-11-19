@@ -19,7 +19,6 @@ export default function PendingPaymentsPage() {
   const initialScope = searchParams.get("scope") === "all" ? "all" : "dtf";
 
   const [scope, setScope] = useState(initialScope); // "dtf" | "all"
-  const [ageFilter, setAgeFilter] = useState("all"); // "all" | "0-3" | "4-7" | "over7"
   const [searchQuery, setSearchQuery] = useState("");
 
   // Initialize leads with zero delay from router state or cached storage
@@ -85,16 +84,35 @@ export default function PendingPaymentsPage() {
     leads.forEach((l) => {
       const stage = (l.orderStage || "").toLowerCase().trim();
       const sub = (l.subStage || "").toLowerCase().trim().replace(/_/g, "-");
-      const tot = Number(l.totalAmount) || 0;
-      const adv = Number(l.advanceAmount) || 0;
-      let pend = Number(l.pendingAmount);
+      const netVal = Number(l.netAmount) || 0;
+      const subTotal = Number(l.totalAmount) || 0;
+      const tot = netVal > 0 ? netVal : subTotal;
+      const adv = Number(l.customerApprovalData?.amountReceived) ||
+        Number(l.customerApprovalData?.amountPaid) ||
+        Number(l.advanceAmount) || 0;
+
+      let pend;
+      if (l.customerApprovalData?.paymentStatus === "fully_received" || l.partialPaymentConfirmationData?.paymentStatus === "fully_received" || l.isCompleted) {
+        pend = 0;
+      } else if (l.customerApprovalData?.balanceRemaining !== undefined && !isNaN(Number(l.customerApprovalData.balanceRemaining))) {
+        pend = Number(l.customerApprovalData.balanceRemaining);
+      } else if (l.pendingAmount !== undefined && !isNaN(Number(l.pendingAmount))) {
+        pend = Number(l.pendingAmount);
+      } else {
+        pend = Math.max(0, tot - adv);
+      }
 
       // Sanitize unrealistic test numbers
       if (isNaN(pend) || pend < 0 || (tot > 0 && pend > tot * 2) || pend > 50000000) {
         pend = tot > adv ? tot - adv : 0;
       }
 
-      const isDtf = stage === "partial" && (sub.includes("payment") || sub === "payment-confirmation" || sub === "payment status");
+      // Exclude Embroidery and Referred Back orders from DTF Partial pipeline
+      const isEmb = (l.printingType || "").toLowerCase().trim() === "embroidery" ||
+        (Array.isArray(l.items) && l.items.some((it) => String(it?.printingType || "").toLowerCase().trim() === "embroidery"));
+      const isReferredBack = l.approvalStatus === "Referred Back";
+
+      const isDtf = !isEmb && !isReferredBack && stage === "partial" && (sub.includes("payment") || sub === "payment-confirmation" || sub === "payment status");
 
       if (pend > 0 || isDtf) {
         const dateStr = l.updatedAt || l.createdAt || l.date;
@@ -109,6 +127,8 @@ export default function PendingPaymentsPage() {
           orderStage: l.orderStage || "partial",
           subStage: l.subStage || "order",
           totalAmount: tot,
+          subtotalAmount: subTotal,
+          gst: Number(l.gst) || 0,
           advanceAmount: adv,
           pendingAmount: pend,
           daysPassed,
@@ -133,11 +153,6 @@ export default function PendingPaymentsPage() {
   // Filtered orders
   const filteredOrders = useMemo(() => {
     return activeOrders.filter((ord) => {
-      // Age bracket filter
-      if (ageFilter === "0-3" && ord.daysPassed > 3) return false;
-      if (ageFilter === "4-7" && (ord.daysPassed < 4 || ord.daysPassed > 7)) return false;
-      if (ageFilter === "over7" && ord.daysPassed <= 7) return false;
-
       // Search filter
       const q = searchQuery.toLowerCase().trim();
       if (!q) return true;
@@ -147,7 +162,7 @@ export default function PendingPaymentsPage() {
         ord.companyName.toLowerCase().includes(q)
       );
     });
-  }, [activeOrders, ageFilter, searchQuery]);
+  }, [activeOrders, searchQuery]);
 
   const totalPendingSum = activeOrders.reduce((sum, o) => sum + o.pendingAmount, 0);
 
@@ -207,41 +222,6 @@ export default function PendingPaymentsPage() {
                 onClick={() => setScope("all")}
               >
                 All Orders ({allOrders.length})
-              </button>
-            </div>
-
-            {/* Ageing Filter Pills */}
-            <div className="pending-age-pills">
-              <button
-                type="button"
-                className={`pending-age-btn ${ageFilter === "all" ? "active" : ""}`}
-                onClick={() => setAgeFilter("all")}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                className={`pending-age-btn ${ageFilter === "0-3" ? "active" : ""}`}
-                onClick={() => setAgeFilter("0-3")}
-              >
-                <span className="pending-age-dot" style={{ backgroundColor: "#10b981" }} />
-                0–3 Days
-              </button>
-              <button
-                type="button"
-                className={`pending-age-btn ${ageFilter === "4-7" ? "active" : ""}`}
-                onClick={() => setAgeFilter("4-7")}
-              >
-                <span className="pending-age-dot" style={{ backgroundColor: "#f59e0b" }} />
-                4–7 Days
-              </button>
-              <button
-                type="button"
-                className={`pending-age-btn ${ageFilter === "over7" ? "active" : ""}`}
-                onClick={() => setAgeFilter("over7")}
-              >
-                <span className="pending-age-dot" style={{ backgroundColor: "#ef4444" }} />
-                Over 7 Days
               </button>
             </div>
           </div>
@@ -307,7 +287,12 @@ export default function PendingPaymentsPage() {
                         </span>
                       </td>
                       <td className="pending-amount-text">
-                        ₹{Math.round(ord.totalAmount).toLocaleString("en-IN")}
+                        <div>₹{Math.round(ord.totalAmount).toLocaleString("en-IN")}</div>
+                        {ord.gst > 0 && ord.subtotalAmount > 0 && ord.subtotalAmount !== ord.totalAmount && (
+                          <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 400 }}>
+                            Base: ₹{Math.round(ord.subtotalAmount).toLocaleString("en-IN")} + {ord.gst}% GST
+                          </div>
+                        )}
                       </td>
                       <td className="pending-amount-text" style={{ color: "#059669" }}>
                         ₹{Math.round(ord.advanceAmount).toLocaleString("en-IN")}

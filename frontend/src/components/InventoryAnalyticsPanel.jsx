@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Boxes,
   CheckCircle2,
@@ -19,12 +20,27 @@ import StagingRoomAgeingChart from './StagingRoomAgeingChart';
 export default function InventoryAnalyticsPanel({
   stocks: propStocks,
   leads: propLeads,
-  metrics: propMetrics
+  metrics: propMetrics,
+  onSelectCategory
 }) {
+  const navigate = useNavigate();
   const [internalStocks, setInternalStocks] = useState([]);
   const [internalLeads, setInternalLeads] = useState([]);
   const [hoveredSize, setHoveredSize] = useState(null);
   const [hoveredDonut, setHoveredDonut] = useState(null);
+
+  const handleCategoryClick = (category) => {
+    if (onSelectCategory) {
+      onSelectCategory(category);
+      return;
+    }
+    // Fallback default navigation to dedicated tables
+    if (category === 'available') navigate('/stock-room/view/available');
+    else if (category === 'reserved') navigate('/stock-room/view/active-reserved');
+    else if (category === 'overdue') navigate('/stock-room/view/overdue-reserved');
+    else if (category === 'low_stock') navigate('/stock-room/view/low-stock');
+    else if (category === 'total') navigate('/stock-room/view/total');
+  };
 
   // Fetch stocks and leads if not supplied as props
   useEffect(() => {
@@ -175,29 +191,100 @@ export default function InventoryAnalyticsPanel({
       });
     });
 
-    const availableStock = Math.max(0, totalStock - activeReserved);
-    const onTimeReserved = Math.max(0, activeReserved - overduePcs);
-    const availablePct = totalStock > 0 ? Math.round((availableStock / totalStock) * 100) : 0;
-    const reservedPct = totalStock > 0 ? Math.round((activeReserved / totalStock) * 100) : 0;
-    const overduePct = totalStock > 0 ? Math.round((overduePcs / totalStock) * 100) : 0;
+    // Reconcile with propMetrics when provided (e.g. from StockRoom page) for 100% data sync
+    const finalTotalStock = propMetrics?.totalItems !== undefined
+      ? Number(propMetrics.totalItems) || 0
+      : totalStock;
 
-    // Segment lengths for SVG Donut (Circumference = 2 * PI * 62 = 389.56)
-    const C = 389.56;
+    const finalActiveReserved = propMetrics?.activeReserved !== undefined
+      ? Number(propMetrics.activeReserved) || 0
+      : activeReserved;
+
+    const finalOverdueCount = propMetrics?.overdueReservations !== undefined
+      ? Number(propMetrics.overdueReservations) || 0
+      : overdueCount;
+
+    const finalOverduePcs = propMetrics?.overduePieces !== undefined
+      ? Number(propMetrics.overduePieces) || 0
+      : overduePcs;
+
+    const finalAvailableStock = propMetrics?.availableItems !== undefined
+      ? Number(propMetrics.availableItems) || 0
+      : Math.max(0, finalTotalStock - finalActiveReserved);
+
+    const finalLowStockCount = (propMetrics?.lowStockAlerts !== undefined || propMetrics?.itemsOutOfStock !== undefined)
+      ? ((Number(propMetrics.lowStockAlerts) || 0) + (Number(propMetrics.itemsOutOfStock) || 0))
+      : (lowStockCount + outOfStockCount);
+
+    const onTimeReserved = Math.max(0, finalActiveReserved - finalOverduePcs);
+    const availablePct = finalTotalStock > 0 ? Math.round((finalAvailableStock / finalTotalStock) * 100) : 0;
+    const reservedPct = finalTotalStock > 0 ? Math.round((finalActiveReserved / finalTotalStock) * 100) : 0;
+    const overduePct = finalTotalStock > 0 ? Math.round((finalOverduePcs / finalTotalStock) * 100) : 0;
+
+    // Donut chart segment math (Radius = 68, Circumference = 2 * PI * 68 = 427.26)
+    const C = 427.26;
+    // Generous minimum slice width so slices are distinct and substantial (matching reference donut)
+    const minSlice = 36;
     let overdueLength = 0;
     let reservedLength = 0;
     let availableLength = C;
 
-    if (totalStock > 0) {
-      if (overduePcs > 0) {
-        // Enforce visible stroke length for overdue so it clearly shows on the donut
-        const rawOverdue = (overduePcs / totalStock) * C;
-        overdueLength = Math.max(14, rawOverdue);
+    if (finalTotalStock > 0) {
+      if (finalOverduePcs > 0) {
+        const rawOverdue = (finalOverduePcs / finalTotalStock) * C;
+        overdueLength = Math.max(minSlice, rawOverdue);
       }
-      if (activeReserved > 0) {
-        const rawReserved = (Math.max(1, activeReserved - overduePcs) / totalStock) * C;
-        reservedLength = Math.max(14, rawReserved);
+      if (finalActiveReserved > 0) {
+        const onTime = Math.max(0, finalActiveReserved - finalOverduePcs);
+        const rawReserved = onTime > 0 ? (onTime / finalTotalStock) * C : minSlice;
+        reservedLength = Math.max(minSlice, rawReserved);
       }
       availableLength = Math.max(0, C - reservedLength - overdueLength);
+    }
+
+    const donutSlices = [];
+    let currentOffset = 0;
+
+    if (finalTotalStock > 0 && availableLength > 0) {
+      donutSlices.push({
+        key: 'available',
+        label: 'Available',
+        color: '#10b981',
+        length: availableLength,
+        offset: currentOffset,
+        count: finalAvailableStock,
+        pct: availablePct,
+        displayVal: `${finalAvailableStock.toLocaleString('en-IN')} pcs`
+      });
+      currentOffset += availableLength;
+    }
+
+    if (finalTotalStock > 0 && reservedLength > 0) {
+      donutSlices.push({
+        key: 'reserved',
+        label: 'Reserved',
+        color: '#8b5cf6',
+        length: reservedLength,
+        offset: currentOffset,
+        count: finalActiveReserved,
+        pct: reservedPct,
+        displayVal: `${finalActiveReserved.toLocaleString('en-IN')} pcs`
+      });
+      currentOffset += reservedLength;
+    }
+
+    if (finalTotalStock > 0 && overdueLength > 0) {
+      donutSlices.push({
+        key: 'overdue',
+        label: 'Overdue',
+        color: '#ef4444',
+        length: overdueLength,
+        offset: currentOffset,
+        count: finalOverduePcs,
+        pct: overduePct,
+        displayVal: `${finalOverduePcs} pcs`
+      });
+      currentOffset += overdueLength;
     }
 
     const totalValuation = Object.values(productMap).reduce((acc, p) => acc + p.totalValue, 0);
@@ -224,25 +311,26 @@ export default function InventoryAnalyticsPanel({
     });
 
     return {
-      totalStock,
-      availableStock,
+      totalStock: finalTotalStock,
+      availableStock: finalAvailableStock,
       availablePct,
-      activeReserved,
+      activeReserved: finalActiveReserved,
       onTimeReserved,
       reservedPct,
-      overdueCount,
-      overduePcs,
+      overdueCount: finalOverdueCount,
+      overduePcs: finalOverduePcs,
       overduePct,
       availableLength,
       reservedLength,
       overdueLength,
-      lowStockCount,
+      donutSlices,
+      lowStockCount: finalLowStockCount,
       outOfStockCount,
       totalValuation,
       productsList,
       sizesData
     };
-  }, [stocks, leads]);
+  }, [stocks, leads, propMetrics]);
 
   return (
     <div className="inv-standalone-charts-wrapper">
@@ -258,176 +346,170 @@ export default function InventoryAnalyticsPanel({
               <p>Available vs reserved warehouse inventory</p>
             </div>
           </div>
-          <span className="inv-card-badge indigo">{data.totalStock.toLocaleString('en-IN')} pcs Total</span>
+          <span
+            className="inv-card-badge indigo clickable-badge"
+            onClick={() => handleCategoryClick('total')}
+            title="Click to view total warehouse inventory table"
+            style={{ cursor: 'pointer' }}
+          >
+            {data.totalStock.toLocaleString('en-IN')} pcs Total
+          </span>
         </div>
 
         <div className="allocation-spacious-body">
-          {/* Interactive SVG Donut with Hover on Green, Purple & Red (Overdue) segments */}
+          {/* Interactive Donut with clean geometry matching Image 2 */}
           <div className="donut-box-large">
-            <svg viewBox="0 0 160 160" className="donut-svg">
-              <circle cx="80" cy="80" r="62" fill="none" stroke="#f1f5f9" strokeWidth="16" />
-
-              {/* Green Circle - Available Stock */}
+            <svg viewBox="0 0 200 200" className="donut-svg">
+              {/* Background circular track */}
               <circle
-                cx="80"
-                cy="80"
-                r="62"
+                cx="100"
+                cy="100"
+                r="68"
                 fill="none"
-                stroke={hoveredDonut === 'available' ? '#059669' : '#10b981'}
-                strokeWidth={hoveredDonut === 'available' ? 21 : 16}
-                strokeDasharray={`${data.availableLength} 389.56`}
-                strokeDashoffset="0"
-                strokeLinecap="round"
-                className="donut-segment segment-green"
-                onMouseEnter={() => setHoveredDonut('available')}
-                onMouseOver={() => setHoveredDonut('available')}
-                onMouseLeave={() => setHoveredDonut(null)}
-                onMouseOut={() => setHoveredDonut(null)}
-                style={{
-                  cursor: 'pointer',
-                  pointerEvents: 'stroke',
-                  transition: 'all 0.25s ease',
-                  filter: hoveredDonut === 'available' ? 'drop-shadow(0 0 8px rgba(16, 185, 129, 0.75))' : 'none'
-                }}
-              >
-                <title>{data.availableStock.toLocaleString('en-IN')} pcs Available ({data.availablePct}%)</title>
-              </circle>
+                stroke="#f1f5f9"
+                strokeWidth="26"
+                className="donut-track"
+              />
 
-              {/* Purple Circle - Reserved for Orders */}
-              <circle
-                cx="80"
-                cy="80"
-                r="62"
-                fill="none"
-                stroke={hoveredDonut === 'reserved' ? '#6d28d9' : '#7c3aed'}
-                strokeWidth={hoveredDonut === 'reserved' ? 21 : 16}
-                strokeDasharray={`${data.reservedLength} 389.56`}
-                strokeDashoffset={`-${data.availableLength}`}
-                strokeLinecap="round"
-                className="donut-segment segment-purple"
-                onMouseEnter={() => setHoveredDonut('reserved')}
-                onMouseOver={() => setHoveredDonut('reserved')}
-                onMouseLeave={() => setHoveredDonut(null)}
-                onMouseOut={() => setHoveredDonut(null)}
-                style={{
-                  cursor: 'pointer',
-                  pointerEvents: 'stroke',
-                  transition: 'all 0.25s ease',
-                  filter: hoveredDonut === 'reserved' ? 'drop-shadow(0 0 8px rgba(124, 58, 237, 0.8))' : 'none'
-                }}
-              >
-                <title>{data.onTimeReserved > 0 ? `${data.onTimeReserved.toLocaleString('en-IN')} pcs Active Reserved` : `${data.activeReserved.toLocaleString('en-IN')} pcs Reserved`} ({data.reservedPct}%)</title>
-              </circle>
+              {/* Slices with flat ends (butt) and subtle gap between segments */}
+              {(data.donutSlices || []).map(slice => {
+                const isHovered = hoveredDonut === slice.key;
+                const gap = (data.donutSlices || []).length > 1 ? 2.5 : 0;
+                const dashLen = Math.max(1, slice.length - gap);
 
-              {/* Red Circle - Overdue Reservations */}
-              {data.overduePcs > 0 && (
-                <circle
-                  cx="80"
-                  cy="80"
-                  r="62"
-                  fill="none"
-                  stroke={hoveredDonut === 'overdue' ? '#b91c1c' : '#ef4444'}
-                  strokeWidth={hoveredDonut === 'overdue' ? 21 : 16}
-                  strokeDasharray={`${data.overdueLength} 389.56`}
-                  strokeDashoffset={`-${data.availableLength + data.reservedLength}`}
-                  strokeLinecap="round"
-                  className="donut-segment segment-red"
-                  onMouseEnter={() => setHoveredDonut('overdue')}
-                  onMouseOver={() => setHoveredDonut('overdue')}
-                  onMouseLeave={() => setHoveredDonut(null)}
-                  onMouseOut={() => setHoveredDonut(null)}
-                  style={{
-                    cursor: 'pointer',
-                    pointerEvents: 'stroke',
-                    transition: 'all 0.25s ease',
-                    filter: hoveredDonut === 'overdue' ? 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.85))' : 'none'
-                  }}
-                >
-                  <title>{data.overduePcs} pcs Overdue ({data.overdueCount} order{data.overdueCount === 1 ? '' : 's'})</title>
-                </circle>
-              )}
+                return (
+                  <circle
+                    key={slice.key}
+                    cx="100"
+                    cy="100"
+                    r="68"
+                    fill="none"
+                    stroke={slice.color}
+                    strokeWidth={isHovered ? 29 : 26}
+                    strokeDasharray={`${dashLen} 427.26`}
+                    strokeDashoffset={-slice.offset}
+                    strokeLinecap="butt"
+                    className={`inv-donut-slice segment-${slice.key}`}
+                    onClick={() => handleCategoryClick(slice.key)}
+                    onMouseEnter={() => setHoveredDonut(slice.key)}
+                    onMouseLeave={() => setHoveredDonut(null)}
+                    style={{
+                      strokeLinecap: 'butt',
+                      cursor: 'pointer',
+                      transition: 'stroke-width 0.2s ease, filter 0.2s ease',
+                      filter: isHovered ? `drop-shadow(0 0 6px ${slice.color}90)` : 'none'
+                    }}
+                  >
+                    <title>Click to view {slice.label} items in table ({slice.displayVal})</title>
+                  </circle>
+                );
+              })}
             </svg>
-            <div className="donut-center-label">
-              <span className={`donut-val-big ${hoveredDonut ? 'is-active' : ''}`}>
+
+            {/* Clean Center Label: "Total" on top, large bold number below (Image 2 style) */}
+            <div
+              className="donut-center-label clickable-center"
+              onClick={() => handleCategoryClick('total')}
+              title="Click to view complete stock inventory table"
+              style={{ cursor: 'pointer' }}
+            >
+              <span className="donut-center-title">
                 {hoveredDonut === 'available'
-                  ? `${data.availableStock.toLocaleString('en-IN')}`
+                  ? 'Available'
                   : hoveredDonut === 'reserved'
-                    ? `${data.activeReserved.toLocaleString('en-IN')}`
+                    ? 'Reserved'
                     : hoveredDonut === 'overdue'
-                      ? `${data.overduePcs} pcs`
-                      : `${data.availablePct}%`}
+                      ? 'Overdue'
+                      : hoveredDonut === 'low_stock'
+                        ? 'Low Stock'
+                        : 'Total'}
               </span>
-              <span className={`donut-sub-big ${hoveredDonut || ''}`}>
+              <span className="donut-center-value">
                 {hoveredDonut === 'available'
-                  ? 'pcs Available'
+                  ? data.availableStock.toLocaleString('en-IN')
                   : hoveredDonut === 'reserved'
-                    ? 'pcs Reserved'
+                    ? data.activeReserved.toLocaleString('en-IN')
                     : hoveredDonut === 'overdue'
-                      ? `Overdue (${data.overdueCount} ord)`
-                      : 'Available'}
+                      ? data.overduePcs.toLocaleString('en-IN')
+                      : hoveredDonut === 'low_stock'
+                        ? data.lowStockCount.toLocaleString('en-IN')
+                        : data.totalStock.toLocaleString('en-IN')}
               </span>
             </div>
           </div>
 
-          {/* Minimal Stat List (Less words, clean rows, no bulky tiles) */}
-          <div className="alloc-minimal-list">
+          {/* Clean Legend with aligned columns matching Image 2 reference */}
+          <div className="donut-legend-list">
             <div
-              className={`alloc-minimal-row ${hoveredDonut === 'available' ? 'active-row green' : ''}`}
+              className={`donut-legend-row ${hoveredDonut === 'available' ? 'is-hovered' : ''}`}
+              onClick={() => handleCategoryClick('available')}
               onMouseEnter={() => setHoveredDonut('available')}
               onMouseLeave={() => setHoveredDonut(null)}
+              title="Click to view Available stock table"
             >
-              <div className="alloc-row-left">
-                <span className="dot dot-green"></span>
-                <span className="alloc-row-name">Available</span>
+              <div className="donut-legend-left">
+                <span className="donut-legend-dot" style={{ backgroundColor: '#10b981' }} />
+                <span className="donut-legend-name">Available</span>
               </div>
-              <div className="alloc-row-right">
-                <span className="alloc-row-count">{data.availableStock.toLocaleString('en-IN')} pcs</span>
-                <span className="alloc-row-pct green">{data.availablePct}%</span>
+              <div className="donut-legend-right">
+                <span className="donut-legend-qty">{data.availableStock.toLocaleString('en-IN')} pcs</span>
+                <span className="donut-legend-pct">({data.availablePct}%)</span>
               </div>
             </div>
 
             <div
-              className={`alloc-minimal-row ${hoveredDonut === 'reserved' ? 'active-row purple' : ''}`}
+              className={`donut-legend-row ${hoveredDonut === 'reserved' ? 'is-hovered' : ''}`}
+              onClick={() => handleCategoryClick('reserved')}
               onMouseEnter={() => setHoveredDonut('reserved')}
               onMouseLeave={() => setHoveredDonut(null)}
+              title="Click to view Active Reservations table"
             >
-              <div className="alloc-row-left">
-                <span className="dot dot-purple"></span>
-                <span className="alloc-row-name">Reserved</span>
+              <div className="donut-legend-left">
+                <span className="donut-legend-dot" style={{ backgroundColor: '#8b5cf6' }} />
+                <span className="donut-legend-name">Reserved</span>
               </div>
-              <div className="alloc-row-right">
-                <span className="alloc-row-count">{data.activeReserved.toLocaleString('en-IN')} pcs</span>
-                <span className="alloc-row-pct purple">{data.reservedPct}%</span>
+              <div className="donut-legend-right">
+                <span className="donut-legend-qty">{data.activeReserved.toLocaleString('en-IN')} pcs</span>
+                <span className="donut-legend-pct">({data.reservedPct}%)</span>
               </div>
             </div>
 
             <div
-              className={`alloc-minimal-row ${hoveredDonut === 'overdue' ? 'active-row red' : ''}`}
+              className={`donut-legend-row ${hoveredDonut === 'overdue' ? 'is-hovered' : ''}`}
+              onClick={() => handleCategoryClick('overdue')}
               onMouseEnter={() => setHoveredDonut('overdue')}
               onMouseLeave={() => setHoveredDonut(null)}
+              title="Click to view Overdue Reservations table"
             >
-              <div className="alloc-row-left">
-                <span className="dot dot-red"></span>
-                <span className="alloc-row-name">Overdue</span>
-              </div>
-              <div className="alloc-row-right">
-                <span className="alloc-row-count">{data.overdueCount} orders</span>
-                {data.overduePcs > 0 && <span className="alloc-row-dim">({data.overduePcs} pcs)</span>}
+              <div className="donut-legend-left">
+                <span className="donut-legend-dot" style={{ backgroundColor: '#ef4444' }} />
+                <span className="donut-legend-name">Overdue</span>
                 {data.overdueCount > 0 && (
-                  <span className="alloc-row-pct red">
-                    {data.overduePct > 0 ? `${data.overduePct}%` : '<1%'}
-                  </span>
+                  <span className="donut-legend-tag">{data.overdueCount} orders</span>
                 )}
+              </div>
+              <div className="donut-legend-right">
+                <span className="donut-legend-qty">{data.overduePcs.toLocaleString('en-IN')} pcs</span>
+                <span className="donut-legend-pct">({data.overduePct > 0 ? `${data.overduePct}%` : '<1%'})</span>
               </div>
             </div>
 
-            <div className="alloc-minimal-row">
-              <div className="alloc-row-left">
-                <span className="dot dot-amber"></span>
-                <span className="alloc-row-name">Low Stock</span>
+            <div
+              className={`donut-legend-row ${hoveredDonut === 'low_stock' ? 'is-hovered' : ''}`}
+              onClick={() => handleCategoryClick('low_stock')}
+              onMouseEnter={() => setHoveredDonut('low_stock')}
+              onMouseLeave={() => setHoveredDonut(null)}
+              title="Click to view Low & Out of Stock table"
+            >
+              <div className="donut-legend-left">
+                <span className="donut-legend-dot" style={{ backgroundColor: '#f59e0b' }} />
+                <span className="donut-legend-name">Low Stock</span>
               </div>
-              <div className="alloc-row-right">
-                <span className="alloc-row-count">{data.lowStockCount + data.outOfStockCount} items</span>
+              <div className="donut-legend-right">
+                <span className="donut-legend-qty">{data.lowStockCount.toLocaleString('en-IN')} items</span>
+                <span className="donut-legend-pct">
+                  ({data.totalStock > 0 ? Math.round((data.lowStockCount / data.totalStock) * 100) : 0}%)
+                </span>
               </div>
             </div>
           </div>

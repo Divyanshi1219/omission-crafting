@@ -146,26 +146,29 @@
 }
 
 /* ==========================================================================
-   1. STOCK ALLOCATION STATUS (Interactive Donut + Minimal Stat List)
+   1. STOCK ALLOCATION STATUS (Clean Modern Donut & Vertical Legend - Image 2 Style)
    ========================================================================== */
 .allocation-spacious-body {
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: flex-start;
+  gap: 48px;
   flex: 1;
+  padding: 8px 4px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .allocation-spacious-body {
     flex-direction: column;
     align-items: center;
+    gap: 24px;
   }
 }
 
 .donut-box-large {
   position: relative;
-  width: 170px;
-  height: 170px;
+  width: 190px;
+  height: 190px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -176,30 +179,31 @@
   width: 100%;
   height: 100%;
   transform: rotate(-90deg);
+  overflow: visible;
 }
 
-.donut-segment {
+.donut-track {
+  stroke: #f1f5f9;
+  stroke-linecap: butt !important;
+}
+
+.app.dark .donut-track {
+  stroke: rgba(255, 255, 255, 0.08);
+}
+
+.inv-donut-slice,
+.donut-box-large circle {
+  stroke-linecap: butt !important;
   pointer-events: stroke;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: stroke-width 0.2s ease, filter 0.2s ease;
 }
 
-.donut-segment:hover {
-  filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.2));
+.inv-donut-slice:hover {
+  filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.25));
 }
 
-.donut-segment.segment-green:hover {
-  filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.75));
-}
-
-.donut-segment.segment-purple:hover {
-  filter: drop-shadow(0 0 8px rgba(124, 58, 237, 0.8));
-}
-
-.donut-segment.segment-red:hover {
-  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.85));
-}
-
+/* Center Typography - Minimalist, matching Image 2 */
 .donut-center-label {
   position: absolute;
   top: 50%;
@@ -208,209 +212,175 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.2s ease;
+  border-radius: 50%;
+  padding: 10px;
 }
 
-.donut-val-big {
-  font-size: 28px;
+.donut-center-label.clickable-center:hover {
+  transform: translate(-50%, -50%) scale(1.06);
+}
+
+.clickable-badge {
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.clickable-badge:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.donut-center-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: -0.01em;
+  margin-bottom: 2px;
+  text-transform: capitalize !important;
+  transition: color 0.2s ease;
+}
+
+.app.dark .donut-center-title {
+  color: #94a3b8;
+}
+
+.donut-center-value {
+  font-size: 30px;
   font-weight: 800;
   color: #0f172a;
   line-height: 1.1;
   letter-spacing: -0.02em;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease;
 }
 
-.donut-val-big.is-active {
-  font-size: 23px;
-  color: #0f172a;
-}
-
-.app.dark .donut-val-big {
+.app.dark .donut-center-value {
   color: #f8fafc;
 }
 
-.donut-sub-big {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  transition: all 0.2s ease;
-  margin-top: 2px;
-}
-
-.donut-sub-big.available {
-  color: #10b981;
-}
-
-.donut-sub-big.reserved {
-  color: #7c3aed;
-}
-
-.donut-sub-big.overdue {
-  color: #ef4444;
-}
-
-.app.dark .donut-sub-big.available {
-  color: #34d399;
-}
-
-.app.dark .donut-sub-big.reserved {
-  color: #a78bfa;
-}
-
-.app.dark .donut-sub-big.overdue {
-  color: #f87171;
-}
-
-/* Minimal Stat List - Compact, Small, Elegant Rows */
-.alloc-minimal-list {
+/* Vertical Legend List - Tabular Alignment matching Image 2 Design */
+.donut-legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 320px;
+  max-width: 450px;
   flex: 1;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  max-width: 580px;
 }
 
-@media (max-width: 640px) {
-  .alloc-minimal-list {
-    grid-template-columns: 1fr;
+@media (max-width: 680px) {
+  .donut-legend-list {
+    min-width: 100%;
+    max-width: 100%;
   }
 }
 
-.alloc-minimal-row {
+.donut-legend-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 7px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid transparent;
+  border-radius: 8px;
   transition: all 0.2s ease;
   cursor: pointer;
 }
 
-.alloc-minimal-row:hover,
-.alloc-minimal-row.active-row {
-  background: #f1f5f9;
+.donut-legend-row:hover,
+.donut-legend-row.is-hovered {
+  background: #f8fafc;
 }
 
-.alloc-minimal-row.active-row.green {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.3);
+.app.dark .donut-legend-row:hover,
+.app.dark .donut-legend-row.is-hovered {
+  background: rgba(255, 255, 255, 0.05);
 }
 
-.alloc-minimal-row.active-row.purple {
-  background: rgba(124, 58, 237, 0.08);
-  border-color: rgba(124, 58, 237, 0.3);
-}
-
-.alloc-minimal-row.active-row.red {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-.app.dark .alloc-minimal-row {
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.app.dark .alloc-minimal-row:hover,
-.app.dark .alloc-minimal-row.active-row {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.app.dark .alloc-minimal-row.active-row.green {
-  background: rgba(16, 185, 129, 0.14);
-  border-color: rgba(16, 185, 129, 0.4);
-}
-
-.app.dark .alloc-minimal-row.active-row.purple {
-  background: rgba(124, 58, 237, 0.16);
-  border-color: rgba(124, 58, 237, 0.4);
-}
-
-.app.dark .alloc-minimal-row.active-row.red {
-  background: rgba(239, 68, 68, 0.16);
-  border-color: rgba(239, 68, 68, 0.4);
-}
-
-.alloc-row-left {
+.donut-legend-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
 }
 
-.alloc-row-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-}
-
-.app.dark .alloc-row-name {
-  color: #cbd5e1;
-}
-
-.alloc-row-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.donut-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
   flex-shrink: 0;
+}
+
+.donut-legend-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1e293b;
+  letter-spacing: -0.01em;
   white-space: nowrap;
 }
 
-.alloc-row-count {
-  font-size: 13px;
-  font-weight: 800;
-  color: #0f172a;
-  white-space: nowrap;
+.app.dark .donut-legend-name {
+  color: #f1f5f9;
 }
 
-.app.dark .alloc-row-count {
-  color: #f8fafc;
-}
-
-.alloc-row-pct {
+.donut-legend-tag {
   font-size: 11px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 6px;
-}
-
-.alloc-row-pct.green {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-.alloc-row-pct.purple {
-  background: #f3e8ff;
-  color: #6b21a8;
-}
-
-.alloc-row-pct.red {
-  background: #fee2e2;
+  font-weight: 600;
   color: #b91c1c;
+  background: #fee2e2;
+  padding: 1px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
-.app.dark .alloc-row-pct.green {
-  background: rgba(16, 185, 129, 0.2);
-  color: #6ee7b7;
-}
-
-.app.dark .alloc-row-pct.purple {
-  background: rgba(124, 58, 237, 0.2);
-  color: #d8b4fe;
-}
-
-.app.dark .alloc-row-pct.red {
+.app.dark .donut-legend-tag {
   background: rgba(239, 68, 68, 0.2);
   color: #fca5a5;
 }
 
-.alloc-row-dim {
-  font-size: 11px;
-  color: #94a3b8;
+/* Aligned Right Columns (Quantity + Percentage) */
+.donut-legend-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.donut-legend-qty {
+  font-size: 14px;
   font-weight: 500;
+  color: #1e293b;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 82px;
+}
+
+.app.dark .donut-legend-qty {
+  color: #f1f5f9;
+}
+
+.donut-legend-pct {
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+}
+
+.app.dark .donut-legend-pct {
+  color: #94a3b8;
 }
 
 /* ==========================================================================

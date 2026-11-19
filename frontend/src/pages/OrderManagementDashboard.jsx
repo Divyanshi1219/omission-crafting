@@ -193,9 +193,22 @@ export default function OrderManagementDashboard() {
     let advancePayment = 0;
 
     orders.forEach(o => {
-      const tot = Number(o.totalAmount) || Number(o.netAmount) || 0;
-      const adv = Number(o.advanceAmount) || 0;
-      const pend = Number(o.pendingAmount) || Math.max(tot - adv, 0);
+      const netVal = Number(o.netAmount) || 0;
+      const subTotal = Number(o.totalAmount) || 0;
+      const tot = netVal > 0 ? netVal : subTotal;
+      const adv = Number(o.customerApprovalData?.amountReceived) ||
+        Number(o.customerApprovalData?.amountPaid) ||
+        Number(o.advanceAmount) || 0;
+      let pend;
+      if (o.customerApprovalData?.paymentStatus === "fully_received" || o.partialPaymentConfirmationData?.paymentStatus === "fully_received" || o.isCompleted) {
+        pend = 0;
+      } else if (o.customerApprovalData?.balanceRemaining !== undefined && !isNaN(Number(o.customerApprovalData.balanceRemaining))) {
+        pend = Number(o.customerApprovalData.balanceRemaining);
+      } else if (o.pendingAmount !== undefined && !isNaN(Number(o.pendingAmount))) {
+        pend = Number(o.pendingAmount);
+      } else {
+        pend = Math.max(0, tot - adv);
+      }
       totalRevenue += tot;
       advancePayment += adv;
       pendingPayment += pend;

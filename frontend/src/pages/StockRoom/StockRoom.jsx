@@ -979,7 +979,17 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
           </div>
 
           {/* Live Graphical Analytics: Order Placed, In Stock, Reserved, Sizes, Valuation */} 
-          <InventoryAnalyticsPanel stocks={stocks} metrics={displayMetrics} />
+          <InventoryAnalyticsPanel
+            stocks={stocks}
+            metrics={displayMetrics}
+            onSelectCategory={(category) => {
+              if (category === "available") navigate("/stock-room/view/available");
+              else if (category === "reserved") navigate("/stock-room/view/active-reserved");
+              else if (category === "overdue") navigate("/stock-room/view/overdue-reserved");
+              else if (category === "low_stock") navigate("/stock-room/view/low-stock");
+              else if (category === "total") navigate("/stock-room/view/total");
+            }}
+          />
 
           {/* Overview Table Title for Stock Room page */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "18px", marginBottom: "8px" }}>
