@@ -8346,105 +8346,101 @@ function OrderManagement() {
 
   return (
     <div className="page-container">
+      {/* Upper Navigation: Back button placed above the card */}
+      <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center' }}>
+        <button
+          type="button"
+          onClick={handlePreviousPage}
+          className="back-to-order-btn"
+          title="Go to previous page"
+        >
+          <ArrowLeft size={16} />
+          <span>Back</span>
+        </button>
+      </div>
+
       <div className="chart-card hover-scale" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
         <div className="chart-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div className="chart-title-sec" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={handlePreviousPage}
-              className="back-to-order-btn"
-              title="Go to previous page"
-            >
-              <ArrowLeft size={16} />
-              <span>Back</span>
-            </button>
             <div>
               <h3 style={{ textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                <LayoutGrid size={16} color="#64748b" /> {currentSection || 'Order Management'}
+                <LayoutGrid size={18} color="#64748b" /> {location.pathname === '/order/create-lead' ? 'Leads' : (currentSection || 'Order Management')}
               </h3>
             </div>
             {isStagingRoomListView && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newParams = new URLSearchParams(searchParams);
-                    newParams.delete('status');
-                    setSearchParams(newParams);
-                  }}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '6px',
-                    fontSize: '11.5px',
-                    fontWeight: 600,
-                    border: '1px solid #cbd5e1',
-                    background: !statusParam || statusParam === 'all' ? '#2563eb' : '#ffffff',
-                    color: !statusParam || statusParam === 'all' ? '#ffffff' : '#475569',
-                    cursor: 'pointer',
-                  }}
-                >
-                  All Staging ({stagingCounts.all})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newParams = new URLSearchParams(searchParams);
-                    newParams.set('status', 'return');
-                    setSearchParams(newParams);
-                  }}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '6px',
-                    fontSize: '11.5px',
-                    fontWeight: 600,
-                    border: '1px solid #fecaca',
-                    background: statusParam === 'return' ? '#dc2626' : '#fef2f2',
-                    color: statusParam === 'return' ? '#ffffff' : '#dc2626',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Rerack &gt; 7d ({stagingCounts.return})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newParams = new URLSearchParams(searchParams);
-                    newParams.set('status', 'warning');
-                    setSearchParams(newParams);
-                  }}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '6px',
-                    fontSize: '11.5px',
-                    fontWeight: 600,
-                    border: '1px solid #fde68a',
-                    background: statusParam === 'warning' ? '#d97706' : '#fffbeb',
-                    color: statusParam === 'warning' ? '#ffffff' : '#b45309',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Warning &gt; 5d ({stagingCounts.warning})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newParams = new URLSearchParams(searchParams);
-                    newParams.set('status', 'normal');
-                    setSearchParams(newParams);
-                  }}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '6px',
-                    fontSize: '11.5px',
-                    fontWeight: 600,
-                    border: '1px solid #bbf7d0',
-                    background: statusParam === 'normal' ? '#059669' : '#f0fdf4',
-                    color: statusParam === 'normal' ? '#ffffff' : '#166534',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Normal ≤ 5d ({stagingCounts.normal})
-                </button>
+              <div style={{ display: 'inline-flex', alignItems: 'center', marginLeft: '6px' }}>
+                {statusParam === 'return' ? (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '4px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      background: '#dc2626',
+                      color: '#ffffff',
+                      boxShadow: '0 1px 3px rgba(220, 38, 38, 0.25)',
+                    }}
+                  >
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ffffff', display: 'inline-block' }} />
+                    Rerack &gt; 7d ({stagingCounts.return})
+                  </span>
+                ) : statusParam === 'warning' ? (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '4px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      background: '#d97706',
+                      color: '#ffffff',
+                      boxShadow: '0 1px 3px rgba(217, 119, 6, 0.25)',
+                    }}
+                  >
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ffffff', display: 'inline-block' }} />
+                    Warning &gt; 5d ({stagingCounts.warning})
+                  </span>
+                ) : statusParam === 'normal' ? (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '4px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      background: '#059669',
+                      color: '#ffffff',
+                      boxShadow: '0 1px 3px rgba(5, 150, 105, 0.25)',
+                    }}
+                  >
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ffffff', display: 'inline-block' }} />
+                    Normal ≤ 5d ({stagingCounts.normal})
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '4px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      background: '#2563eb',
+                      color: '#ffffff',
+                      boxShadow: '0 1px 3px rgba(37, 99, 235, 0.25)',
+                    }}
+                  >
+                    All Staging ({stagingCounts.all})
+                  </span>
+                )}
               </div>
             )}
           </div>

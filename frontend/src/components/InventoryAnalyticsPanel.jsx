@@ -11,11 +11,31 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
-  IndianRupee
+  IndianRupee,
+  Shirt,
+  RotateCcw
 } from 'lucide-react';
 import api from '../api';
 import './InventoryAnalyticsPanel.css';
 import StagingRoomAgeingChart from './StagingRoomAgeingChart';
+
+const getColorHex = (colour) => {
+  const c = (colour || '').toLowerCase().trim();
+  if (c.includes('black')) return '#0f172a';
+  if (c.includes('white') || c.includes('without color')) return '#cbd5e1';
+  if (c.includes('navy')) return '#1e3a8a';
+  if (c.includes('sky') || c.includes('light blue')) return '#38bdf8';
+  if (c.includes('blue') || c.includes('royal')) return '#2563eb';
+  if (c.includes('orange')) return '#ea580c';
+  if (c.includes('red') || c.includes('maroon') || c.includes('burgundy')) return '#dc2626';
+  if (c.includes('green') || c.includes('olive')) return '#16a34a';
+  if (c.includes('grey') || c.includes('gray') || c.includes('charcoal')) return '#64748b';
+  if (c.includes('yellow')) return '#eab308';
+  if (c.includes('purple') || c.includes('lavender')) return '#9333ea';
+  if (c.includes('pink') || c.includes('rose')) return '#ec4899';
+  if (c.includes('brown') || c.includes('beige') || c.includes('tan')) return '#92400e';
+  return '#6366f1';
+};
 
 export default function InventoryAnalyticsPanel({
   stocks: propStocks,
@@ -28,6 +48,11 @@ export default function InventoryAnalyticsPanel({
   const [internalLeads, setInternalLeads] = useState([]);
   const [hoveredSize, setHoveredSize] = useState(null);
   const [hoveredDonut, setHoveredDonut] = useState(null);
+
+  // Clothing dropdown & variant filter state
+  const [selectedProduct, setSelectedProduct] = useState('all');
+  const [selectedColour, setSelectedColour] = useState('all');
+  const [selectedSize, setSelectedSize] = useState('all');
 
   const handleCategoryClick = (category) => {
     if (onSelectCategory) {
@@ -338,6 +363,293 @@ export default function InventoryAnalyticsPanel({
     };
   }, [stocks, leads, propMetrics]);
 
+  // Unique products/garments for dropdown
+  const productOptions = useMemo(() => {
+    const set = new Set();
+    stocks.forEach(s => {
+      const p = (s.product || s.productName || s.name || '').trim();
+      if (p) set.add(p);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [stocks]);
+
+  // Unique colors available for the chosen garment
+  const colourOptions = useMemo(() => {
+    const set = new Set();
+    stocks.forEach(s => {
+      const p = (s.product || s.productName || s.name || '').trim();
+      if (selectedProduct === 'all' || p.toLowerCase() === selectedProduct.toLowerCase()) {
+        const c = (s.colour || s.color || '').trim();
+        if (c) set.add(c);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [stocks, selectedProduct]);
+
+  const isFiltered = selectedProduct !== 'all' || selectedColour !== 'all' || selectedSize !== 'all';
+
+  // Dynamic metrics for Stock Allocation Status card (handles dropdown filtering)
+  const allocationData = useMemo(() => {
+    if (!isFiltered) {
+      return {
+        totalStock: data.totalStock,
+        availableStock: data.availableStock,
+        availablePct: data.availablePct,
+        activeReserved: data.activeReserved,
+        reservedPct: data.reservedPct,
+        overdueCount: data.overdueCount,
+        overduePcs: data.overduePcs,
+        overduePct: data.overduePct,
+        lowStockCount: data.lowStockCount,
+        donutSlices: data.donutSlices,
+        totalItemsCount: stocks.length
+      };
+    }
+
+    const matching = stocks.filter(s => {
+      const p = (s.product || s.productName || s.name || '').trim();
+      if (selectedProduct !== 'all' && p.toLowerCase() !== selectedProduct.toLowerCase()) return false;
+      const c = (s.colour || s.color || '').trim();
+      if (selectedColour !== 'all' && c.toLowerCase() !== selectedColour.toLowerCase()) return false;
+      return true;
+    });
+
+    let total = 0;
+    let reserved = 0;
+    let overduePcs = 0;
+    let overdueCount = 0;
+    let lowStockCount = 0;
+    const now = new Date();
+    const sizeKeys = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+
+    matching.forEach(s => {
+      const sSizes = s.sizes || {};
+      let itemTotal = 0;
+      let itemReserved = 0;
+
+      if (selectedSize === 'all') {
+        sizeKeys.forEach(sz => {
+          itemTotal += Number(sSizes[sz]) || 0;
+        });
+        (s.reservations || []).forEach(r => {
+          if (r.status === 'Active') {
+            const q = Number(r.quantity) || 0;
+            itemReserved += q;
+            if (r.createdAt) {
+              const ageDays = (now.getTime() - new Date(r.createdAt).getTime()) / (1000 * 3600 * 24);
+              if (ageDays > 5) {
+                overdueCount += 1;
+                overduePcs += q;
+              }
+            }
+          }
+        });
+      } else {
+        itemTotal = Number(sSizes[selectedSize]) || 0;
+        (s.reservations || []).forEach(r => {
+          const rSz = (r.size || '').toUpperCase();
+          if (r.status === 'Active' && rSz === selectedSize) {
+            const q = Number(r.quantity) || 0;
+            itemReserved += q;
+            if (r.createdAt) {
+              const ageDays = (now.getTime() - new Date(r.createdAt).getTime()) / (1000 * 3600 * 24);
+              if (ageDays > 5) {
+                overdueCount += 1;
+                overduePcs += q;
+              }
+            }
+          }
+        });
+      }
+
+      total += itemTotal;
+      reserved += itemReserved;
+
+      const threshold = s.lowStockThreshold || 2;
+      const available = Math.max(0, itemTotal - itemReserved);
+      const hasOut = selectedSize === 'all'
+        ? sizeKeys.some(sz => (Number(sSizes[sz]) || 0) === 0)
+        : itemTotal === 0;
+      const hasLow = selectedSize === 'all'
+        ? sizeKeys.some(sz => (Number(sSizes[sz]) || 0) > 0 && (Number(sSizes[sz]) || 0) <= threshold)
+        : (itemTotal > 0 && itemTotal <= threshold);
+
+      if (itemTotal === 0 || available === 0 || available <= threshold || hasOut || hasLow || s.status === 'Low stock') {
+        lowStockCount += 1;
+      }
+    });
+
+    const availableStock = Math.max(0, total - reserved);
+    const availablePct = total > 0 ? Math.round((availableStock / total) * 100) : 0;
+    const reservedPct = total > 0 ? Math.round((reserved / total) * 100) : 0;
+    const overduePct = total > 0 ? Math.round((overduePcs / total) * 100) : 0;
+
+    const C = 427.26;
+    const minSlice = 36;
+    let overdueLength = 0;
+    let reservedLength = 0;
+    let availableLength = C;
+
+    if (total > 0) {
+      if (overduePcs > 0) {
+        const rawOverdue = (overduePcs / total) * C;
+        overdueLength = Math.max(minSlice, rawOverdue);
+      }
+      if (reserved > 0) {
+        const onTime = Math.max(0, reserved - overduePcs);
+        const rawReserved = onTime > 0 ? (onTime / total) * C : minSlice;
+        reservedLength = Math.max(minSlice, rawReserved);
+      }
+      availableLength = Math.max(0, C - reservedLength - overdueLength);
+    }
+
+    const donutSlices = [];
+    let currentOffset = 0;
+
+    if (total > 0 && availableLength > 0) {
+      donutSlices.push({
+        key: 'available',
+        label: 'Available',
+        color: '#10b981',
+        length: availableLength,
+        offset: currentOffset,
+        count: availableStock,
+        pct: availablePct,
+        displayVal: `${availableStock.toLocaleString('en-IN')} pcs`
+      });
+      currentOffset += availableLength;
+    }
+
+    if (total > 0 && reservedLength > 0) {
+      donutSlices.push({
+        key: 'reserved',
+        label: 'Reserved',
+        color: '#8b5cf6',
+        length: reservedLength,
+        offset: currentOffset,
+        count: reserved,
+        pct: reservedPct,
+        displayVal: `${reserved.toLocaleString('en-IN')} pcs`
+      });
+      currentOffset += reservedLength;
+    }
+
+    if (total > 0 && overdueLength > 0) {
+      donutSlices.push({
+        key: 'overdue',
+        label: 'Overdue',
+        color: '#ef4444',
+        length: overdueLength,
+        offset: currentOffset,
+        count: overduePcs,
+        pct: overduePct,
+        displayVal: `${overduePcs.toLocaleString('en-IN')} pcs`
+      });
+      currentOffset += overdueLength;
+    }
+
+    return {
+      totalStock: total,
+      availableStock,
+      availablePct,
+      activeReserved: reserved,
+      reservedPct,
+      overdueCount,
+      overduePcs,
+      overduePct,
+      lowStockCount,
+      donutSlices,
+      totalItemsCount: matching.length
+    };
+  }, [stocks, isFiltered, selectedProduct, selectedColour, selectedSize, data]);
+
+  // List of matching variants for the white space details matrix
+  const matchingVariants = useMemo(() => {
+    const matching = stocks.filter(s => {
+      const p = (s.product || s.productName || s.name || '').trim();
+      if (selectedProduct !== 'all' && p.toLowerCase() !== selectedProduct.toLowerCase()) return false;
+      const c = (s.colour || s.color || '').trim();
+      if (selectedColour !== 'all' && c.toLowerCase() !== selectedColour.toLowerCase()) return false;
+      return true;
+    });
+
+    return matching.map((s, idx) => {
+      const pName = (s.product || s.productName || s.name || 'Other Item').trim();
+      const colour = (s.colour || s.color || 'Standard').trim();
+      const cut = (s.cut || s.type || '').trim();
+      const sSizes = s.sizes || {};
+
+      let itemTotal = 0;
+      const sizeKeys = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+      const sizesMap = {};
+      sizeKeys.forEach(sz => {
+        const q = Number(sSizes[sz]) || 0;
+        sizesMap[sz] = q;
+        itemTotal += q;
+      });
+
+      let resTotal = 0;
+      (s.reservations || []).forEach(r => {
+        if (r.status === 'Active') {
+          resTotal += Number(r.quantity) || 0;
+        }
+      });
+
+      const avail = Math.max(0, itemTotal - resTotal);
+
+      return {
+        id: s._id || s.id || `${pName}-${colour}-${cut}-${idx}`,
+        product: pName,
+        colour,
+        cut,
+        totalPcs: itemTotal,
+        availablePcs: avail,
+        reservedPcs: resTotal,
+        sizes: sizesMap
+      };
+    }).sort((a, b) => b.totalPcs - a.totalPcs);
+  }, [stocks, selectedProduct, selectedColour]);
+
+  // Overview summaries for all garments
+  const garmentSummaries = useMemo(() => {
+    const map = {};
+    stocks.forEach(s => {
+      const pName = (s.product || s.productName || s.name || 'Other Item').trim();
+      if (!map[pName]) {
+        map[pName] = {
+          product: pName,
+          totalPcs: 0,
+          availablePcs: 0,
+          reservedPcs: 0,
+          colours: new Set(),
+          variantsCount: 0,
+          sizes: { XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 }
+        };
+      }
+      map[pName].variantsCount += 1;
+      const col = (s.colour || s.color || '').trim();
+      if (col) map[pName].colours.add(col);
+
+      const sSizes = s.sizes || {};
+      let itemTotal = 0;
+      ['XS', 'S', 'M', 'L', 'XL', 'XXL'].forEach(sz => {
+        const q = Number(sSizes[sz]) || 0;
+        map[pName].sizes[sz] += q;
+        itemTotal += q;
+      });
+      map[pName].totalPcs += itemTotal;
+
+      let res = 0;
+      (s.reservations || []).forEach(r => {
+        if (r.status === 'Active') res += Number(r.quantity) || 0;
+      });
+      map[pName].reservedPcs += res;
+      map[pName].availablePcs += Math.max(0, itemTotal - res);
+    });
+
+    return Object.values(map).sort((a, b) => b.totalPcs - a.totalPcs);
+  }, [stocks]);
+
   return (
     <div className="inv-standalone-charts-wrapper">
       {/* ============================================================== */}
@@ -347,176 +659,394 @@ export default function InventoryAnalyticsPanel({
         <div className="inv-card-header">
           <div className="inv-card-header-left">
             <span className="dot dot-indigo"></span>
-            <div>
-              <h3>Stock Allocation Status</h3>
-              <p>Available vs reserved warehouse inventory</p>
-            </div>
+            <h3>Stock Allocation Status</h3>
           </div>
-          <span
-            className="inv-card-badge indigo clickable-badge"
-            onClick={() => handleCategoryClick('total')}
-            title="Click to view total warehouse inventory table"
-            style={{ cursor: 'pointer' }}
-          >
-            {data.totalStock.toLocaleString('en-IN')} pcs Total
-          </span>
+
+          <div className="inv-card-header-actions">
+            {/* Clothing Dropdown */}
+            <div className="inv-filter-select-wrapper" title="Select garment type to view its inventory">
+              <Shirt size={14} className="inv-filter-icon" />
+              <select
+                className="inv-filter-select"
+                value={selectedProduct}
+                onChange={(e) => {
+                  setSelectedProduct(e.target.value);
+                  setSelectedColour('all');
+                  setSelectedSize('all');
+                }}
+                aria-label="Filter by cloth"
+              >
+                <option value="all">All Garments ({productOptions.length})</option>
+                {productOptions.map((prod) => (
+                  <option key={prod} value={prod}>
+                    {prod}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={13} className="inv-select-chevron" />
+            </div>
+
+            {/* Color Dropdown */}
+            <div className="inv-filter-select-wrapper" title="Filter by color">
+              <span
+                className="inv-color-dot-indicator"
+                style={{
+                  backgroundColor: selectedColour === 'all' ? '#94a3b8' : getColorHex(selectedColour)
+                }}
+              />
+              <select
+                className="inv-filter-select"
+                value={selectedColour}
+                onChange={(e) => setSelectedColour(e.target.value)}
+                aria-label="Filter by color"
+              >
+                <option value="all">All Colors {colourOptions.length > 0 ? `(${colourOptions.length})` : ''}</option>
+                {colourOptions.map((col) => (
+                  <option key={col} value={col}>
+                    {col}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={13} className="inv-select-chevron" />
+            </div>
+
+            {/* Size Dropdown */}
+            <div className="inv-filter-select-wrapper" title="Filter by size">
+              <span className="inv-filter-tag-lbl">Size</span>
+              <select
+                className="inv-filter-select size-select"
+                value={selectedSize}
+                onChange={(e) => setSelectedSize(e.target.value)}
+                aria-label="Filter by size"
+              >
+                <option value="all">All Sizes</option>
+                {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((sz) => (
+                  <option key={sz} value={sz}>
+                    {sz}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={13} className="inv-select-chevron" />
+            </div>
+
+            {/* Reset Filters button */}
+            {isFiltered && (
+              <button
+                type="button"
+                className="inv-filter-reset-btn"
+                onClick={() => {
+                  setSelectedProduct('all');
+                  setSelectedColour('all');
+                  setSelectedSize('all');
+                }}
+                title="Reset to All Garments"
+              >
+                <RotateCcw size={12} />
+                <span>Reset</span>
+              </button>
+            )}
+
+            {/* Total Count Badge */}
+            <span
+              className="inv-card-badge indigo clickable-badge"
+              onClick={() => handleCategoryClick('total')}
+              title="Click to view total warehouse inventory table"
+              style={{ cursor: 'pointer' }}
+            >
+              {allocationData.totalStock.toLocaleString('en-IN')} pcs {selectedProduct !== 'all' ? selectedProduct : 'Total'}
+            </span>
+          </div>
         </div>
 
         <div className="allocation-spacious-body">
-          {/* Interactive Donut with clean geometry matching Image 2 */}
-          <div className="donut-box-large">
-            <svg viewBox="0 0 200 200" className="donut-svg">
-              {/* Background circular track */}
-              <circle
-                cx="100"
-                cy="100"
-                r="68"
-                fill="none"
-                stroke="#f1f5f9"
-                strokeWidth="26"
-                className="donut-track"
-              />
+          {/* LEFT SECTION: Interactive Donut & Legend */}
+          <div className="allocation-chart-section">
+            <div className="donut-box-large">
+              <svg viewBox="0 0 200 200" className="donut-svg">
+                {/* Background circular track */}
+                <circle
+                  cx="100"
+                  cy="100"
+                  r="68"
+                  fill="none"
+                  stroke="#f1f5f9"
+                  strokeWidth="26"
+                  className="donut-track"
+                />
 
-              {/* Slices with flat ends (butt) and subtle gap between segments */}
-              {(data.donutSlices || []).map(slice => {
-                const isHovered = hoveredDonut === slice.key;
-                const gap = (data.donutSlices || []).length > 1 ? 2.5 : 0;
-                const dashLen = Math.max(1, slice.length - gap);
+                {/* Slices with flat ends (butt) and subtle gap between segments */}
+                {(allocationData.donutSlices || []).map(slice => {
+                  const isHovered = hoveredDonut === slice.key;
+                  const gap = (allocationData.donutSlices || []).length > 1 ? 2.5 : 0;
+                  const dashLen = Math.max(1, slice.length - gap);
 
-                return (
-                  <circle
-                    key={slice.key}
-                    cx="100"
-                    cy="100"
-                    r="68"
-                    fill="none"
-                    stroke={slice.color}
-                    strokeWidth={isHovered ? 29 : 26}
-                    strokeDasharray={`${dashLen} 427.26`}
-                    strokeDashoffset={-slice.offset}
-                    strokeLinecap="butt"
-                    className={`inv-donut-slice segment-${slice.key}`}
-                    onClick={() => handleCategoryClick(slice.key)}
-                    onMouseEnter={() => setHoveredDonut(slice.key)}
-                    onMouseLeave={() => setHoveredDonut(null)}
-                    style={{
-                      strokeLinecap: 'butt',
-                      cursor: 'pointer',
-                      transition: 'stroke-width 0.2s ease, filter 0.2s ease',
-                      filter: isHovered ? `drop-shadow(0 0 6px ${slice.color}90)` : 'none'
-                    }}
-                  >
-                    <title>Click to view {slice.label} items in table ({slice.displayVal})</title>
-                  </circle>
-                );
-              })}
-            </svg>
+                  return (
+                    <circle
+                      key={slice.key}
+                      cx="100"
+                      cy="100"
+                      r="68"
+                      fill="none"
+                      stroke={slice.color}
+                      strokeWidth={isHovered ? 29 : 26}
+                      strokeDasharray={`${dashLen} 427.26`}
+                      strokeDashoffset={-slice.offset}
+                      strokeLinecap="butt"
+                      className={`inv-donut-slice segment-${slice.key}`}
+                      onClick={() => handleCategoryClick(slice.key)}
+                      onMouseEnter={() => setHoveredDonut(slice.key)}
+                      onMouseLeave={() => setHoveredDonut(null)}
+                      style={{
+                        strokeLinecap: 'butt',
+                        cursor: 'pointer',
+                        transition: 'stroke-width 0.2s ease, filter 0.2s ease',
+                        filter: isHovered ? `drop-shadow(0 0 6px ${slice.color}90)` : 'none'
+                      }}
+                    >
+                      <title>Click to view {slice.label} items in table ({slice.displayVal})</title>
+                    </circle>
+                  );
+                })}
+              </svg>
 
-            {/* Clean Center Label: "Total" on top, large bold number below (Image 2 style) */}
-            <div
-              className="donut-center-label clickable-center"
-              onClick={() => handleCategoryClick(hoveredDonut || 'total')}
-              title={`Click to view ${hoveredDonut ? (hoveredDonut === 'available' ? 'Available' : hoveredDonut === 'reserved' ? 'Reserved' : hoveredDonut === 'overdue' ? 'Overdue' : 'Low Stock') : 'complete'} stock table`}
-              style={{ cursor: 'pointer' }}
-            >
-              <span className="donut-center-title">
-                {hoveredDonut === 'available'
-                  ? 'Available'
-                  : hoveredDonut === 'reserved'
-                    ? 'Reserved'
-                    : hoveredDonut === 'overdue'
-                      ? 'Overdue'
-                      : hoveredDonut === 'low_stock'
-                        ? 'Low Stock'
-                        : 'Total'}
-              </span>
-              <span className="donut-center-value">
-                {hoveredDonut === 'available'
-                  ? data.availableStock.toLocaleString('en-IN')
-                  : hoveredDonut === 'reserved'
-                    ? data.activeReserved.toLocaleString('en-IN')
-                    : hoveredDonut === 'overdue'
-                      ? data.overduePcs.toLocaleString('en-IN')
-                      : hoveredDonut === 'low_stock'
-                        ? data.lowStockCount.toLocaleString('en-IN')
-                        : data.totalStock.toLocaleString('en-IN')}
-              </span>
+              {/* Clean Center Label: "Total" on top, large bold number below */}
+              <div
+                className="donut-center-label clickable-center"
+                onClick={() => handleCategoryClick(hoveredDonut || 'total')}
+                title={`Click to view ${hoveredDonut ? (hoveredDonut === 'available' ? 'Available' : hoveredDonut === 'reserved' ? 'Reserved' : hoveredDonut === 'overdue' ? 'Overdue' : 'Low Stock') : 'complete'} stock table`}
+                style={{ cursor: 'pointer' }}
+              >
+                <span className="donut-center-title">
+                  {hoveredDonut === 'available'
+                    ? 'Available'
+                    : hoveredDonut === 'reserved'
+                      ? 'Reserved'
+                      : hoveredDonut === 'overdue'
+                        ? 'Overdue'
+                        : hoveredDonut === 'low_stock'
+                          ? 'Low Stock'
+                          : selectedProduct !== 'all' ? selectedProduct : 'Total'}
+                </span>
+                <span className="donut-center-value">
+                  {hoveredDonut === 'available'
+                    ? allocationData.availableStock.toLocaleString('en-IN')
+                    : hoveredDonut === 'reserved'
+                      ? allocationData.activeReserved.toLocaleString('en-IN')
+                      : hoveredDonut === 'overdue'
+                        ? allocationData.overduePcs.toLocaleString('en-IN')
+                        : hoveredDonut === 'low_stock'
+                          ? allocationData.lowStockCount.toLocaleString('en-IN')
+                          : allocationData.totalStock.toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+
+            {/* Clean Legend with aligned columns */}
+            <div className="donut-legend-list">
+              <div
+                className={`donut-legend-row ${hoveredDonut === 'available' ? 'is-hovered' : ''}`}
+                onClick={() => handleCategoryClick('available')}
+                onMouseEnter={() => setHoveredDonut('available')}
+                onMouseLeave={() => setHoveredDonut(null)}
+                title="Click to view Available stock table"
+              >
+                <div className="donut-legend-left">
+                  <span className="donut-legend-dot" style={{ backgroundColor: '#10b981' }} />
+                  <span className="donut-legend-name">Available</span>
+                </div>
+                <div className="donut-legend-right">
+                  <span className="donut-legend-qty">{allocationData.availableStock.toLocaleString('en-IN')} pcs</span>
+                  <span className="donut-legend-pct">({allocationData.availablePct}%)</span>
+                </div>
+              </div>
+
+              <div
+                className={`donut-legend-row ${hoveredDonut === 'reserved' ? 'is-hovered' : ''}`}
+                onClick={() => handleCategoryClick('reserved')}
+                onMouseEnter={() => setHoveredDonut('reserved')}
+                onMouseLeave={() => setHoveredDonut(null)}
+                title="Click to view Active Reservations table"
+              >
+                <div className="donut-legend-left">
+                  <span className="donut-legend-dot" style={{ backgroundColor: '#8b5cf6' }} />
+                  <span className="donut-legend-name">Reserved</span>
+                </div>
+                <div className="donut-legend-right">
+                  <span className="donut-legend-qty">{allocationData.activeReserved.toLocaleString('en-IN')} pcs</span>
+                  <span className="donut-legend-pct">({allocationData.reservedPct}%)</span>
+                </div>
+              </div>
+
+              <div
+                className={`donut-legend-row ${hoveredDonut === 'overdue' ? 'is-hovered' : ''}`}
+                onClick={() => handleCategoryClick('overdue')}
+                onMouseEnter={() => setHoveredDonut('overdue')}
+                onMouseLeave={() => setHoveredDonut(null)}
+                title="Click to view Overdue Reservations table"
+              >
+                <div className="donut-legend-left">
+                  <span className="donut-legend-dot" style={{ backgroundColor: '#ef4444' }} />
+                  <span className="donut-legend-name">Overdue</span>
+                  {allocationData.overdueCount > 0 && (
+                    <span className="donut-legend-tag">{allocationData.overdueCount} orders</span>
+                  )}
+                </div>
+                <div className="donut-legend-right">
+                  <span className="donut-legend-qty">{allocationData.overduePcs.toLocaleString('en-IN')} pcs</span>
+                  <span className="donut-legend-pct">({allocationData.overduePct > 0 ? `${allocationData.overduePct}%` : '<1%'})</span>
+                </div>
+              </div>
+
+              <div
+                className={`donut-legend-row ${hoveredDonut === 'low_stock' ? 'is-hovered' : ''}`}
+                onClick={() => handleCategoryClick('low_stock')}
+                onMouseEnter={() => setHoveredDonut('low_stock')}
+                onMouseLeave={() => setHoveredDonut(null)}
+                title="Click to view Low & Out of Stock table"
+              >
+                <div className="donut-legend-left">
+                  <span className="donut-legend-dot" style={{ backgroundColor: '#f59e0b' }} />
+                  <span className="donut-legend-name">Low Stock</span>
+                </div>
+                <div className="donut-legend-right">
+                  <span className="donut-legend-qty">{allocationData.lowStockCount.toLocaleString('en-IN')} items</span>
+                  <span className="donut-legend-pct">
+                    ({(stocks.length > 0 ? Math.round((allocationData.lowStockCount / stocks.length) * 100) : 0)}%)
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Clean Legend with aligned columns matching Image 2 reference */}
-          <div className="donut-legend-list">
-            <div
-              className={`donut-legend-row ${hoveredDonut === 'available' ? 'is-hovered' : ''}`}
-              onClick={() => handleCategoryClick('available')}
-              onMouseEnter={() => setHoveredDonut('available')}
-              onMouseLeave={() => setHoveredDonut(null)}
-              title="Click to view Available stock table"
-            >
-              <div className="donut-legend-left">
-                <span className="donut-legend-dot" style={{ backgroundColor: '#10b981' }} />
-                <span className="donut-legend-name">Available</span>
-              </div>
-              <div className="donut-legend-right">
-                <span className="donut-legend-qty">{data.availableStock.toLocaleString('en-IN')} pcs</span>
-                <span className="donut-legend-pct">({data.availablePct}%)</span>
-              </div>
-            </div>
-
-            <div
-              className={`donut-legend-row ${hoveredDonut === 'reserved' ? 'is-hovered' : ''}`}
-              onClick={() => handleCategoryClick('reserved')}
-              onMouseEnter={() => setHoveredDonut('reserved')}
-              onMouseLeave={() => setHoveredDonut(null)}
-              title="Click to view Active Reservations table"
-            >
-              <div className="donut-legend-left">
-                <span className="donut-legend-dot" style={{ backgroundColor: '#8b5cf6' }} />
-                <span className="donut-legend-name">Reserved</span>
-              </div>
-              <div className="donut-legend-right">
-                <span className="donut-legend-qty">{data.activeReserved.toLocaleString('en-IN')} pcs</span>
-                <span className="donut-legend-pct">({data.reservedPct}%)</span>
-              </div>
-            </div>
-
-            <div
-              className={`donut-legend-row ${hoveredDonut === 'overdue' ? 'is-hovered' : ''}`}
-              onClick={() => handleCategoryClick('overdue')}
-              onMouseEnter={() => setHoveredDonut('overdue')}
-              onMouseLeave={() => setHoveredDonut(null)}
-              title="Click to view Overdue Reservations table"
-            >
-              <div className="donut-legend-left">
-                <span className="donut-legend-dot" style={{ backgroundColor: '#ef4444' }} />
-                <span className="donut-legend-name">Overdue</span>
-                {data.overdueCount > 0 && (
-                  <span className="donut-legend-tag">{data.overdueCount} orders</span>
-                )}
-              </div>
-              <div className="donut-legend-right">
-                <span className="donut-legend-qty">{data.overduePcs.toLocaleString('en-IN')} pcs</span>
-                <span className="donut-legend-pct">({data.overduePct > 0 ? `${data.overduePct}%` : '<1%'})</span>
-              </div>
-            </div>
-
-            <div
-              className={`donut-legend-row ${hoveredDonut === 'low_stock' ? 'is-hovered' : ''}`}
-              onClick={() => handleCategoryClick('low_stock')}
-              onMouseEnter={() => setHoveredDonut('low_stock')}
-              onMouseLeave={() => setHoveredDonut(null)}
-              title="Click to view Low & Out of Stock table"
-            >
-              <div className="donut-legend-left">
-                <span className="donut-legend-dot" style={{ backgroundColor: '#f59e0b' }} />
-                <span className="donut-legend-name">Low Stock</span>
-              </div>
-              <div className="donut-legend-right">
-                <span className="donut-legend-qty">{data.lowStockCount.toLocaleString('en-IN')} items</span>
-                <span className="donut-legend-pct">
-                  ({(stocks.length > 0 ? Math.round((data.lowStockCount / stocks.length) * 100) : 0)}%)
+          {/* RIGHT SECTION: MAKING USE OF WHITE SPACE (Garment Types, Colors & Sizes Matrix) */}
+          <div className="allocation-variants-panel">
+            <div className="variants-panel-header">
+              <div className="variants-header-left">
+                <span className="variants-title">
+                  {selectedProduct !== 'all' ? (
+                    <>
+                      <strong>{selectedProduct}</strong> Types, Colors &amp; Sizes
+                    </>
+                  ) : (
+                    'Garment Inventory Breakdown'
+                  )}
+                </span>
+                <span className="variants-count-chip">
+                  {selectedProduct !== 'all' ? `${matchingVariants.length} types` : `${garmentSummaries.length} garments`}
                 </span>
               </div>
+              <span className="variants-header-hint">
+                {selectedProduct !== 'all'
+                  ? `${allocationData.availableStock} free • ${allocationData.activeReserved} reserved`
+                  : 'Click a garment to inspect'}
+              </span>
+            </div>
+
+            <div className="variants-panel-list custom-scrollbar">
+              {selectedProduct !== 'all' ? (
+                // SPECIFIC GARMENT SELECTED (e.g. Hoodie)
+                matchingVariants.length === 0 ? (
+                  <div className="variants-empty-state">
+                    No matching {selectedProduct} items found for the selected filter.
+                  </div>
+                ) : (
+                  matchingVariants.map(v => (
+                    <div key={v.id} className="variant-row-card">
+                      <div className="variant-card-top">
+                        <div className="variant-color-info">
+                          <span
+                            className="variant-color-dot"
+                            style={{ backgroundColor: getColorHex(v.colour) }}
+                            title={`Color: ${v.colour}`}
+                          />
+                          <span className="variant-name">{v.colour}</span>
+                          {v.cut && <span className="variant-cut-badge">{v.cut}</span>}
+                        </div>
+                        <div className="variant-stock-summary">
+                          <span className="variant-total-num"><strong>{v.totalPcs}</strong> pcs</span>
+                          <span className="variant-avail-num">({v.availablePcs} free)</span>
+                        </div>
+                      </div>
+
+                      {/* Sizes Matrix: XS to XXL */}
+                      <div className="variant-sizes-matrix">
+                        {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(sz => {
+                          const qty = v.sizes[sz] || 0;
+                          const isSelectedSize = selectedSize === sz;
+                          const isLow = qty > 0 && qty <= 3;
+                          const isZero = qty === 0;
+
+                          return (
+                            <button
+                              key={sz}
+                              type="button"
+                              className={`variant-size-pill ${isSelectedSize ? 'active' : ''} ${isZero ? 'zero' : isLow ? 'low' : 'good'}`}
+                              onClick={() => setSelectedSize(selectedSize === sz ? 'all' : sz)}
+                              title={`Size ${sz}: ${qty} pcs (${isSelectedSize ? 'Click to deselect' : 'Click to filter size'})`}
+                            >
+                              <span className="size-label">{sz}</span>
+                              <span className="size-qty">{qty}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )
+              ) : (
+                // "ALL GARMENTS" SELECTED: Overview cards for all clothing items
+                garmentSummaries.map(g => (
+                  <div
+                    key={g.product}
+                    className="garment-summary-card"
+                    onClick={() => {
+                      setSelectedProduct(g.product);
+                      setSelectedColour('all');
+                      setSelectedSize('all');
+                    }}
+                    title={`Click to filter chart to ${g.product}`}
+                  >
+                    <div className="garment-card-header">
+                      <div className="garment-title-wrap">
+                        <Shirt size={13} className="garment-icon" />
+                        <span className="garment-name">{g.product}</span>
+                        <span className="garment-variants-badge">
+                          {g.colours.size} {g.colours.size === 1 ? 'color' : 'colors'}
+                        </span>
+                      </div>
+                      <div className="garment-card-qty">
+                        <span className="garment-pcs">{g.totalPcs.toLocaleString('en-IN')} pcs</span>
+                        <span className="garment-drilldown-hint">View &rarr;</span>
+                      </div>
+                    </div>
+
+                    {/* Color Swatch Dots */}
+                    <div className="garment-colors-strip">
+                      {Array.from(g.colours).slice(0, 7).map(col => (
+                        <span
+                          key={col}
+                          className="garment-color-dot"
+                          style={{ backgroundColor: getColorHex(col) }}
+                          title={col}
+                        />
+                      ))}
+                      {g.colours.size > 7 && (
+                        <span className="garment-more-colors">+{g.colours.size - 7}</span>
+                      )}
+                    </div>
+
+                    {/* Quick Size Matrix */}
+                    <div className="garment-mini-sizes">
+                      {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(sz => (
+                        <span key={sz} className="mini-size-item">
+                          <span className="mini-sz-lbl">{sz}</span>
+                          <span className="mini-sz-val">{g.sizes[sz] || 0}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
