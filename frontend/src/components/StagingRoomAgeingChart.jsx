@@ -73,7 +73,7 @@ export default function StagingRoomAgeingChart({ leads = [] }) {
 
       let status = "normal"; // <= 5 days
       if (daysPassed > 7) {
-        status = "return"; // > 7 days: Order will go back
+        status = "return"; // > 7 days: Order requires rerack
       } else if (daysPassed > 5) {
         status = "warning"; // 6-7 days: > 5 days warning
       }
@@ -121,7 +121,7 @@ export default function StagingRoomAgeingChart({ leads = [] }) {
     <div className="staging-separate-cards-container">
       {/* 3 Separate Minimal Standalone Cards */}
       <div className="staging-cards-grid">
-        {/* Card 1: Will Go Back (> 7 Days) */}
+        {/* Card 1: Rerack (> 7 Days) */}
         <div
           className="staging-stat-card critical"
           onClick={() => handleGoToTable("return")}
@@ -133,12 +133,12 @@ export default function StagingRoomAgeingChart({ leads = [] }) {
               handleGoToTable("return");
             }
           }}
-          title="Click to view orders passed 7 days in separate Staging Room table page"
+          title="Click to view orders requiring rerack (> 7 days) in separate Staging Room table page"
         >
           <div className="card-top-row">
             <div className="card-title-group">
               <span className="status-dot red" />
-              <span className="card-title">Will Go Back</span>
+              <span className="card-title">Rerack</span>
               <span className="card-badge-threshold">&gt; 7 Days</span>
             </div>
             {passed7DaysCount > 0 ? (

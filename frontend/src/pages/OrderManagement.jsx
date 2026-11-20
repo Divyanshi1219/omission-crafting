@@ -8287,7 +8287,7 @@ function OrderManagement() {
     { key: 'subStage', label: 'Sub Stage' },
     ...(isStagingRoomListView ? [
       { key: 'daysInStaging', label: 'Days in Staging' },
-      { key: 'stagingAlert', label: 'Return SLA Alert' },
+      { key: 'stagingAlert', label: 'Rerack SLA Alert' },
     ] : []),
     ...(!isReadyToPickListView ? [{ key: 'stageStatus', label: 'Stage Status' }] : []),
     ...(!isPrintingListView ? [
@@ -8403,7 +8403,7 @@ function OrderManagement() {
                     cursor: 'pointer',
                   }}
                 >
-                  Will Go Back &gt; 7d ({stagingCounts.return})
+                  Rerack &gt; 7d ({stagingCounts.return})
                 </button>
                 <button
                   type="button"
@@ -8600,7 +8600,7 @@ function OrderManagement() {
                   {visibleColumns.orderStage && <th style={{ padding: '10px 12px' }}>Stage</th>}
                   {visibleColumns.subStage && <th style={{ padding: '10px 12px' }}>Sub Stage</th>}
                   {isStagingRoomListView && visibleColumns.daysInStaging && <th style={{ padding: '10px 12px' }}>Days in Staging</th>}
-                  {isStagingRoomListView && visibleColumns.stagingAlert && <th style={{ padding: '10px 12px' }}>Return SLA Alert</th>}
+                  {isStagingRoomListView && visibleColumns.stagingAlert && <th style={{ padding: '10px 12px' }}>Rerack SLA Alert</th>}
                   {!isReadyToPickListView && visibleColumns.stageStatus && <th style={{ padding: '10px 12px' }}>Stage Status</th>}
                   {!isPrintingListView && visibleColumns.totalQuantity && <th style={{ padding: '10px 12px' }}>Quantity</th>}
                   {!isPrintingListView && !isReadyToPickListView && !isStagingRoomListView && !isCustomerApprovalListView && visibleColumns.clearanceStatus && <th style={{ padding: '10px 12px' }}>Clearance Status</th>}
@@ -8701,7 +8701,7 @@ function OrderManagement() {
                             if (daysPassed > 7) {
                               return (
                                 <span style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
-                                  WILL GO BACK (&gt; 7d)
+                                  RERACK (&gt; 7d)
                                 </span>
                               );
                             } else if (daysPassed > 5) {
