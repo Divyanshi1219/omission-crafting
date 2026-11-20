@@ -34,12 +34,12 @@ export default function InventoryAnalyticsPanel({
       onSelectCategory(category);
       return;
     }
-    // Fallback default navigation to dedicated tables
-    if (category === 'available') navigate('/stock-room/view/available');
-    else if (category === 'reserved') navigate('/stock-room/view/active-reserved');
-    else if (category === 'overdue') navigate('/stock-room/view/overdue-reserved');
-    else if (category === 'low_stock') navigate('/stock-room/view/low-stock');
-    else if (category === 'total') navigate('/stock-room/view/total');
+    // Fallback default navigation to dedicated tables (use /dashboard/view/ for universal access)
+    if (category === 'available') navigate('/dashboard/view/available');
+    else if (category === 'reserved') navigate('/dashboard/view/active-reserved');
+    else if (category === 'overdue') navigate('/dashboard/view/overdue-reserved');
+    else if (category === 'low_stock') navigate('/dashboard/view/low-stock');
+    else if (category === 'total') navigate('/dashboard/view/total');
   };
 
   // Fetch stocks and leads if not supplied as props
@@ -409,8 +409,8 @@ export default function InventoryAnalyticsPanel({
             {/* Clean Center Label: "Total" on top, large bold number below (Image 2 style) */}
             <div
               className="donut-center-label clickable-center"
-              onClick={() => handleCategoryClick('total')}
-              title="Click to view complete stock inventory table"
+              onClick={() => handleCategoryClick(hoveredDonut || 'total')}
+              title={`Click to view ${hoveredDonut ? (hoveredDonut === 'available' ? 'Available' : hoveredDonut === 'reserved' ? 'Reserved' : hoveredDonut === 'overdue' ? 'Overdue' : 'Low Stock') : 'complete'} stock table`}
               style={{ cursor: 'pointer' }}
             >
               <span className="donut-center-title">

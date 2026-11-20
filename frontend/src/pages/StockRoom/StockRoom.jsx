@@ -96,7 +96,6 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
     date: true,
     aging: true,
     notes: true,
-    action: true,
   });
 
   const resvSortRef = useRef(null);
@@ -383,10 +382,10 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
 
     if (activeBox === "available") {
       result = result.filter((item) => {
-        const total = SIZES.reduce((acc, sz) => acc + (item.sizes?.[sz] || 0), 0);
+        const total = SIZES.reduce((acc, sz) => acc + (Number(item.sizes?.[sz]) || 0), 0);
         const resv = (item.reservations || [])
           .filter((r) => r.status === "Active")
-          .reduce((a, b) => a + (b.quantity || 0), 0);
+          .reduce((a, b) => a + (Number(b.quantity) || 0), 0);
         return (total - resv) > 0;
       });
     } else if (activeBox === "low_stock") {
@@ -791,6 +790,54 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
                     🚨 {displayMetrics.overduePieces} pcs
                   </span>
                 )}
+                {activeBox === "available" && (
+                  <span style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "#16a34a",
+                    background: "#dcfce7",
+                    padding: "2px 8px",
+                    borderRadius: "9999px"
+                  }}>
+                    {displayMetrics.availableItems.toLocaleString()} pcs
+                  </span>
+                )}
+                {activeBox === "active_reserved" && displayMetrics.activeReserved > 0 && (
+                  <span style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "#2563eb",
+                    background: "#eff6ff",
+                    padding: "2px 8px",
+                    borderRadius: "9999px"
+                  }}>
+                    {displayMetrics.activeReserved.toLocaleString()} pcs
+                  </span>
+                )}
+                {activeBox === "total" && displayMetrics.totalItems > 0 && (
+                  <span style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "#0284c7",
+                    background: "#e0f2fe",
+                    padding: "2px 8px",
+                    borderRadius: "9999px"
+                  }}>
+                    {displayMetrics.totalItems.toLocaleString()} pcs
+                  </span>
+                )}
+                {activeBox === "low_stock" && (displayMetrics.lowStockAlerts + displayMetrics.itemsOutOfStock) > 0 && (
+                  <span style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "#d97706",
+                    background: "#fef3c7",
+                    padding: "2px 8px",
+                    borderRadius: "9999px"
+                  }}>
+                    {(displayMetrics.lowStockAlerts + displayMetrics.itemsOutOfStock).toLocaleString()} alerts
+                  </span>
+                )}
               </h1>
               <p style={{ fontSize: "12.5px", color: "#64748b", margin: "2px 0 0" }}>
                 {activeBox === "overdue_reserved" && "Orders sitting in warehouse reservation for 5 days or more — Action required"}
@@ -1180,13 +1227,12 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
                     {resvVisibleColumns.date && <th style={{ minWidth: "110px" }}>Date Reserved</th>}
                     {resvVisibleColumns.aging && <th style={{ minWidth: "160px" }}>Reservation Age</th>}
                     {resvVisibleColumns.notes && <th style={{ minWidth: "160px" }}>Notes</th>}
-                    {resvVisibleColumns.action && <th style={{ minWidth: "90px", textAlign: "center" }}>Action</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredAndSortedReservations.length === 0 ? (
                     <tr>
-                      <td colSpan={10} style={{ textAlign: "center", padding: "36px 16px", color: "#64748b" }}>
+                      <td colSpan={1 + Object.values(resvVisibleColumns).filter(Boolean).length} style={{ textAlign: "center", padding: "36px 16px", color: "#64748b" }}>
                         {activeBox === "overdue_reserved"
                           ? "🎉 All clear! There are currently no overdue reservations (≥ 5 days)."
                           : "No reservations found matching the selected filter."}
@@ -1264,32 +1310,6 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
                         {resvVisibleColumns.notes && (
                           <td style={{ fontSize: "12px", color: "#64748b", maxWidth: "200px" }}>
                             {r.notes || "—"}
-                          </td>
-                        )}
-                        {resvVisibleColumns.action && (
-                          <td style={{ textAlign: "center" }}>
-                            {r.status === "Active" ? (
-                              <button
-                                type="button"
-                                onClick={() => handleReleaseFromList(r.stockId, r._id)}
-                                style={{
-                                  padding: "4px 10px",
-                                  borderRadius: "4px",
-                                  border: "1px solid #fca5a5",
-                                  background: "#fef2f2",
-                                  color: "#dc2626",
-                                  fontSize: "11.5px",
-                                  fontWeight: 600,
-                                  cursor: "pointer",
-                                  whiteSpace: "nowrap"
-                                }}
-                                title="Release reservation with mandatory notes"
-                              >
-                                Release
-                              </button>
-                            ) : (
-                              <span style={{ color: "#cbd5e1" }}>—</span>
-                            )}
                           </td>
                         )}
                       </tr>

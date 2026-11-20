@@ -2138,18 +2138,15 @@ export default function InventoryManagement() {
         leads={detectedOrders}
         onSelectCategory={(category) => {
           if (category === "available") {
-            setStatusFilter("In stock");
-            document.querySelector(".erp-table-card")?.scrollIntoView({ behavior: "smooth" });
+            navigate("/dashboard/view/available");
           } else if (category === "low_stock") {
-            setStatusFilter("Low stock");
-            document.querySelector(".erp-table-card")?.scrollIntoView({ behavior: "smooth" });
+            navigate("/dashboard/view/low-stock");
           } else if (category === "total") {
-            setStatusFilter("all");
-            document.querySelector(".erp-table-card")?.scrollIntoView({ behavior: "smooth" });
+            navigate("/dashboard/view/total");
           } else if (category === "reserved") {
-            navigate("/stock-room/view/active-reserved");
+            navigate("/dashboard/view/active-reserved");
           } else if (category === "overdue") {
-            navigate("/stock-room/view/overdue-reserved");
+            navigate("/dashboard/view/overdue-reserved");
           }
         }}
       />

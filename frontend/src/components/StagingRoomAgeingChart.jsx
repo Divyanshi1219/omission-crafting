@@ -78,15 +78,24 @@ export default function StagingRoomAgeingChart({ leads = [] }) {
         status = "warning"; // 6-7 days: > 5 days warning
       }
 
+      const totalQty =
+        Number(l.totalQuantity) ||
+        (Array.isArray(l.items) && l.items.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0)) ||
+        1;
+
       list.push({
         id: l._id,
         orderId: l.orderId || l.orderNo || `ORD-${String(l._id).slice(-5)}`,
         clientName: l.clientName || l.customerName || "Customer",
         companyName: l.companyName || "",
+        phoneNumber: l.phoneNumber || "",
+        totalQuantity: totalQty,
+        totalAmount: Number(l.totalAmount) || 0,
+        rack: l.partialStagingRoomData?.stagedRackNumber || l.sampleStagingGroundData?.rackNumber || l.stagingRackNumber || "—",
         daysPassed,
         status,
-        stage: l.orderStage,
-        subStage: l.subStage
+        stage: l.orderStage || "sample",
+        subStage: l.subStage || "staging-room",
       });
     });
 
@@ -98,11 +107,13 @@ export default function StagingRoomAgeingChart({ leads = [] }) {
   const warningCount = useMemo(() => orders.filter((o) => o.status === "warning").length, [orders]);
   const normalCount = useMemo(() => orders.filter((o) => o.status === "normal").length, [orders]);
 
+  // Navigate to dedicated separate page
   const handleGoToTable = (statusFilter = "") => {
-    if (statusFilter) {
-      navigate(`/order/partial/staging-room?status=${statusFilter}`);
+    const fromPath = encodeURIComponent(window.location.pathname + window.location.search);
+    if (statusFilter && statusFilter !== "all") {
+      navigate(`/order/partial/staging-room?status=${statusFilter}&from=${fromPath}`);
     } else {
-      navigate("/order/partial/staging-room");
+      navigate(`/order/partial/staging-room?from=${fromPath}`);
     }
   };
 
@@ -122,7 +133,7 @@ export default function StagingRoomAgeingChart({ leads = [] }) {
               handleGoToTable("return");
             }
           }}
-          title="Click to view orders passed 7 days in Staging Room table"
+          title="Click to view orders passed 7 days in separate Staging Room table page"
         >
           <div className="card-top-row">
             <div className="card-title-group">
@@ -162,7 +173,7 @@ export default function StagingRoomAgeingChart({ leads = [] }) {
               handleGoToTable("warning");
             }
           }}
-          title="Click to view warning orders in Staging Room table"
+          title="Click to view warning orders in separate Staging Room table page"
         >
           <div className="card-top-row">
             <div className="card-title-group">
@@ -198,7 +209,7 @@ export default function StagingRoomAgeingChart({ leads = [] }) {
               handleGoToTable("normal");
             }
           }}
-          title="Click to view normal staging orders in table"
+          title="Click to view normal staging orders in separate table page"
         >
           <div className="card-top-row">
             <div className="card-title-group">

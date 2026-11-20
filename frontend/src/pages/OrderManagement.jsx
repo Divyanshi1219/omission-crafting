@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { LayoutGrid, Plus, Trash2, ArrowLeft, ArrowRight, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles } from 'lucide-react';
 import api from '../api';
@@ -572,7 +572,7 @@ function OrderManagement() {
   const isLeadManagerOrAdmin = isLeadManager || currentUser?.id === 'admin';
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const editId = searchParams.get('id');
 
   const [query, setQuery] = useState('lead');
@@ -755,6 +755,8 @@ function OrderManagement() {
     phoneNumber: true,
     orderStage: true,
     subStage: true,
+    daysInStaging: true,
+    stagingAlert: true,
     stageStatus: true,
     printingStatus: true,
     totalQuantity: true,
@@ -5624,6 +5626,14 @@ function OrderManagement() {
     }
   }
 
+  const statusParam = (searchParams.get('status') || '').toLowerCase().trim();
+  const isStagingView =
+    currentSubStage === 'staging-room' ||
+    currentSubStage === 'staging-ground' ||
+    location.pathname.includes('/staging-room') ||
+    location.pathname.includes('/staging-ground') ||
+    Boolean(statusParam);
+
   const allStageLeads = leadsList.filter((item) => {
     // Profile orientation: each user only sees leads/orders created by or belonging to their employee profile
     const myName = (currentUser?.name || '').toLowerCase().trim();
@@ -5632,7 +5642,18 @@ function OrderManagement() {
     const itemCreatedBy = (item.createdBy || '').toLowerCase().trim();
 
     let isOwner = false;
-    if (isAdmin || myId === 'admin' || myName.startsWith('adam') || isLeadManager || myId === 'lead_manager' || isCoordinator || myId === 'coordinator' || myName.startsWith('alex')) {
+    if (
+      isAdmin ||
+      myId === 'admin' ||
+      myName.startsWith('adam') ||
+      isLeadManager ||
+      myId === 'lead_manager' ||
+      isCoordinator ||
+      myId === 'coordinator' ||
+      myName.startsWith('alex') ||
+      isStagingView ||
+      Boolean(statusParam)
+    ) {
       isOwner = true;
     } else if (itemEmp && myName && (itemEmp === myName || itemEmp.includes(myName) || myName.includes(itemEmp))) {
       isOwner = true;
@@ -5650,8 +5671,57 @@ function OrderManagement() {
       return false;
     }
 
-    const info = getLeadStageInfo(item, currentStage, currentSubStage, currentWorkflow);
-    if (!info.matches) return false;
+    if (isStagingView && statusParam && statusParam !== 'all') {
+      const stage = (item.orderStage || '').toLowerCase().trim();
+      const sub = (item.subStage || '').toLowerCase().trim().replace(/_/g, '-');
+      const stockStage = (item.stockTaskStage || '').toLowerCase().trim().replace(/_/g, '-');
+
+      if (item.isCompleted || stage === 'complete' || sub === 'delivered' || sub === 'customer-support') {
+        return false;
+      }
+
+      const isStaging =
+        sub.includes('staging') ||
+        stockStage.includes('staging') ||
+        stage.includes('staging') ||
+        (stage === 'partial' && Boolean(item.partialStagingRoomData?.stagedRackNumber));
+
+      if (!isStaging) return false;
+
+      const now = new Date().getTime();
+      const dStr = item.stagingEnteredAt || item.updatedAt || item.createdAt || item.date;
+      const orderDate = dStr ? new Date(dStr).getTime() : now;
+      const daysPassed = Math.max(0, Math.floor((now - orderDate) / (1000 * 60 * 60 * 24)));
+
+      let itemStatus = 'normal';
+      if (daysPassed > 7) {
+        itemStatus = 'return';
+      } else if (daysPassed > 5) {
+        itemStatus = 'warning';
+      }
+
+      if (statusParam === 'return' && itemStatus !== 'return') return false;
+      if (statusParam === 'warning' && itemStatus !== 'warning') return false;
+      if (statusParam === 'normal' && itemStatus !== 'normal') return false;
+    } else if (isStagingView) {
+      const info = getLeadStageInfo(item, currentStage, currentSubStage, currentWorkflow);
+      if (!info.matches) {
+        const stage = (item.orderStage || '').toLowerCase().trim();
+        const sub = (item.subStage || '').toLowerCase().trim().replace(/_/g, '-');
+        const stockStage = (item.stockTaskStage || '').toLowerCase().trim().replace(/_/g, '-');
+        const isStaging =
+          sub.includes('staging') ||
+          stockStage.includes('staging') ||
+          stage.includes('staging') ||
+          (stage === 'partial' && Boolean(item.partialStagingRoomData?.stagedRackNumber));
+        if (!isStaging || item.isCompleted || stage === 'complete' || sub === 'delivered' || sub === 'customer-support') {
+          return false;
+        }
+      }
+    } else {
+      const info = getLeadStageInfo(item, currentStage, currentSubStage, currentWorkflow);
+      if (!info.matches) return false;
+    }
 
     if (tableSearch.trim()) {
       const term = tableSearch.toLowerCase().trim();
@@ -8195,8 +8265,17 @@ function OrderManagement() {
   }
 
   const isPrintingListView = currentSubStage === 'printing';
-  const isReadyToPickListView = currentSubStage === 'ready-to-pick-up' || currentSubStage === 'ready-to-pick' || currentSubStage === 'ready-to-pick-production' || currentSubStage === 'ready-to-pick-printing';
-  const isStagingRoomListView = currentSubStage === 'staging-room' || currentSubStage === 'staging-ground';
+  const isReadyToPickListView =
+    currentSubStage === 'ready-to-pick-up' ||
+    currentSubStage === 'ready-to-pick' ||
+    currentSubStage === 'ready-to-pick-production' ||
+    currentSubStage === 'ready-to-pick-printing';
+  const isStagingRoomListView =
+    currentSubStage === 'staging-room' ||
+    currentSubStage === 'staging-ground' ||
+    location.pathname.includes('/staging-room') ||
+    location.pathname.includes('/staging-ground') ||
+    Boolean(statusParam);
   const isCustomerApprovalListView = currentSubStage === 'customer-approval-awaiting';
 
   const ALL_TABLE_COLUMNS = [
@@ -8206,6 +8285,10 @@ function OrderManagement() {
     { key: 'phoneNumber', label: 'Phone' },
     { key: 'orderStage', label: 'Stage' },
     { key: 'subStage', label: 'Sub Stage' },
+    ...(isStagingRoomListView ? [
+      { key: 'daysInStaging', label: 'Days in Staging' },
+      { key: 'stagingAlert', label: 'Return SLA Alert' },
+    ] : []),
     ...(!isReadyToPickListView ? [{ key: 'stageStatus', label: 'Stage Status' }] : []),
     ...(!isPrintingListView ? [
       { key: 'totalQuantity', label: 'Quantity' },
@@ -8232,11 +8315,40 @@ function OrderManagement() {
     { key: 'items', label: 'Add Items' },
   ];
 
+  const stagingCounts = (() => {
+    if (!isStagingView) return { all: 0, return: 0, warning: 0, normal: 0 };
+    const now = Date.now();
+    let total = 0;
+    let ret = 0;
+    let warn = 0;
+    let norm = 0;
+    leadsList.forEach((item) => {
+      const stage = (item.orderStage || '').toLowerCase().trim();
+      const sub = (item.subStage || '').toLowerCase().trim().replace(/_/g, '-');
+      const stockStage = (item.stockTaskStage || '').toLowerCase().trim().replace(/_/g, '-');
+      if (item.isCompleted || stage === 'complete' || sub === 'delivered' || sub === 'customer-support') return;
+      const isStaging =
+        sub.includes('staging') ||
+        stockStage.includes('staging') ||
+        stage.includes('staging') ||
+        (stage === 'partial' && Boolean(item.partialStagingRoomData?.stagedRackNumber));
+      if (!isStaging) return;
+      total++;
+      const dStr = item.stagingEnteredAt || item.updatedAt || item.createdAt || item.date;
+      const orderDate = dStr ? new Date(dStr).getTime() : now;
+      const daysPassed = Math.max(0, Math.floor((now - orderDate) / (1000 * 60 * 60 * 24)));
+      if (daysPassed > 7) ret++;
+      else if (daysPassed > 5) warn++;
+      else norm++;
+    });
+    return { all: total, return: ret, warning: warn, normal: norm };
+  })();
+
   return (
     <div className="page-container">
       <div className="chart-card hover-scale" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
         <div className="chart-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div className="chart-title-sec" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="chart-title-sec" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={handlePreviousPage}
@@ -8251,6 +8363,90 @@ function OrderManagement() {
                 <LayoutGrid size={16} color="#64748b" /> {currentSection || 'Order Management'}
               </h3>
             </div>
+            {isStagingRoomListView && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.delete('status');
+                    setSearchParams(newParams);
+                  }}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    border: '1px solid #cbd5e1',
+                    background: !statusParam || statusParam === 'all' ? '#2563eb' : '#ffffff',
+                    color: !statusParam || statusParam === 'all' ? '#ffffff' : '#475569',
+                    cursor: 'pointer',
+                  }}
+                >
+                  All Staging ({stagingCounts.all})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.set('status', 'return');
+                    setSearchParams(newParams);
+                  }}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    border: '1px solid #fecaca',
+                    background: statusParam === 'return' ? '#dc2626' : '#fef2f2',
+                    color: statusParam === 'return' ? '#ffffff' : '#dc2626',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Will Go Back &gt; 7d ({stagingCounts.return})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.set('status', 'warning');
+                    setSearchParams(newParams);
+                  }}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    border: '1px solid #fde68a',
+                    background: statusParam === 'warning' ? '#d97706' : '#fffbeb',
+                    color: statusParam === 'warning' ? '#ffffff' : '#b45309',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Warning &gt; 5d ({stagingCounts.warning})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.set('status', 'normal');
+                    setSearchParams(newParams);
+                  }}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    border: '1px solid #bbf7d0',
+                    background: statusParam === 'normal' ? '#059669' : '#f0fdf4',
+                    color: statusParam === 'normal' ? '#ffffff' : '#166534',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Normal ≤ 5d ({stagingCounts.normal})
+                </button>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative' }} ref={columnSettingsRef}>
@@ -8381,9 +8577,15 @@ function OrderManagement() {
             </p>
           </div>
         ) : matchingLeads.length === 0 ? (
-          <div className="chart-body centered empty-chart" style={{ flex: 1 }}>
-            <p style={{ color: '#64748b', fontSize: '15px' }}>
-              No data available for {location.pathname === '/order/create-lead' ? 'Leads' : (currentSection || 'Order Management')} yet.
+          <div className="chart-body centered empty-chart" style={{ flex: 1, padding: '48px 24px', textAlign: 'center' }}>
+            <p style={{ color: '#64748b', fontSize: '15px', margin: '0 auto', maxWidth: '520px' }}>
+              {isStagingRoomListView && statusParam === 'warning'
+                ? 'All clear! There are currently no orders in the 5–7 day warning window. (All staging orders are either on track or past 7 days limit).'
+                : isStagingRoomListView && statusParam === 'return'
+                ? 'All clear! No orders have exceeded the 7-day staging limit.'
+                : isStagingRoomListView && statusParam === 'normal'
+                ? 'No normal orders found in staging room.'
+                : `No data available for ${location.pathname === '/order/create-lead' ? 'Leads' : (currentSection || 'Order Management')} yet.`}
             </p>
           </div>
         ) : (
@@ -8397,6 +8599,8 @@ function OrderManagement() {
                   {visibleColumns.phoneNumber && <th style={{ padding: '10px 12px' }}>Phone</th>}
                   {visibleColumns.orderStage && <th style={{ padding: '10px 12px' }}>Stage</th>}
                   {visibleColumns.subStage && <th style={{ padding: '10px 12px' }}>Sub Stage</th>}
+                  {isStagingRoomListView && visibleColumns.daysInStaging && <th style={{ padding: '10px 12px' }}>Days in Staging</th>}
+                  {isStagingRoomListView && visibleColumns.stagingAlert && <th style={{ padding: '10px 12px' }}>Return SLA Alert</th>}
                   {!isReadyToPickListView && visibleColumns.stageStatus && <th style={{ padding: '10px 12px' }}>Stage Status</th>}
                   {!isPrintingListView && visibleColumns.totalQuantity && <th style={{ padding: '10px 12px' }}>Quantity</th>}
                   {!isPrintingListView && !isReadyToPickListView && !isStagingRoomListView && !isCustomerApprovalListView && visibleColumns.clearanceStatus && <th style={{ padding: '10px 12px' }}>Clearance Status</th>}
@@ -8474,6 +8678,45 @@ function OrderManagement() {
                           <span style={{ color: '#334155', textTransform: 'capitalize', fontSize: '13px' }}>
                             {(item.subStage === 'new' || (item.query || '').toLowerCase() === 'lead' ? 'Leads' : (item.subStage || 'Order')).replace(/-/g, ' ')}
                           </span>
+                        </td>
+                      )}
+                      {isStagingRoomListView && visibleColumns.daysInStaging && (
+                        <td style={{ padding: '12px', fontWeight: 600, color: '#1e293b' }}>
+                          {(() => {
+                            const now = new Date().getTime();
+                            const dStr = item.stagingEnteredAt || item.updatedAt || item.createdAt || item.date;
+                            const orderDate = dStr ? new Date(dStr).getTime() : now;
+                            const daysPassed = Math.max(0, Math.floor((now - orderDate) / (1000 * 60 * 60 * 24)));
+                            return `${daysPassed} day${daysPassed === 1 ? '' : 's'}`;
+                          })()}
+                        </td>
+                      )}
+                      {isStagingRoomListView && visibleColumns.stagingAlert && (
+                        <td style={{ padding: '12px' }}>
+                          {(() => {
+                            const now = new Date().getTime();
+                            const dStr = item.stagingEnteredAt || item.updatedAt || item.createdAt || item.date;
+                            const orderDate = dStr ? new Date(dStr).getTime() : now;
+                            const daysPassed = Math.max(0, Math.floor((now - orderDate) / (1000 * 60 * 60 * 24)));
+                            if (daysPassed > 7) {
+                              return (
+                                <span style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
+                                  WILL GO BACK (&gt; 7d)
+                                </span>
+                              );
+                            } else if (daysPassed > 5) {
+                              return (
+                                <span style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
+                                  WARNING (&gt; 5d)
+                                </span>
+                              );
+                            }
+                            return (
+                              <span style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
+                                ON TRACK (≤ 5d)
+                              </span>
+                            );
+                          })()}
                         </td>
                       )}
                       {!isReadyToPickListView && visibleColumns.stageStatus && (

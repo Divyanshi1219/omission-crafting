@@ -114,12 +114,12 @@ function AppContent({ darkMode, setDarkMode }) {
 
             <Route
               path="/stock-room/view/:type"
-              element={(isOnlyStockRoomUser || isAdmin) ? <StockRoom isTableViewOnly={true} /> : <Navigate to="/" replace />}
+              element={<StockRoom isTableViewOnly={true} />}
             />
 
             <Route
               path="/dashboard/view/:type"
-              element={(isOnlyStockRoomUser || isAdmin) ? <StockRoom isTableViewOnly={true} /> : <Navigate to="/" replace />}
+              element={<StockRoom isTableViewOnly={true} />}
             />
 
             <Route
