@@ -140,9 +140,15 @@ export default function InventoryAnalyticsPanel({
       // Low/Out alerts
       const threshold = s.lowStockThreshold || 2;
       const available = Math.max(0, itemTotal - itemReserved);
+      const sizeKeys = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+      const hasOut = sizeKeys.some((sz) => (Number(sSizes[sz]) || 0) === 0);
+      const hasLow = sizeKeys.some(
+        (sz) => (Number(sSizes[sz]) || 0) > 0 && (Number(sSizes[sz]) || 0) <= threshold
+      );
+
       if (itemTotal === 0 || available === 0) {
         outOfStockCount += 1;
-      } else if (available <= threshold) {
+      } else if (available <= threshold || hasOut || hasLow || itemTotal < 15 || s.status === 'Low stock') {
         lowStockCount += 1;
       }
 
@@ -212,8 +218,8 @@ export default function InventoryAnalyticsPanel({
       ? Number(propMetrics.availableItems) || 0
       : Math.max(0, finalTotalStock - finalActiveReserved);
 
-    const finalLowStockCount = (propMetrics?.lowStockAlerts !== undefined || propMetrics?.itemsOutOfStock !== undefined)
-      ? ((Number(propMetrics.lowStockAlerts) || 0) + (Number(propMetrics.itemsOutOfStock) || 0))
+    const finalLowStockCount = propMetrics?.lowStockItemsCount !== undefined
+      ? Number(propMetrics.lowStockItemsCount) || 0
       : (lowStockCount + outOfStockCount);
 
     const onTimeReserved = Math.max(0, finalActiveReserved - finalOverduePcs);
@@ -508,7 +514,7 @@ export default function InventoryAnalyticsPanel({
               <div className="donut-legend-right">
                 <span className="donut-legend-qty">{data.lowStockCount.toLocaleString('en-IN')} items</span>
                 <span className="donut-legend-pct">
-                  ({data.totalStock > 0 ? Math.round((data.lowStockCount / data.totalStock) * 100) : 0}%)
+                  ({(stocks.length > 0 ? Math.round((data.lowStockCount / stocks.length) * 100) : 0)}%)
                 </span>
               </div>
             </div>

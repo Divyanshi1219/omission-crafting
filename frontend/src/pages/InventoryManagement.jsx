@@ -787,9 +787,15 @@ export default function InventoryManagement() {
 
         totalValuation += totalQty * unitPrice;
 
+        const sizeKeys = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+        const hasOut = sizeKeys.some((sz) => (Number(sSizes[sz]) || 0) === 0);
+        const hasLow = sizeKeys.some(
+          (sz) => (Number(sSizes[sz]) || 0) > 0 && (Number(sSizes[sz]) || 0) <= threshold
+        );
+
         if (totalQty === 0 || available === 0) {
           outStock += 1;
-        } else if (available <= threshold) {
+        } else if (available <= threshold || hasOut || hasLow || totalQty < 15 || s.status === "Low stock") {
           lowStock += 1;
         } else {
           inStock += 1;
@@ -2136,6 +2142,10 @@ export default function InventoryManagement() {
       <InventoryAnalyticsPanel
         stocks={stockRoomData}
         leads={detectedOrders}
+        metrics={{
+          lowStockItemsCount: inventoryMetrics.lowStockCount,
+          totalProductsCount: inventoryMetrics.totalProductsCount
+        }}
         onSelectCategory={(category) => {
           if (category === "available") {
             navigate("/dashboard/view/available");

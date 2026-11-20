@@ -122,14 +122,24 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
     let activeReserved = 0;
     let overdueReservations = 0;
     let overduePieces = 0;
+    let lowStockItemsCount = 0;
     const now = Date.now();
     const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
 
     stocks.forEach((stock) => {
+      const threshold = stock.lowStockThreshold || 2;
+      const total = SIZES.reduce((acc, sz) => acc + (Number(stock.sizes?.[sz]) || 0), 0);
+      const hasOut = SIZES.some((sz) => (Number(stock.sizes?.[sz]) || 0) === 0);
+      const hasLow = SIZES.some(
+        (sz) => (Number(stock.sizes?.[sz]) || 0) > 0 && (Number(stock.sizes?.[sz]) || 0) <= threshold
+      );
+      if (total === 0 || hasOut || hasLow) {
+        lowStockItemsCount += 1;
+      }
+
       SIZES.forEach((sz) => {
         const qty = Number(stock.sizes?.[sz] || 0);
         totalItems += qty;
-        const threshold = stock.lowStockThreshold || 2;
         if (qty === 0) {
           itemsOutOfStock += 1;
         } else if (qty <= threshold) {
@@ -160,6 +170,7 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
       overduePieces,
       lowStockAlerts,
       itemsOutOfStock,
+      lowStockItemsCount,
     };
   }, [stocks]);
 
@@ -1560,7 +1571,7 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
                         .reduce((acc, r) => acc + (r.quantity || 0), 0);
                       const netAvail = Math.max(0, totalQty - totalReserved);
                       const isOutOfStock = totalQty === 0;
-                      const isLowStock = SIZES.some((sz) => (stock.sizes?.[sz] || 0) > 0 && (stock.sizes?.[sz] || 0) <= threshold) || totalQty < 15;
+                      const isLowStock = SIZES.some((sz) => (stock.sizes?.[sz] || 0) === 0 || ((stock.sizes?.[sz] || 0) > 0 && (stock.sizes?.[sz] || 0) <= threshold)) || totalQty < 15;
 
                       return (
                         <tr key={stock._id}>

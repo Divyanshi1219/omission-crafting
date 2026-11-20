@@ -236,15 +236,25 @@ const calculateMetrics = (stocks) => {
   let activeReserved = 0;
   let overdueReservations = 0;
   let overduePieces = 0;
+  let lowStockItemsCount = 0;
   const sizeKeys = ["XS", "S", "M", "L", "XL", "XXL"];
   const now = Date.now();
   const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
 
   stocks.forEach((stock) => {
+    const threshold = stock.lowStockThreshold || 2;
+    const total = sizeKeys.reduce((acc, sz) => acc + (Number(stock.sizes?.[sz]) || 0), 0);
+    const hasOut = sizeKeys.some((sz) => (Number(stock.sizes?.[sz]) || 0) === 0);
+    const hasLow = sizeKeys.some(
+      (sz) => (Number(stock.sizes?.[sz]) || 0) > 0 && (Number(stock.sizes?.[sz]) || 0) <= threshold
+    );
+    if (total === 0 || hasOut || hasLow) {
+      lowStockItemsCount += 1;
+    }
+
     sizeKeys.forEach((sz) => {
       const qty = Number(stock.sizes?.[sz] || 0);
       totalItems += qty;
-      const threshold = stock.lowStockThreshold || 2;
       if (qty === 0) {
         itemsOutOfStock += 1;
       } else if (qty <= threshold) {
@@ -275,6 +285,7 @@ const calculateMetrics = (stocks) => {
     overduePieces,
     lowStockAlerts,
     itemsOutOfStock,
+    lowStockItemsCount,
   };
 };
 
