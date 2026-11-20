@@ -1648,39 +1648,81 @@ function Dashboard() {
               </div>
             </div>
 
-            {/* Tile 4: Pending Payment (Minimal & Super Clean) */}
+            {/* Tile 4: Pending Payment (Minimal & Super Clean: Final + Total Pending) */}
             {(() => {
-              const currentStats = pendingPaymentAgeing.dtfPartial;
+              const dtfStats = pendingPaymentAgeing.dtfPartial;
+              const allStats = pendingPaymentAgeing.allOrders;
+
+              const formatCompact = (val) => {
+                const num = Math.round(Number(val) || 0);
+                if (num >= 10000000) return `₹${(num / 10000000).toFixed(2)} Cr`;
+                if (num >= 100000) return `₹${(num / 100000).toFixed(2)} L`;
+                return `₹${num.toLocaleString("en-IN")}`;
+              };
 
               return (
                 <div 
                   className="overview-tile tile-pending-payment" 
                   onClick={() => navigate('/pending-payments', { state: { leads: rawLeads } })}
                   style={{ cursor: "pointer" }}
-                  title="Click to view all details on a new page"
+                  title="Click to view all pending payment details"
                 >
                   <div className="tile-top">
                     <div className="tile-icon-badge orange">
                       <CreditCard size={22} />
                     </div>
                     <span className="tile-trend-pill warning">
-                      {currentStats.count} {currentStats.count === 1 ? "Order" : "Orders"}
+                      {dtfStats.count} Final • {allStats.count} Total
                     </span>
                   </div>
 
                   <div className="tile-main">
-                    <span className="tile-label">Pending Payment</span>
-                    <div className="tile-num-row">
-                      <span className="tile-number">
-                        ₹{Math.round(currentStats.totalAmount).toLocaleString("en-IN")}
-                      </span>
+                    <div className="tile-dual-metrics">
+                      {/* Final Payment Pending */}
+                      <div
+                        className="dual-metric-item"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/pending-payments?scope=dtf', { state: { leads: rawLeads, scope: 'dtf' } });
+                        }}
+                        title={`Final Payment Pending: ₹${Math.round(dtfStats.totalAmount).toLocaleString("en-IN")} (${dtfStats.count} ${dtfStats.count === 1 ? 'order' : 'orders'} in staging ready for delivery)`}
+                      >
+                        <span className="dual-metric-label">Final Pending</span>
+                        <div className="dual-metric-val orange">
+                          ₹{Math.round(dtfStats.totalAmount).toLocaleString("en-IN")}
+                        </div>
+                        <span className="dual-metric-sub">
+                          {dtfStats.count} {dtfStats.count === 1 ? "Order" : "Orders"}
+                        </span>
+                      </div>
+
+                      {/* Subtle Vertical Divider */}
+                      <div className="dual-metric-separator" />
+
+                      {/* Total Payment Pending */}
+                      <div
+                        className="dual-metric-item"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/pending-payments?scope=all', { state: { leads: rawLeads, scope: 'all' } });
+                        }}
+                        title={`Total Pipeline Pending: ₹${Math.round(allStats.totalAmount).toLocaleString("en-IN")} across ${allStats.count} orders`}
+                      >
+                        <span className="dual-metric-label">Total Pending</span>
+                        <div className="dual-metric-val slate">
+                          {formatCompact(allStats.totalAmount)}
+                        </div>
+                        <span className="dual-metric-sub">
+                          {allStats.count} Orders
+                        </span>
+                      </div>
                     </div>
                   </div>
 
                   {/* Minimal 6px Ageing Micro-Bar */}
                   <div className="tile-capacity-bar" style={{ display: "flex", gap: "2px" }}>
-                    {currentStats.tiers.map((tier) => {
-                      const pct = currentStats.count > 0 ? (tier.count / currentStats.count) * 100 : 0;
+                    {allStats.tiers.map((tier) => {
+                      const pct = allStats.count > 0 ? (tier.count / allStats.count) * 100 : 0;
                       if (pct === 0) return null;
                       return (
                         <div
@@ -1691,7 +1733,7 @@ function Dashboard() {
                             height: "100%",
                             borderRadius: "999px"
                           }}
-                          title={`${tier.label}: ${tier.count} orders`}
+                          title={`${tier.label}: ${tier.count} orders (₹${Math.round(tier.amount).toLocaleString("en-IN")})`}
                         />
                       );
                     })}

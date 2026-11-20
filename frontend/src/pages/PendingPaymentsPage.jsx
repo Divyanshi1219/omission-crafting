@@ -16,10 +16,17 @@ export default function PendingPaymentsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const initialScope = searchParams.get("scope") === "all" ? "all" : "dtf";
+  const initialScope = searchParams.get("scope") === "all" || location.state?.scope === "all" ? "all" : "dtf";
 
   const [scope, setScope] = useState(initialScope); // "dtf" | "all"
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    const s = searchParams.get("scope") || location.state?.scope;
+    if (s === "all" || s === "dtf") {
+      setScope(s);
+    }
+  }, [searchParams, location.state]);
 
   // Initialize leads with zero delay from router state or cached storage
   const [leads, setLeads] = useState(() => {
