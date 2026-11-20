@@ -717,6 +717,19 @@
   background-color: #fbfbfb;
 }
 
+.clickable-stock-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.clickable-stock-row:hover td {
+  background-color: #f1f5f9;
+}
+
+.app.dark .clickable-stock-row:hover td {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
 .stock-inventory-table tbody tr.new-product-group-row {
   border-top: 1px solid #e2e8f0;
 }

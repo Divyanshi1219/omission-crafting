@@ -453,12 +453,17 @@
   color: #cbd5e1;
 }
 
+.payment-table tr {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
 .payment-table tr:hover td {
-  background: #f8fafc;
+  background: #f1f5f9;
 }
 
 .app.dark .payment-table tr:hover td {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .payment-order-id {

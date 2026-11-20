@@ -429,13 +429,193 @@
   color: #f8fafc;
 }
 
+.donut-center-sub {
+  font-size: 10px;
+  font-weight: 600;
+  color: #10b981;
+  letter-spacing: -0.01em;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.donut-legend-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 240px;
+  max-width: 320px;
+  flex: 1;
+}
+
+.allocation-mini-summary-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.app.dark .allocation-mini-summary-pills {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.mini-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.mini-summary-pill.green {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.mini-summary-pill.green:hover {
+  background: #dcfce7;
+}
+
+.app.dark .mini-summary-pill.green {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
+
+.mini-summary-pill.purple {
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.mini-summary-pill.purple:hover {
+  background: #ede9fe;
+}
+
+.app.dark .mini-summary-pill.purple {
+  background: rgba(139, 92, 246, 0.15);
+  color: #c4b5fd;
+}
+
+.mini-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.mini-pill-dot.green { background: #10b981; }
+.mini-pill-dot.purple { background: #8b5cf6; }
+
+/* Overall Sizes Bar for selected cloth */
+.cloth-overall-sizes-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.app.dark .cloth-overall-sizes-bar {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.overall-sizes-lbl {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.app.dark .overall-sizes-lbl {
+  color: #94a3b8;
+}
+
+.overall-sizes-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.overall-size-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.overall-size-chip .chip-sz {
+  font-size: 9.5px;
+  color: #64748b;
+}
+
+.overall-size-chip.good {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: #059669;
+}
+
+.overall-size-chip.low {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #d97706;
+}
+
+.overall-size-chip.zero {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
+
+.app.dark .overall-size-chip.good {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.app.dark .overall-size-chip.low {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.app.dark .overall-size-chip.zero {
+  background: rgba(255, 255, 255, 0.05);
+  color: #64748b;
+}
+
+.variant-row-card.highlighted {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+  background: #fdfefe;
+}
+
+.app.dark .variant-row-card.highlighted {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: #818cf8 !important;
+}
+
 /* Vertical Legend List - Tabular Alignment matching Image 2 Design */
 .donut-legend-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-width: 260px;
-  max-width: 340px;
+  gap: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding-right: 4px;
+  min-width: 240px;
+  max-width: 320px;
   flex: 1;
 }
 

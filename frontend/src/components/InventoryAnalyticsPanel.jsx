@@ -49,10 +49,8 @@ export default function InventoryAnalyticsPanel({
   const [hoveredSize, setHoveredSize] = useState(null);
   const [hoveredDonut, setHoveredDonut] = useState(null);
 
-  // Clothing dropdown & variant filter state
+  // Clothing dropdown state (simple & understandable - cloth selection only)
   const [selectedProduct, setSelectedProduct] = useState('all');
-  const [selectedColour, setSelectedColour] = useState('all');
-  const [selectedSize, setSelectedSize] = useState('all');
 
   const handleCategoryClick = (category) => {
     if (onSelectCategory) {
@@ -363,7 +361,7 @@ export default function InventoryAnalyticsPanel({
     };
   }, [stocks, leads, propMetrics]);
 
-  // Unique products/garments for dropdown
+  // Unique products/garments for dropdown (cloth selection only)
   const productOptions = useMemo(() => {
     const set = new Set();
     stocks.forEach(s => {
@@ -373,282 +371,218 @@ export default function InventoryAnalyticsPanel({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [stocks]);
 
-  // Unique colors available for the chosen garment
-  const colourOptions = useMemo(() => {
-    const set = new Set();
-    stocks.forEach(s => {
-      const p = (s.product || s.productName || s.name || '').trim();
-      if (selectedProduct === 'all' || p.toLowerCase() === selectedProduct.toLowerCase()) {
-        const c = (s.colour || s.color || '').trim();
-        if (c) set.add(c);
-      }
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [stocks, selectedProduct]);
-
-  const isFiltered = selectedProduct !== 'all' || selectedColour !== 'all' || selectedSize !== 'all';
-
-  // Dynamic metrics for Stock Allocation Status card (handles dropdown filtering)
-  const allocationData = useMemo(() => {
-    if (!isFiltered) {
-      return {
-        totalStock: data.totalStock,
-        availableStock: data.availableStock,
-        availablePct: data.availablePct,
-        activeReserved: data.activeReserved,
-        reservedPct: data.reservedPct,
-        overdueCount: data.overdueCount,
-        overduePcs: data.overduePcs,
-        overduePct: data.overduePct,
-        lowStockCount: data.lowStockCount,
-        donutSlices: data.donutSlices,
-        totalItemsCount: stocks.length
-      };
-    }
+  // Color breakdown for selected cloth to display on the Donut chart
+  const clothColorBreakdown = useMemo(() => {
+    if (selectedProduct === 'all') return [];
 
     const matching = stocks.filter(s => {
       const p = (s.product || s.productName || s.name || '').trim();
-      if (selectedProduct !== 'all' && p.toLowerCase() !== selectedProduct.toLowerCase()) return false;
-      const c = (s.colour || s.color || '').trim();
-      if (selectedColour !== 'all' && c.toLowerCase() !== selectedColour.toLowerCase()) return false;
-      return true;
+      return p.toLowerCase() === selectedProduct.toLowerCase();
     });
 
-    let total = 0;
-    let reserved = 0;
-    let overduePcs = 0;
-    let overdueCount = 0;
-    let lowStockCount = 0;
-    const now = new Date();
+    const colorMap = {};
     const sizeKeys = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 
     matching.forEach(s => {
+      const col = (s.colour || s.color || 'Standard').trim();
+      if (!colorMap[col]) {
+        colorMap[col] = {
+          colour: col,
+          colorHex: getColorHex(col),
+          totalPcs: 0,
+          availablePcs: 0,
+          reservedPcs: 0,
+          sizes: { XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 },
+          cuts: new Set()
+        };
+      }
+
+      if (s.cut) colorMap[col].cuts.add(s.cut);
+
       const sSizes = s.sizes || {};
       let itemTotal = 0;
-      let itemReserved = 0;
+      sizeKeys.forEach(sz => {
+        const q = Number(sSizes[sz]) || 0;
+        colorMap[col].sizes[sz] += q;
+        itemTotal += q;
+      });
+      colorMap[col].totalPcs += itemTotal;
 
-      if (selectedSize === 'all') {
+      let itemRes = 0;
+      (s.reservations || []).forEach(r => {
+        if (r.status === 'Active') {
+          itemRes += Number(r.quantity) || 0;
+        }
+      });
+      colorMap[col].reservedPcs += itemRes;
+      colorMap[col].availablePcs += Math.max(0, itemTotal - itemRes);
+    });
+
+    const list = Object.values(colorMap).sort((a, b) => b.totalPcs - a.totalPcs);
+    const totalPcsAllColors = list.reduce((sum, c) => sum + c.totalPcs, 0);
+
+    return list.map(c => ({
+      ...c,
+      pct: totalPcsAllColors > 0 ? Math.round((c.totalPcs / totalPcsAllColors) * 100) : 0,
+      cuts: Array.from(c.cuts)
+    }));
+  }, [stocks, selectedProduct]);
+
+  // Overall sizes availability (XS - XXL) for the selected cloth
+  const clothOverallSizes = useMemo(() => {
+    if (selectedProduct === 'all') return [];
+
+    const sizeKeys = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+    const totalSizes = { XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 };
+    const resSizes = { XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 };
+
+    stocks.forEach(s => {
+      const p = (s.product || s.productName || s.name || '').trim();
+      if (p.toLowerCase() === selectedProduct.toLowerCase()) {
+        const sSizes = s.sizes || {};
         sizeKeys.forEach(sz => {
-          itemTotal += Number(sSizes[sz]) || 0;
+          totalSizes[sz] += Number(sSizes[sz]) || 0;
         });
         (s.reservations || []).forEach(r => {
           if (r.status === 'Active') {
-            const q = Number(r.quantity) || 0;
-            itemReserved += q;
-            if (r.createdAt) {
-              const ageDays = (now.getTime() - new Date(r.createdAt).getTime()) / (1000 * 3600 * 24);
-              if (ageDays > 5) {
-                overdueCount += 1;
-                overduePcs += q;
-              }
-            }
-          }
-        });
-      } else {
-        itemTotal = Number(sSizes[selectedSize]) || 0;
-        (s.reservations || []).forEach(r => {
-          const rSz = (r.size || '').toUpperCase();
-          if (r.status === 'Active' && rSz === selectedSize) {
-            const q = Number(r.quantity) || 0;
-            itemReserved += q;
-            if (r.createdAt) {
-              const ageDays = (now.getTime() - new Date(r.createdAt).getTime()) / (1000 * 3600 * 24);
-              if (ageDays > 5) {
-                overdueCount += 1;
-                overduePcs += q;
-              }
+            const rSz = (r.size || '').toUpperCase();
+            if (resSizes[rSz] !== undefined) {
+              resSizes[rSz] += Number(r.quantity) || 0;
             }
           }
         });
       }
-
-      total += itemTotal;
-      reserved += itemReserved;
-
-      const threshold = s.lowStockThreshold || 2;
-      const available = Math.max(0, itemTotal - itemReserved);
-      const hasOut = selectedSize === 'all'
-        ? sizeKeys.some(sz => (Number(sSizes[sz]) || 0) === 0)
-        : itemTotal === 0;
-      const hasLow = selectedSize === 'all'
-        ? sizeKeys.some(sz => (Number(sSizes[sz]) || 0) > 0 && (Number(sSizes[sz]) || 0) <= threshold)
-        : (itemTotal > 0 && itemTotal <= threshold);
-
-      if (itemTotal === 0 || available === 0 || available <= threshold || hasOut || hasLow || s.status === 'Low stock') {
-        lowStockCount += 1;
-      }
     });
 
-    const availableStock = Math.max(0, total - reserved);
-    const availablePct = total > 0 ? Math.round((availableStock / total) * 100) : 0;
-    const reservedPct = total > 0 ? Math.round((reserved / total) * 100) : 0;
-    const overduePct = total > 0 ? Math.round((overduePcs / total) * 100) : 0;
+    return sizeKeys.map(sz => ({
+      size: sz,
+      total: totalSizes[sz],
+      reserved: resSizes[sz],
+      available: Math.max(0, totalSizes[sz] - resSizes[sz])
+    }));
+  }, [stocks, selectedProduct]);
 
-    const C = 427.26;
-    const minSlice = 36;
-    let overdueLength = 0;
-    let reservedLength = 0;
-    let availableLength = C;
-
-    if (total > 0) {
-      if (overduePcs > 0) {
-        const rawOverdue = (overduePcs / total) * C;
-        overdueLength = Math.max(minSlice, rawOverdue);
-      }
-      if (reserved > 0) {
-        const onTime = Math.max(0, reserved - overduePcs);
-        const rawReserved = onTime > 0 ? (onTime / total) * C : minSlice;
-        reservedLength = Math.max(minSlice, rawReserved);
-      }
-      availableLength = Math.max(0, C - reservedLength - overdueLength);
-    }
-
-    const donutSlices = [];
-    let currentOffset = 0;
-
-    if (total > 0 && availableLength > 0) {
-      donutSlices.push({
-        key: 'available',
-        label: 'Available',
-        color: '#10b981',
-        length: availableLength,
-        offset: currentOffset,
-        count: availableStock,
-        pct: availablePct,
-        displayVal: `${availableStock.toLocaleString('en-IN')} pcs`
-      });
-      currentOffset += availableLength;
-    }
-
-    if (total > 0 && reservedLength > 0) {
-      donutSlices.push({
-        key: 'reserved',
-        label: 'Reserved',
-        color: '#8b5cf6',
-        length: reservedLength,
-        offset: currentOffset,
-        count: reserved,
-        pct: reservedPct,
-        displayVal: `${reserved.toLocaleString('en-IN')} pcs`
-      });
-      currentOffset += reservedLength;
-    }
-
-    if (total > 0 && overdueLength > 0) {
-      donutSlices.push({
-        key: 'overdue',
-        label: 'Overdue',
-        color: '#ef4444',
-        length: overdueLength,
-        offset: currentOffset,
-        count: overduePcs,
-        pct: overduePct,
-        displayVal: `${overduePcs.toLocaleString('en-IN')} pcs`
-      });
-      currentOffset += overdueLength;
-    }
-
-    return {
-      totalStock: total,
-      availableStock,
-      availablePct,
-      activeReserved: reserved,
-      reservedPct,
-      overdueCount,
-      overduePcs,
-      overduePct,
-      lowStockCount,
-      donutSlices,
-      totalItemsCount: matching.length
-    };
-  }, [stocks, isFiltered, selectedProduct, selectedColour, selectedSize, data]);
-
-  // List of matching variants for the white space details matrix
-  const matchingVariants = useMemo(() => {
-    const matching = stocks.filter(s => {
-      const p = (s.product || s.productName || s.name || '').trim();
-      if (selectedProduct !== 'all' && p.toLowerCase() !== selectedProduct.toLowerCase()) return false;
-      const c = (s.colour || s.color || '').trim();
-      if (selectedColour !== 'all' && c.toLowerCase() !== selectedColour.toLowerCase()) return false;
-      return true;
-    });
-
-    return matching.map((s, idx) => {
-      const pName = (s.product || s.productName || s.name || 'Other Item').trim();
-      const colour = (s.colour || s.color || 'Standard').trim();
-      const cut = (s.cut || s.type || '').trim();
-      const sSizes = s.sizes || {};
-
-      let itemTotal = 0;
-      const sizeKeys = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-      const sizesMap = {};
-      sizeKeys.forEach(sz => {
-        const q = Number(sSizes[sz]) || 0;
-        sizesMap[sz] = q;
-        itemTotal += q;
-      });
-
-      let resTotal = 0;
-      (s.reservations || []).forEach(r => {
-        if (r.status === 'Active') {
-          resTotal += Number(r.quantity) || 0;
-        }
-      });
-
-      const avail = Math.max(0, itemTotal - resTotal);
-
-      return {
-        id: s._id || s.id || `${pName}-${colour}-${cut}-${idx}`,
-        product: pName,
-        colour,
-        cut,
-        totalPcs: itemTotal,
-        availablePcs: avail,
-        reservedPcs: resTotal,
-        sizes: sizesMap
-      };
-    }).sort((a, b) => b.totalPcs - a.totalPcs);
-  }, [stocks, selectedProduct, selectedColour]);
-
-  // Overview summaries for all garments
-  const garmentSummaries = useMemo(() => {
+  // Garment category breakdown when "All Garments" is selected
+  const allGarmentsBreakdown = useMemo(() => {
     const map = {};
+    const sizeKeys = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+
     stocks.forEach(s => {
-      const pName = (s.product || s.productName || s.name || 'Other Item').trim();
-      if (!map[pName]) {
-        map[pName] = {
-          product: pName,
+      const p = (s.product || s.productName || s.name || 'Other Item').trim();
+      if (!map[p]) {
+        map[p] = {
+          product: p,
           totalPcs: 0,
           availablePcs: 0,
           reservedPcs: 0,
           colours: new Set(),
-          variantsCount: 0,
           sizes: { XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 }
         };
       }
-      map[pName].variantsCount += 1;
+
       const col = (s.colour || s.color || '').trim();
-      if (col) map[pName].colours.add(col);
+      if (col) map[p].colours.add(col);
 
       const sSizes = s.sizes || {};
       let itemTotal = 0;
-      ['XS', 'S', 'M', 'L', 'XL', 'XXL'].forEach(sz => {
+      sizeKeys.forEach(sz => {
         const q = Number(sSizes[sz]) || 0;
-        map[pName].sizes[sz] += q;
+        map[p].sizes[sz] += q;
         itemTotal += q;
       });
-      map[pName].totalPcs += itemTotal;
+      map[p].totalPcs += itemTotal;
 
-      let res = 0;
+      let itemRes = 0;
       (s.reservations || []).forEach(r => {
-        if (r.status === 'Active') res += Number(r.quantity) || 0;
+        if (r.status === 'Active') {
+          itemRes += Number(r.quantity) || 0;
+        }
       });
-      map[pName].reservedPcs += res;
-      map[pName].availablePcs += Math.max(0, itemTotal - res);
+      map[p].reservedPcs += itemRes;
+      map[p].availablePcs += Math.max(0, itemTotal - itemRes);
     });
 
-    return Object.values(map).sort((a, b) => b.totalPcs - a.totalPcs);
+    const list = Object.values(map).sort((a, b) => b.totalPcs - a.totalPcs);
+    const totalAll = list.reduce((sum, g) => sum + g.totalPcs, 0);
+
+    const categoryPalette = [
+      '#6366f1', // Indigo
+      '#0d9488', // Teal
+      '#f59e0b', // Amber
+      '#ec4899', // Pink
+      '#2563eb', // Blue
+      '#8b5cf6', // Violet
+      '#10b981', // Emerald
+      '#f97316'  // Orange
+    ];
+
+    return list.map((g, idx) => ({
+      ...g,
+      colorHex: categoryPalette[idx % categoryPalette.length],
+      pct: totalAll > 0 ? Math.round((g.totalPcs / totalAll) * 100) : 0,
+      colours: Array.from(g.colours)
+    }));
   }, [stocks]);
+
+  // Aggregate stats for the current view
+  const currentTotalPieces = useMemo(() => {
+    if (selectedProduct === 'all') {
+      return data.totalStock;
+    }
+    return clothColorBreakdown.reduce((sum, c) => sum + c.totalPcs, 0);
+  }, [selectedProduct, data.totalStock, clothColorBreakdown]);
+
+  const currentAvailablePieces = useMemo(() => {
+    if (selectedProduct === 'all') {
+      return data.availableStock;
+    }
+    return clothColorBreakdown.reduce((sum, c) => sum + c.availablePcs, 0);
+  }, [selectedProduct, data.availableStock, clothColorBreakdown]);
+
+  const currentReservedPieces = useMemo(() => {
+    if (selectedProduct === 'all') {
+      return data.activeReserved;
+    }
+    return clothColorBreakdown.reduce((sum, c) => sum + c.reservedPcs, 0);
+  }, [selectedProduct, data.activeReserved, clothColorBreakdown]);
+
+  // Donut slices: Showing ALL COLORS of the selected cloth (or all garments when "all")
+  const donutSlices = useMemo(() => {
+    const isClothSelected = selectedProduct !== 'all';
+    const items = isClothSelected ? clothColorBreakdown : allGarmentsBreakdown;
+    const totalCount = items.reduce((sum, item) => sum + item.totalPcs, 0);
+
+    if (totalCount === 0) return [];
+
+    const C = 427.26;
+    let currentOffset = 0;
+
+    return items.map((item) => {
+      const length = (item.totalPcs / totalCount) * C;
+      const key = isClothSelected ? item.colour : item.product;
+      const label = isClothSelected ? item.colour : item.product;
+
+      const slice = {
+        key,
+        label,
+        color: item.colorHex,
+        count: item.totalPcs,
+        available: item.availablePcs,
+        reserved: item.reservedPcs,
+        pct: item.pct,
+        length,
+        offset: currentOffset,
+        item
+      };
+      currentOffset += length;
+      return slice;
+    });
+  }, [selectedProduct, clothColorBreakdown, allGarmentsBreakdown]);
+
+  const activeSliceInfo = useMemo(() => {
+    if (!hoveredDonut) return null;
+    return donutSlices.find(s => s.key === hoveredDonut) || null;
+  }, [hoveredDonut, donutSlices]);
 
   return (
     <div className="inv-standalone-charts-wrapper">
@@ -663,18 +597,17 @@ export default function InventoryAnalyticsPanel({
           </div>
 
           <div className="inv-card-header-actions">
-            {/* Clothing Dropdown */}
-            <div className="inv-filter-select-wrapper" title="Select garment type to view its inventory">
+            {/* Clothing Dropdown ONLY (Clean, simple & understandable) */}
+            <div className="inv-filter-select-wrapper" title="Choose garment to see all available colors and counts">
               <Shirt size={14} className="inv-filter-icon" />
               <select
                 className="inv-filter-select"
                 value={selectedProduct}
                 onChange={(e) => {
                   setSelectedProduct(e.target.value);
-                  setSelectedColour('all');
-                  setSelectedSize('all');
+                  setHoveredDonut(null);
                 }}
-                aria-label="Filter by cloth"
+                aria-label="Choose clothing item"
               >
                 <option value="all">All Garments ({productOptions.length})</option>
                 {productOptions.map((prod) => (
@@ -686,63 +619,19 @@ export default function InventoryAnalyticsPanel({
               <ChevronDown size={13} className="inv-select-chevron" />
             </div>
 
-            {/* Color Dropdown */}
-            <div className="inv-filter-select-wrapper" title="Filter by color">
-              <span
-                className="inv-color-dot-indicator"
-                style={{
-                  backgroundColor: selectedColour === 'all' ? '#94a3b8' : getColorHex(selectedColour)
-                }}
-              />
-              <select
-                className="inv-filter-select"
-                value={selectedColour}
-                onChange={(e) => setSelectedColour(e.target.value)}
-                aria-label="Filter by color"
-              >
-                <option value="all">All Colors {colourOptions.length > 0 ? `(${colourOptions.length})` : ''}</option>
-                {colourOptions.map((col) => (
-                  <option key={col} value={col}>
-                    {col}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={13} className="inv-select-chevron" />
-            </div>
-
-            {/* Size Dropdown */}
-            <div className="inv-filter-select-wrapper" title="Filter by size">
-              <span className="inv-filter-tag-lbl">Size</span>
-              <select
-                className="inv-filter-select size-select"
-                value={selectedSize}
-                onChange={(e) => setSelectedSize(e.target.value)}
-                aria-label="Filter by size"
-              >
-                <option value="all">All Sizes</option>
-                {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((sz) => (
-                  <option key={sz} value={sz}>
-                    {sz}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={13} className="inv-select-chevron" />
-            </div>
-
-            {/* Reset Filters button */}
-            {isFiltered && (
+            {/* Reset to All Garments */}
+            {selectedProduct !== 'all' && (
               <button
                 type="button"
                 className="inv-filter-reset-btn"
                 onClick={() => {
                   setSelectedProduct('all');
-                  setSelectedColour('all');
-                  setSelectedSize('all');
+                  setHoveredDonut(null);
                 }}
                 title="Reset to All Garments"
               >
                 <RotateCcw size={12} />
-                <span>Reset</span>
+                <span>All Garments</span>
               </button>
             )}
 
@@ -750,16 +639,16 @@ export default function InventoryAnalyticsPanel({
             <span
               className="inv-card-badge indigo clickable-badge"
               onClick={() => handleCategoryClick('total')}
-              title="Click to view total warehouse inventory table"
+              title="Click to view warehouse inventory table"
               style={{ cursor: 'pointer' }}
             >
-              {allocationData.totalStock.toLocaleString('en-IN')} pcs {selectedProduct !== 'all' ? selectedProduct : 'Total'}
+              {currentTotalPieces.toLocaleString('en-IN')} pcs {selectedProduct !== 'all' ? selectedProduct : 'Total'}
             </span>
           </div>
         </div>
 
         <div className="allocation-spacious-body">
-          {/* LEFT SECTION: Interactive Donut & Legend */}
+          {/* LEFT SECTION: Donut Chart Showing Available Colors & Legend */}
           <div className="allocation-chart-section">
             <div className="donut-box-large">
               <svg viewBox="0 0 200 200" className="donut-svg">
@@ -774,11 +663,12 @@ export default function InventoryAnalyticsPanel({
                   className="donut-track"
                 />
 
-                {/* Slices with flat ends (butt) and subtle gap between segments */}
-                {(allocationData.donutSlices || []).map(slice => {
+                {/* Donut Slices: Available Colors of Cloth with Counts */}
+                {donutSlices.map(slice => {
                   const isHovered = hoveredDonut === slice.key;
-                  const gap = (allocationData.donutSlices || []).length > 1 ? 2.5 : 0;
+                  const gap = donutSlices.length > 1 ? 2.5 : 0;
                   const dashLen = Math.max(1, slice.length - gap);
+                  const isWhite = (slice.color || '').toLowerCase() === '#cbd5e1';
 
                   return (
                     <circle
@@ -793,236 +683,265 @@ export default function InventoryAnalyticsPanel({
                       strokeDashoffset={-slice.offset}
                       strokeLinecap="butt"
                       className={`inv-donut-slice segment-${slice.key}`}
-                      onClick={() => handleCategoryClick(slice.key)}
+                      onClick={() => {
+                        if (selectedProduct === 'all') {
+                          setSelectedProduct(slice.label);
+                        }
+                      }}
                       onMouseEnter={() => setHoveredDonut(slice.key)}
                       onMouseLeave={() => setHoveredDonut(null)}
                       style={{
                         strokeLinecap: 'butt',
                         cursor: 'pointer',
                         transition: 'stroke-width 0.2s ease, filter 0.2s ease',
-                        filter: isHovered ? `drop-shadow(0 0 6px ${slice.color}90)` : 'none'
+                        filter: isHovered
+                          ? `drop-shadow(0 0 6px ${slice.color}90)`
+                          : isWhite
+                            ? 'drop-shadow(0 0 1px rgba(0,0,0,0.3))'
+                            : 'none'
                       }}
                     >
-                      <title>Click to view {slice.label} items in table ({slice.displayVal})</title>
+                      <title>{slice.label}: {slice.count} pcs in stock ({slice.available} available)</title>
                     </circle>
                   );
                 })}
               </svg>
 
-              {/* Clean Center Label: "Total" on top, large bold number below */}
+              {/* Center Typography: Shows hovered Color & Count or Total Cloth Count */}
               <div
                 className="donut-center-label clickable-center"
-                onClick={() => handleCategoryClick(hoveredDonut || 'total')}
-                title={`Click to view ${hoveredDonut ? (hoveredDonut === 'available' ? 'Available' : hoveredDonut === 'reserved' ? 'Reserved' : hoveredDonut === 'overdue' ? 'Overdue' : 'Low Stock') : 'complete'} stock table`}
+                onClick={() => {
+                  if (activeSliceInfo && selectedProduct === 'all') {
+                    setSelectedProduct(activeSliceInfo.label);
+                  } else {
+                    handleCategoryClick('total');
+                  }
+                }}
+                title={activeSliceInfo ? `${activeSliceInfo.label}: ${activeSliceInfo.count} pcs` : 'Click to view inventory table'}
                 style={{ cursor: 'pointer' }}
               >
                 <span className="donut-center-title">
-                  {hoveredDonut === 'available'
-                    ? 'Available'
-                    : hoveredDonut === 'reserved'
-                      ? 'Reserved'
-                      : hoveredDonut === 'overdue'
-                        ? 'Overdue'
-                        : hoveredDonut === 'low_stock'
-                          ? 'Low Stock'
-                          : selectedProduct !== 'all' ? selectedProduct : 'Total'}
+                  {activeSliceInfo
+                    ? activeSliceInfo.label
+                    : selectedProduct !== 'all' ? selectedProduct : 'Total'}
                 </span>
                 <span className="donut-center-value">
-                  {hoveredDonut === 'available'
-                    ? allocationData.availableStock.toLocaleString('en-IN')
-                    : hoveredDonut === 'reserved'
-                      ? allocationData.activeReserved.toLocaleString('en-IN')
-                      : hoveredDonut === 'overdue'
-                        ? allocationData.overduePcs.toLocaleString('en-IN')
-                        : hoveredDonut === 'low_stock'
-                          ? allocationData.lowStockCount.toLocaleString('en-IN')
-                          : allocationData.totalStock.toLocaleString('en-IN')}
+                  {activeSliceInfo
+                    ? activeSliceInfo.count.toLocaleString('en-IN')
+                    : currentTotalPieces.toLocaleString('en-IN')}
+                </span>
+                <span className="donut-center-sub">
+                  {activeSliceInfo
+                    ? `${activeSliceInfo.available} free`
+                    : `${currentAvailablePieces.toLocaleString('en-IN')} available`}
                 </span>
               </div>
             </div>
 
-            {/* Clean Legend with aligned columns */}
-            <div className="donut-legend-list">
-              <div
-                className={`donut-legend-row ${hoveredDonut === 'available' ? 'is-hovered' : ''}`}
-                onClick={() => handleCategoryClick('available')}
-                onMouseEnter={() => setHoveredDonut('available')}
-                onMouseLeave={() => setHoveredDonut(null)}
-                title="Click to view Available stock table"
-              >
-                <div className="donut-legend-left">
-                  <span className="donut-legend-dot" style={{ backgroundColor: '#10b981' }} />
-                  <span className="donut-legend-name">Available</span>
-                </div>
-                <div className="donut-legend-right">
-                  <span className="donut-legend-qty">{allocationData.availableStock.toLocaleString('en-IN')} pcs</span>
-                  <span className="donut-legend-pct">({allocationData.availablePct}%)</span>
-                </div>
+            {/* Colors / Garments Legend List */}
+            <div className="donut-legend-wrap">
+              <div className="donut-legend-list custom-scrollbar">
+                {donutSlices.map((slice) => {
+                  const isHovered = hoveredDonut === slice.key;
+                  const isWhite = (slice.color || '').toLowerCase() === '#cbd5e1';
+
+                  return (
+                    <div
+                      key={slice.key}
+                      className={`donut-legend-row ${isHovered ? 'is-hovered' : ''}`}
+                      onMouseEnter={() => setHoveredDonut(slice.key)}
+                      onMouseLeave={() => setHoveredDonut(null)}
+                      onClick={() => {
+                        if (selectedProduct === 'all') {
+                          setSelectedProduct(slice.label);
+                        }
+                      }}
+                      title={`${slice.label}: ${slice.count} pcs (${slice.available} available)`}
+                    >
+                      <div className="donut-legend-left">
+                        <span
+                          className="donut-legend-dot"
+                          style={{
+                            backgroundColor: slice.color,
+                            border: isWhite ? '1px solid #94a3b8' : 'none'
+                          }}
+                        />
+                        <span className="donut-legend-name">{slice.label}</span>
+                      </div>
+                      <div className="donut-legend-right">
+                        <span className="donut-legend-qty">{slice.count.toLocaleString('en-IN')} pcs</span>
+                        <span className="donut-legend-pct">({slice.pct}%)</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
-              <div
-                className={`donut-legend-row ${hoveredDonut === 'reserved' ? 'is-hovered' : ''}`}
-                onClick={() => handleCategoryClick('reserved')}
-                onMouseEnter={() => setHoveredDonut('reserved')}
-                onMouseLeave={() => setHoveredDonut(null)}
-                title="Click to view Active Reservations table"
-              >
-                <div className="donut-legend-left">
-                  <span className="donut-legend-dot" style={{ backgroundColor: '#8b5cf6' }} />
-                  <span className="donut-legend-name">Reserved</span>
-                </div>
-                <div className="donut-legend-right">
-                  <span className="donut-legend-qty">{allocationData.activeReserved.toLocaleString('en-IN')} pcs</span>
-                  <span className="donut-legend-pct">({allocationData.reservedPct}%)</span>
-                </div>
-              </div>
-
-              <div
-                className={`donut-legend-row ${hoveredDonut === 'overdue' ? 'is-hovered' : ''}`}
-                onClick={() => handleCategoryClick('overdue')}
-                onMouseEnter={() => setHoveredDonut('overdue')}
-                onMouseLeave={() => setHoveredDonut(null)}
-                title="Click to view Overdue Reservations table"
-              >
-                <div className="donut-legend-left">
-                  <span className="donut-legend-dot" style={{ backgroundColor: '#ef4444' }} />
-                  <span className="donut-legend-name">Overdue</span>
-                  {allocationData.overdueCount > 0 && (
-                    <span className="donut-legend-tag">{allocationData.overdueCount} orders</span>
-                  )}
-                </div>
-                <div className="donut-legend-right">
-                  <span className="donut-legend-qty">{allocationData.overduePcs.toLocaleString('en-IN')} pcs</span>
-                  <span className="donut-legend-pct">({allocationData.overduePct > 0 ? `${allocationData.overduePct}%` : '<1%'})</span>
-                </div>
-              </div>
-
-              <div
-                className={`donut-legend-row ${hoveredDonut === 'low_stock' ? 'is-hovered' : ''}`}
-                onClick={() => handleCategoryClick('low_stock')}
-                onMouseEnter={() => setHoveredDonut('low_stock')}
-                onMouseLeave={() => setHoveredDonut(null)}
-                title="Click to view Low & Out of Stock table"
-              >
-                <div className="donut-legend-left">
-                  <span className="donut-legend-dot" style={{ backgroundColor: '#f59e0b' }} />
-                  <span className="donut-legend-name">Low Stock</span>
-                </div>
-                <div className="donut-legend-right">
-                  <span className="donut-legend-qty">{allocationData.lowStockCount.toLocaleString('en-IN')} items</span>
-                  <span className="donut-legend-pct">
-                    ({(stocks.length > 0 ? Math.round((allocationData.lowStockCount / stocks.length) * 100) : 0)}%)
-                  </span>
-                </div>
+              {/* Bottom Allocation Status Indicators */}
+              <div className="allocation-mini-summary-pills">
+                <span
+                  className="mini-summary-pill green"
+                  onClick={() => handleCategoryClick('available')}
+                  title="Click to view available stock table"
+                >
+                  <span className="mini-pill-dot green" />
+                  <span>{currentAvailablePieces.toLocaleString('en-IN')} Available</span>
+                </span>
+                <span
+                  className="mini-summary-pill purple"
+                  onClick={() => handleCategoryClick('reserved')}
+                  title="Click to view reserved stock table"
+                >
+                  <span className="mini-pill-dot purple" />
+                  <span>{currentReservedPieces.toLocaleString('en-IN')} Reserved</span>
+                </span>
               </div>
             </div>
           </div>
 
-          {/* RIGHT SECTION: MAKING USE OF WHITE SPACE (Garment Types, Colors & Sizes Matrix) */}
+          {/* RIGHT SECTION: MAKING FULL USE OF WHITE SPACE (Sizes Matrix & Types Breakdown) */}
           <div className="allocation-variants-panel">
             <div className="variants-panel-header">
               <div className="variants-header-left">
                 <span className="variants-title">
                   {selectedProduct !== 'all' ? (
                     <>
-                      <strong>{selectedProduct}</strong> Types, Colors &amp; Sizes
+                      <strong>{selectedProduct}</strong> Size Matrix &amp; Types
                     </>
                   ) : (
-                    'Garment Inventory Breakdown'
+                    'Garment Catalog & Sizes'
                   )}
                 </span>
                 <span className="variants-count-chip">
-                  {selectedProduct !== 'all' ? `${matchingVariants.length} types` : `${garmentSummaries.length} garments`}
+                  {selectedProduct !== 'all'
+                    ? `${clothColorBreakdown.length} ${clothColorBreakdown.length === 1 ? 'color' : 'colors'}`
+                    : `${allGarmentsBreakdown.length} garments`}
                 </span>
               </div>
               <span className="variants-header-hint">
                 {selectedProduct !== 'all'
-                  ? `${allocationData.availableStock} free • ${allocationData.activeReserved} reserved`
-                  : 'Click a garment to inspect'}
+                  ? `${currentAvailablePieces} available • ${currentReservedPieces} reserved`
+                  : 'Click a garment to view colors'}
               </span>
             </div>
 
+            {/* Overall Sizes Summary Bar for the selected cloth */}
+            {selectedProduct !== 'all' && clothOverallSizes.length > 0 && (
+              <div className="cloth-overall-sizes-bar">
+                <span className="overall-sizes-lbl">XS – XXL Breakdown:</span>
+                <div className="overall-sizes-chips">
+                  {clothOverallSizes.map(s => {
+                    const isLow = s.available > 0 && s.available <= 3;
+                    const isZero = s.available === 0;
+
+                    return (
+                      <div
+                        key={s.size}
+                        className={`overall-size-chip ${isZero ? 'zero' : isLow ? 'low' : 'good'}`}
+                        title={`Size ${s.size}: ${s.available} available (${s.total} total, ${s.reserved} reserved)`}
+                      >
+                        <span className="chip-sz">{s.size}</span>
+                        <span className="chip-qty">{s.available}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Variants / Colors List with Size Breakdown */}
             <div className="variants-panel-list custom-scrollbar">
               {selectedProduct !== 'all' ? (
-                // SPECIFIC GARMENT SELECTED (e.g. Hoodie)
-                matchingVariants.length === 0 ? (
+                // SPECIFIC CLOTH SELECTED (e.g. Hoodie) - Shows every color's cuts & sizes
+                clothColorBreakdown.length === 0 ? (
                   <div className="variants-empty-state">
-                    No matching {selectedProduct} items found for the selected filter.
+                    No matching inventory found for {selectedProduct}.
                   </div>
                 ) : (
-                  matchingVariants.map(v => (
-                    <div key={v.id} className="variant-row-card">
-                      <div className="variant-card-top">
-                        <div className="variant-color-info">
-                          <span
-                            className="variant-color-dot"
-                            style={{ backgroundColor: getColorHex(v.colour) }}
-                            title={`Color: ${v.colour}`}
-                          />
-                          <span className="variant-name">{v.colour}</span>
-                          {v.cut && <span className="variant-cut-badge">{v.cut}</span>}
+                  clothColorBreakdown.map(c => {
+                    const isHovered = hoveredDonut === c.colour;
+                    const isWhite = c.colorHex.toLowerCase() === '#cbd5e1';
+
+                    return (
+                      <div
+                        key={c.colour}
+                        className={`variant-row-card ${isHovered ? 'highlighted' : ''}`}
+                        onMouseEnter={() => setHoveredDonut(c.colour)}
+                        onMouseLeave={() => setHoveredDonut(null)}
+                      >
+                        <div className="variant-card-top">
+                          <div className="variant-color-info">
+                            <span
+                              className="variant-color-dot"
+                              style={{
+                                backgroundColor: c.colorHex,
+                                border: isWhite ? '1px solid #94a3b8' : 'none'
+                              }}
+                              title={`Color: ${c.colour}`}
+                            />
+                            <span className="variant-name">{c.colour}</span>
+                            {c.cuts.length > 0 && (
+                              <span className="variant-cut-badge">{c.cuts.join(' • ')}</span>
+                            )}
+                          </div>
+                          <div className="variant-stock-summary">
+                            <span className="variant-total-num"><strong>{c.totalPcs}</strong> pcs</span>
+                            <span className="variant-avail-num">({c.availablePcs} available)</span>
+                          </div>
                         </div>
-                        <div className="variant-stock-summary">
-                          <span className="variant-total-num"><strong>{v.totalPcs}</strong> pcs</span>
-                          <span className="variant-avail-num">({v.availablePcs} free)</span>
+
+                        {/* Sizes Matrix: XS to XXL for this color */}
+                        <div className="variant-sizes-matrix">
+                          {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(sz => {
+                            const qty = c.sizes[sz] || 0;
+                            const isLow = qty > 0 && qty <= 3;
+                            const isZero = qty === 0;
+
+                            return (
+                              <span
+                                key={sz}
+                                className={`variant-size-pill ${isZero ? 'zero' : isLow ? 'low' : 'good'}`}
+                                title={`${c.colour} Size ${sz}: ${qty} pcs in stock`}
+                              >
+                                <span className="size-label">{sz}</span>
+                                <span className="size-qty">{qty}</span>
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
-
-                      {/* Sizes Matrix: XS to XXL */}
-                      <div className="variant-sizes-matrix">
-                        {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(sz => {
-                          const qty = v.sizes[sz] || 0;
-                          const isSelectedSize = selectedSize === sz;
-                          const isLow = qty > 0 && qty <= 3;
-                          const isZero = qty === 0;
-
-                          return (
-                            <button
-                              key={sz}
-                              type="button"
-                              className={`variant-size-pill ${isSelectedSize ? 'active' : ''} ${isZero ? 'zero' : isLow ? 'low' : 'good'}`}
-                              onClick={() => setSelectedSize(selectedSize === sz ? 'all' : sz)}
-                              title={`Size ${sz}: ${qty} pcs (${isSelectedSize ? 'Click to deselect' : 'Click to filter size'})`}
-                            >
-                              <span className="size-label">{sz}</span>
-                              <span className="size-qty">{qty}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )
               ) : (
-                // "ALL GARMENTS" SELECTED: Overview cards for all clothing items
-                garmentSummaries.map(g => (
+                // "ALL GARMENTS" SELECTED - Garment cards with 1-click drilldown
+                allGarmentsBreakdown.map(g => (
                   <div
                     key={g.product}
                     className="garment-summary-card"
                     onClick={() => {
                       setSelectedProduct(g.product);
-                      setSelectedColour('all');
-                      setSelectedSize('all');
+                      setHoveredDonut(null);
                     }}
-                    title={`Click to filter chart to ${g.product}`}
+                    title={`Click to view all colors and counts for ${g.product}`}
                   >
                     <div className="garment-card-header">
                       <div className="garment-title-wrap">
                         <Shirt size={13} className="garment-icon" />
                         <span className="garment-name">{g.product}</span>
                         <span className="garment-variants-badge">
-                          {g.colours.size} {g.colours.size === 1 ? 'color' : 'colors'}
+                          {g.colours.length} {g.colours.length === 1 ? 'color' : 'colors'}
                         </span>
                       </div>
                       <div className="garment-card-qty">
                         <span className="garment-pcs">{g.totalPcs.toLocaleString('en-IN')} pcs</span>
-                        <span className="garment-drilldown-hint">View &rarr;</span>
+                        <span className="garment-drilldown-hint">View colors &rarr;</span>
                       </div>
                     </div>
 
                     {/* Color Swatch Dots */}
                     <div className="garment-colors-strip">
-                      {Array.from(g.colours).slice(0, 7).map(col => (
+                      {g.colours.slice(0, 7).map(col => (
                         <span
                           key={col}
                           className="garment-color-dot"
@@ -1030,8 +949,8 @@ export default function InventoryAnalyticsPanel({
                           title={col}
                         />
                       ))}
-                      {g.colours.size > 7 && (
-                        <span className="garment-more-colors">+{g.colours.size - 7}</span>
+                      {g.colours.length > 7 && (
+                        <span className="garment-more-colors">+{g.colours.length - 7}</span>
                       )}
                     </div>
 

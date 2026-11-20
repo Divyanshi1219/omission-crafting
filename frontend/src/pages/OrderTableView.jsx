@@ -376,20 +376,19 @@ export default function OrderTableView() {
                 <th>Order Amount</th>
                 <th>Delivery Date</th>
                 <th>Repeat Customer</th>
-                <th style={{ textAlign: 'center' }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {loading && filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="10" style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>
                     <Clock size={22} className="spin-animation" style={{ marginBottom: '8px' }} />
                     <div>Loading orders...</div>
                   </td>
                 </tr>
               ) : filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="10" style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>
                     No orders found matching your filter criteria.
                   </td>
                 </tr>
@@ -444,20 +443,6 @@ export default function OrderTableView() {
                       ) : (
                         <span style={{ fontSize: '12px', color: '#94a3b8' }}>First-time</span>
                       )}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          color: '#2563eb',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                        }}
-                      >
-                        View <ArrowUpRight size={13} />
-                      </span>
                     </td>
                   </tr>
                 ))

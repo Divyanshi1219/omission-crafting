@@ -1156,13 +1156,12 @@ export default function OrderManagementDashboard() {
                   <th>Current Stage</th>
                   <th>Quantity</th>
                   <th>Repeat Customer</th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {orders.length === 0 ? (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
                       No orders found yet.
                     </td>
                   </tr>
@@ -1205,9 +1204,6 @@ export default function OrderManagementDashboard() {
                           <span style={{ fontSize: '12px', color: '#94a3b8' }}>First-time</span>
                         )}
                       </td>
-                      <td style={{ textAlign: 'right', color: '#94a3b8' }}>
-                        <ArrowUpRight size={15} />
-                      </td>
                     </tr>
                   ))
                 )}
@@ -1222,13 +1218,12 @@ export default function OrderManagementDashboard() {
                   <th>Phone Number</th>
                   <th>Scheduled Date</th>
                   <th>Note / Requirement</th>
-                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {inquiries.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
+                    <td colSpan="5" style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
                       No active inquiries right now.
                     </td>
                   </tr>
@@ -1255,11 +1250,6 @@ export default function OrderManagementDashboard() {
                       <td>{inq.scheduleDate ? `${inq.scheduleDate} ${inq.scheduleTime || ''}` : 'Flexible'}</td>
                       <td style={{ maxWidth: "250px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {inq.additionalNote || inq.queryStatus || 'New prospect inquiry'}
-                      </td>
-                      <td>
-                        <span className="badge-lead-tag" style={{ cursor: "pointer" }}>
-                          Open Lead <ArrowUpRight size={12} style={{ display: "inline" }} />
-                        </span>
                       </td>
                     </tr>
                   ))

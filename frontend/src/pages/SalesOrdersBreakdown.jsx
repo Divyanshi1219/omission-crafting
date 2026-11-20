@@ -604,20 +604,19 @@ export default function SalesOrdersBreakdown() {
                 <th>Pipeline Stage</th>
                 <th>Age / Turnaround</th>
                 <th>Sales Rep</th>
-                <th style={{ textAlign: "center" }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {loading && displayedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="11" style={{ textAlign: "center", padding: "48px", color: "#64748b" }}>
+                  <td colSpan="10" style={{ textAlign: "center", padding: "48px", color: "#64748b" }}>
                     <Clock size={24} className="spin-animation" style={{ marginBottom: "8px" }} />
                     <div>Loading orders breakdown...</div>
                   </td>
                 </tr>
               ) : displayedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="11" style={{ textAlign: "center", padding: "48px", color: "#94a3b8" }}>
+                  <td colSpan="10" style={{ textAlign: "center", padding: "48px", color: "#94a3b8" }}>
                     <Package size={28} style={{ opacity: 0.5, marginBottom: "8px" }} />
                     <div style={{ fontWeight: 600, fontSize: "14px", color: "#475569" }}>No orders found matching your criteria.</div>
                     <p style={{ margin: "4px 0 12px 0", fontSize: "12px" }}>Try selecting "All Orders" or changing search keywords.</p>
@@ -689,18 +688,6 @@ export default function SalesOrdersBreakdown() {
                       <span style={{ fontSize: "12px", fontWeight: 600, color: "#475569" }}>
                         {o.employeeName}
                       </span>
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      <button
-                        className="sbd-action-btn"
-                        style={{ padding: "4px 10px", fontSize: "11px" }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedOrderModal(o);
-                        }}
-                      >
-                        Details <ArrowUpRight size={12} />
-                      </button>
                     </td>
                   </tr>
                 ))

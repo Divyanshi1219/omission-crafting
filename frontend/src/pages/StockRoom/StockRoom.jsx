@@ -217,7 +217,6 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
     reserved: true,
     available: true,
     status: true,
-    actions: true,
   });
 
   // Modal states
@@ -1466,7 +1465,6 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
                         reserved: "Reserved",
                         available: "Available",
                         status: "Status",
-                        actions: "Actions",
                       };
                       return (
                         <label key={col} className="column-checkbox-row">
@@ -1548,17 +1546,12 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
                         Status
                       </th>
                     )}
-                    {visibleColumns.actions && (
-                      <th style={{ minWidth: "70px", textAlign: "center" }}>
-                        Actions
-                      </th>
-                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedStocks.length === 0 ? (
                     <tr>
-                      <td colSpan={15} style={{ textAlign: "center", padding: "40px 16px", color: "#64748b" }}>
+                      <td colSpan={14} style={{ textAlign: "center", padding: "40px 16px", color: "#64748b" }}>
                         No stock items found matching your search and filter criteria.
                       </td>
                     </tr>
@@ -1574,7 +1567,16 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
                       const isLowStock = SIZES.some((sz) => (stock.sizes?.[sz] || 0) === 0 || ((stock.sizes?.[sz] || 0) > 0 && (stock.sizes?.[sz] || 0) <= threshold)) || totalQty < 15;
 
                       return (
-                        <tr key={stock._id}>
+                        <tr
+                          key={stock._id}
+                          className="stock-table-row clickable-stock-row"
+                          onClick={(e) => {
+                            if (e.target.closest('.size-data-cell')) return;
+                            handleOpenDetailModal(stock, "M");
+                          }}
+                          style={{ cursor: "pointer" }}
+                          title="Click to view history & adjust stock"
+                        >
                           <td style={{ textAlign: "center", color: "#94a3b8", fontSize: "13px" }}>
                             {rowsPerPage === "all" ? idx + 1 : (currentPage - 1) * parseInt(rowsPerPage, 10) + idx + 1}
                           </td>
@@ -1714,18 +1716,6 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
                                   In Stock
                                 </span>
                               )}
-                            </td>
-                          )}
-                          {visibleColumns.actions && (
-                            <td style={{ textAlign: "center" }}>
-                              <button
-                                type="button"
-                                className="action-btn-outline"
-                                style={{ padding: "4px 10px", fontSize: "12px" }}
-                                onClick={() => handleOpenDetailModal(stock, "M")}
-                              >
-                                Adjust
-                              </button>
                             </td>
                           )}
                         </tr>

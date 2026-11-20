@@ -362,12 +362,17 @@ export default function PaymentStatusWidget({ leads = [] }) {
                 <th>Total Value</th>
                 <th>Advance Paid</th>
                 <th>Pending Amount</th>
-                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {displayList.slice(0, 10).map((item) => (
-                <tr key={item._id || item.orderId}>
+                <tr
+                  key={item._id || item.orderId}
+                  onClick={() => handleOpenPaymentConfirmation(item._id)}
+                  style={{ cursor: "pointer" }}
+                  className="clickable-payment-row"
+                  title="Click to view & confirm payment"
+                >
                   <td>
                     <span className="payment-order-id">{item.orderId}</span>
                   </td>
@@ -408,16 +413,6 @@ export default function PaymentStatusWidget({ leads = [] }) {
                   </td>
                   <td className="payment-pending-cell">
                     ₹{Math.round(item.pendingAmount).toLocaleString("en-IN")}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="payment-action-btn"
-                      onClick={() => handleOpenPaymentConfirmation(item._id)}
-                    >
-                      <span>View &amp; Confirm</span>
-                      <ChevronRight size={13} />
-                    </button>
                   </td>
                 </tr>
               ))}

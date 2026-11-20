@@ -268,7 +268,6 @@ export default function PendingPaymentsPage() {
                   <th>Advance Paid</th>
                   <th>Pending Amount</th>
                   <th>Days Passed (Ageing)</th>
-                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -278,7 +277,19 @@ export default function PendingPaymentsPage() {
                   const badgeClass = isOverdue ? "overdue" : isWarning ? "warning" : "recent";
 
                   return (
-                    <tr key={ord.id || ord.orderId}>
+                    <tr
+                      key={ord.id || ord.orderId}
+                      className="pending-table-row clickable-row"
+                      onClick={() => {
+                        if (ord.isDtf || ord.orderStage === "partial") {
+                          navigate(`/order/partial/payment-confirmation?id=${ord.id}`);
+                        } else {
+                          navigate(`/order/${ord.orderStage || 'sample'}/${ord.subStage || 'order'}?id=${ord.id}`);
+                        }
+                      }}
+                      style={{ cursor: "pointer" }}
+                      title="Click to view and confirm payment"
+                    >
                       <td>
                         <span className="pending-order-link">{ord.orderId}</span>
                       </td>
@@ -312,23 +323,6 @@ export default function PendingPaymentsPage() {
                           <Clock size={12} />
                           <span>{ord.daysPassed} {ord.daysPassed === 1 ? "day" : "days"} passed</span>
                         </span>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="pending-action-btn"
-                          onClick={() => {
-                            if (ord.isDtf || ord.orderStage === "partial") {
-                              navigate(`/order/partial/payment-confirmation?id=${ord.id}`);
-                            } else {
-                              navigate(`/order/${ord.orderStage || 'sample'}/${ord.subStage || 'order'}?id=${ord.id}`);
-                            }
-                          }}
-                          title="Open order in pipeline"
-                        >
-                          <span>Confirm</span>
-                          <ChevronRight size={13} />
-                        </button>
                       </td>
                     </tr>
                   );
