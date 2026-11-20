@@ -252,6 +252,7 @@ function Dashboard() {
     const myId = (currentUser?.id || "").toLowerCase();
     return rawLeads.filter((l) => {
       const itemEmp = (l.employeeName || "").toLowerCase().trim();
+      const itemBackup = (l.backupEmployee || "").toLowerCase().trim();
       const itemCreatedBy = (l.createdBy || "").toLowerCase();
       const itemLeadApprover = (l.leadApproval?.author || "").toLowerCase();
       const itemStockApprover = (l.stockApproval?.author || "").toLowerCase();
@@ -259,6 +260,11 @@ function Dashboard() {
       return (
         (myName && itemEmp && itemEmp === myName) ||
         (myName && itemEmp && (itemEmp.startsWith(myName) || myName.startsWith(itemEmp))) ||
+        (itemBackup && (
+          (myName && (itemBackup === myName || itemBackup.startsWith(myName) || myName.startsWith(itemBackup))) ||
+          (myName.startsWith("divyansh") && itemBackup.startsWith("divyansh")) ||
+          (myName.startsWith("karan") && itemBackup.startsWith("karan"))
+        )) ||
         (myId && itemCreatedBy && itemCreatedBy.includes(myId)) ||
         (myName && [itemLeadApprover, itemStockApprover, itemProdApprover].some((a) => a.includes(myName)))
       );

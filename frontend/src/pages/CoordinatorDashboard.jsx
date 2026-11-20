@@ -2,14 +2,10 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
 import {
-  ArrowRight,
-  Calendar,
   Layers,
   Warehouse,
-  Flame,
+  Scissors,
   Printer,
-  Package,
-  RefreshCw,
 } from "lucide-react";
 import "./CoordinatorDashboard.css";
 
@@ -23,7 +19,7 @@ export default function CoordinatorDashboard() {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    } catch (_) {}
+    } catch (_) { }
     return [];
   });
   const [loading, setLoading] = useState(false);
@@ -36,7 +32,7 @@ export default function CoordinatorDashboard() {
         setLeads(res.data.data);
         try {
           sessionStorage.setItem("omission_cached_leads", JSON.stringify(res.data.data));
-        } catch (_) {}
+        } catch (_) { }
       }
     } catch (err) {
       console.warn("Coordinator fetch leads warning:", err.message);
@@ -49,330 +45,249 @@ export default function CoordinatorDashboard() {
     fetchLeads();
   }, []);
 
-  // Classify all leads into pickup opportunities grouped by stage
-  const { sampleItems, partialItems, completeItems } = useMemo(() => {
-    const sample = [];
-    const partial = [];
-    const complete = [];
-
-    (Array.isArray(leads) ? leads : []).forEach((o) => {
-      if (!o) return;
-      const orderStage = (o.orderStage || "sample").toLowerCase().trim();
-      const subStage = (o.subStage || "").toLowerCase().trim().replace(/\s+/g, "-");
-      const stockTaskStage = (o.stockTaskStage || "").toLowerCase().trim();
-      const isOrder = o.query === "order" || o.orderStage || o.orderId;
-      if (!isOrder) return;
-
-      const isProdReady =
-        (o.productionTaskStage === "completed" || o.productionApproval?.status === "Approved") &&
-        !o.productionHandoverComplete;
-
-      // 1. SAMPLE STAGE
-      if (orderStage === "sample") {
-        if (
-          subStage === "ready-to-pick" ||
-          subStage === "ready-to-pickup" ||
-          (stockTaskStage === "ready_to_pick" && !subStage.includes("production"))
-        ) {
-          sample.push({ id: `${o._id}-sample-stock`, category: "stock" });
-        }
-        if (isProdReady) {
-          sample.push({ id: `${o._id}-sample-production`, category: "production" });
-        }
-        if (subStage === "ready-to-pick-up") {
-          sample.push({ id: `${o._id}-sample-printing`, category: "printing" });
-        }
-      }
-
-      // 2. PARTIAL STAGE
-      if (orderStage === "partial") {
-        if (
-          subStage === "ready-to-pick" ||
-          subStage === "ready-to-pickup" ||
-          (stockTaskStage === "ready_to_pick" && !subStage.includes("production"))
-        ) {
-          partial.push({ id: `${o._id}-partial-stock`, category: "stock" });
-        }
-        if (isProdReady) {
-          partial.push({ id: `${o._id}-partial-production`, category: "production" });
-        }
-        if (
-          subStage === "ready-to-pick-printing" ||
-          subStage === "printing" ||
-          o.partialPrintingStatus === "Complete" ||
-          o.printingStageData?.printingStatus === "Complete"
-        ) {
-          partial.push({ id: `${o._id}-partial-printing`, category: "printing" });
-        }
-        if (subStage === "ready-to-pick-up") {
-          partial.push({ id: `${o._id}-partial-packaging`, category: "packaging" });
-        }
-      }
-
-      // 3. COMPLETE STAGE
-      if (orderStage === "complete") {
-        if (
-          subStage === "ready-to-pick" ||
-          subStage === "ready-to-pickup" ||
-          (stockTaskStage === "ready_to_pick" && !subStage.includes("production"))
-        ) {
-          complete.push({ id: `${o._id}-complete-stock`, category: "stock" });
-        }
-        if (isProdReady) {
-          complete.push({ id: `${o._id}-complete-production`, category: "production" });
-        }
-        if (
-          subStage === "ready-to-pick-printing" ||
-          subStage === "printing" ||
-          o.completePrintingStatus === "Complete" ||
-          o.printingStageData?.printingStatus === "Complete"
-        ) {
-          complete.push({ id: `${o._id}-complete-printing`, category: "printing" });
-        }
-        if (subStage === "ready-to-pick-up") {
-          complete.push({ id: `${o._id}-complete-packaging`, category: "packaging" });
-        }
-      }
-    });
-
-    return { sampleItems: sample, partialItems: partial, completeItems: complete };
-  }, [leads]);
-
-  // Stage Metrics
+  // Stage Metrics calculation
   const stageMetrics = useMemo(() => {
-    const calc = (items) => {
-      let fromStock = 0;
-      let fromProduction = 0;
-      let fromPrinting = 0;
-      let fromPackaging = 0;
+    const calc = (stageKey) => {
+      let verificationToStaging = 0;
+      let stagingToPrinting = 0;
+      let logoCuttingToPrinting = 0;
+      let printingToStaging = 0;
 
-      items.forEach((p) => {
-        if (p.category === "stock") fromStock++;
-        else if (p.category === "production") fromProduction++;
-        else if (p.category === "printing") fromPrinting++;
-        else if (p.category === "packaging") fromPackaging++;
+      (Array.isArray(leads) ? leads : []).forEach((o) => {
+        if (!o) return;
+        const isOrder = o.query === "order" || o.orderStage || o.orderId;
+        if (!isOrder) return;
+
+        const orderStage = (o.orderStage || "sample").toLowerCase().trim();
+        if (orderStage !== stageKey) return;
+
+        const subStage = (o.subStage || "").toLowerCase().trim().replace(/\s+/g, "-");
+        const stockTaskStage = (o.stockTaskStage || "").toLowerCase().trim();
+        const prodTaskStage = (o.productionTaskStage || "").toLowerCase().trim();
+        const isProdReady =
+          (prodTaskStage === "completed" || prodTaskStage === "logo_cutting" || o.productionApproval?.status === "Approved") &&
+          !o.productionHandoverComplete;
+
+        // 1. Stock: From Verification to Staging Room
+        if (
+          stockTaskStage === "ready_to_pick" ||
+          subStage === "ready-to-pick" ||
+          subStage === "ready-to-pickup" ||
+          o.stockTaskData?.verificationSubmitted === true
+        ) {
+          verificationToStaging++;
+        }
+
+        // 2. Stock: From Staging Room to Printing
+        if (
+          stockTaskStage === "staging_room" ||
+          subStage === "staging-room" ||
+          subStage === "staging-ground" ||
+          Boolean(o.sampleStagingGroundData?.stagedRackNumber) ||
+          Boolean(o.partialStagingRoomData?.stagedRackNumber)
+        ) {
+          stagingToPrinting++;
+        }
+
+        // 3. From Logo Cutting to Printing
+        if (
+          isProdReady ||
+          prodTaskStage === "logo_cutting" ||
+          prodTaskStage === "completed" ||
+          o.productionTaskData?.submittedToLogoCutting === true
+        ) {
+          logoCuttingToPrinting++;
+        }
+
+        // 4. From Printing to Staging Room
+        if (
+          subStage === "ready-to-pick-up" ||
+          subStage === "ready-to-pick-printing" ||
+          o.printingStageData?.printingStatus === "Complete" ||
+          o.samplePrintingStatus === "Complete" ||
+          o.partialPrintingStatus === "Complete" ||
+          o.completePrintingStatus === "Complete"
+        ) {
+          printingToStaging++;
+        }
       });
 
+      const fromStockTotal = verificationToStaging + stagingToPrinting;
+      const total = fromStockTotal + logoCuttingToPrinting + printingToStaging;
+
       return {
-        total: items.length,
-        fromStock,
-        fromProduction,
-        fromPrinting,
-        fromPackaging,
+        total,
+        fromStockTotal,
+        verificationToStaging,
+        stagingToPrinting,
+        logoCuttingToPrinting,
+        printingToStaging,
       };
     };
 
     return {
-      sample: calc(sampleItems),
-      partial: calc(partialItems),
-      complete: calc(completeItems),
+      sample: calc("sample"),
+      partial: calc("partial"),
+      complete: calc("complete"),
     };
-  }, [sampleItems, partialItems, completeItems]);
-
-  const todayStr = useMemo(() => {
-    return new Date().toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  }, []);
+  }, [leads]);
 
   // Section Configurations
   const stageSections = [
     {
       key: "sample",
       heading: "Sample Stage",
-      totalCount: stageMetrics.sample.total,
-      tiles: [
-        {
-          key: "total",
-          label: "Total Pickups",
-          icon: <Layers size={16} />,
-          count: stageMetrics.sample.total,
-          className: "tile-total",
-          targetUrl: "/order/sample/ready-to-pick",
-        },
-        {
-          key: "stock",
-          label: "From Stock",
-          icon: <Warehouse size={16} />,
-          count: stageMetrics.sample.fromStock,
-          className: "tile-stock",
-          targetUrl: "/order/sample/ready-to-pick",
-        },
-        {
-          key: "production",
-          label: "From Production",
-          icon: <Flame size={16} />,
-          count: stageMetrics.sample.fromProduction,
-          className: "tile-production",
-          targetUrl: "/order/sample/ready-to-pick-production",
-        },
-        {
-          key: "printing",
-          label: "From Printing",
-          icon: <Printer size={16} />,
-          count: stageMetrics.sample.fromPrinting,
-          className: "tile-printing",
-          targetUrl: "/order/sample/ready-to-pick-up",
-        },
-      ],
+      metrics: stageMetrics.sample,
+      totalTargetUrl: "/order/sample/ready-to-pick",
+      stockVerificationTargetUrl: "/order/sample/ready-to-pick",
+      stockStagingTargetUrl: "/order/sample/staging-room",
+      logoCuttingTargetUrl: "/order/sample/ready-to-pick-production",
+      printingToStagingTargetUrl: "/order/sample/ready-to-pick-up",
     },
     {
       key: "partial",
       heading: "Partial Stage",
-      totalCount: stageMetrics.partial.total,
-      tiles: [
-        {
-          key: "total",
-          label: "Total Pickups",
-          icon: <Layers size={16} />,
-          count: stageMetrics.partial.total,
-          className: "tile-total",
-          targetUrl: "/order/partial/ready-to-pick",
-        },
-        {
-          key: "stock",
-          label: "From Stock",
-          icon: <Warehouse size={16} />,
-          count: stageMetrics.partial.fromStock,
-          className: "tile-stock",
-          targetUrl: "/order/partial/ready-to-pick",
-        },
-        {
-          key: "production",
-          label: "From Production",
-          icon: <Flame size={16} />,
-          count: stageMetrics.partial.fromProduction,
-          className: "tile-production",
-          targetUrl: "/order/partial/ready-to-pick-production",
-        },
-        {
-          key: "printing",
-          label: "From Printing",
-          icon: <Printer size={16} />,
-          count: stageMetrics.partial.fromPrinting,
-          className: "tile-printing",
-          targetUrl: "/order/partial/ready-to-pick-printing",
-        },
-        {
-          key: "packaging",
-          label: "From Packaging",
-          icon: <Package size={16} />,
-          count: stageMetrics.partial.fromPackaging,
-          className: "tile-packaging",
-          targetUrl: "/order/partial/ready-to-pick-up",
-        },
-      ],
+      metrics: stageMetrics.partial,
+      totalTargetUrl: "/order/partial/ready-to-pick",
+      stockVerificationTargetUrl: "/order/partial/ready-to-pick",
+      stockStagingTargetUrl: "/order/partial/staging-room",
+      logoCuttingTargetUrl: "/order/partial/ready-to-pick-production",
+      printingToStagingTargetUrl: "/order/partial/ready-to-pick-up",
     },
     {
       key: "complete",
       heading: "Complete Stage",
-      totalCount: stageMetrics.complete.total,
-      tiles: [
-        {
-          key: "total",
-          label: "Total Pickups",
-          icon: <Layers size={16} />,
-          count: stageMetrics.complete.total,
-          className: "tile-total",
-          targetUrl: "/order/complete/ready-to-pick",
-        },
-        {
-          key: "stock",
-          label: "From Stock",
-          icon: <Warehouse size={16} />,
-          count: stageMetrics.complete.fromStock,
-          className: "tile-stock",
-          targetUrl: "/order/complete/ready-to-pick",
-        },
-        {
-          key: "production",
-          label: "From Production",
-          icon: <Flame size={16} />,
-          count: stageMetrics.complete.fromProduction,
-          className: "tile-production",
-          targetUrl: "/order/complete/ready-to-pick-production",
-        },
-        {
-          key: "printing",
-          label: "From Printing",
-          icon: <Printer size={16} />,
-          count: stageMetrics.complete.fromPrinting,
-          className: "tile-printing",
-          targetUrl: "/order/complete/ready-to-pick-printing",
-        },
-        {
-          key: "packaging",
-          label: "From Packaging",
-          icon: <Package size={16} />,
-          count: stageMetrics.complete.fromPackaging,
-          className: "tile-packaging",
-          targetUrl: "/order/complete/ready-to-pick-up",
-        },
-      ],
+      metrics: stageMetrics.complete,
+      totalTargetUrl: "/order/complete/ready-to-pick",
+      stockVerificationTargetUrl: "/order/complete/ready-to-pick",
+      stockStagingTargetUrl: "/order/complete/staging-room",
+      logoCuttingTargetUrl: "/order/complete/ready-to-pick-production",
+      printingToStagingTargetUrl: "/order/complete/ready-to-pick-up",
     },
   ];
 
   return (
     <div className="coordinator-dashboard-root">
-      {/* Page Header - Keep only heading, date and refresh */}
+      {/* Page Header */}
       <div className="coordinator-page-header">
         <h1 className="coordinator-main-title">Coordinator Dashboard</h1>
-
-        <div className="coordinator-header-actions">
-          <button
-            type="button"
-            className="coord-refresh-btn"
-            onClick={fetchLeads}
-            disabled={loading}
-            title="Refresh pickup queues"
-          >
-            <RefreshCw size={13} className={loading ? "spin-icon" : ""} />
-            <span>{loading ? "Refreshing..." : "Refresh"}</span>
-          </button>
-
-          <div className="coord-date-pill">
-            <Calendar size={13} />
-            <span>{todayStr}</span>
-          </div>
-        </div>
       </div>
 
       {/* Stage Sections: Sample, Partial, Complete */}
       {stageSections.map((section) => (
         <section key={section.key} className="coordinator-stage-section">
-          {/* Section Heading - Clean heading and count */}
+          {/* Section Heading */}
           <div className="coordinator-stage-header">
             <h2 className="coordinator-stage-title">{section.heading}</h2>
-            <span className="coordinator-stage-count">({section.totalCount} ready)</span>
+            <span className="coordinator-stage-count">({section.metrics.total} ready)</span>
           </div>
 
-          {/* Section Tiles Grid - Clean full-width cards */}
-          <div className={`coordinator-tiles-grid grid-count-${section.tiles.length}`}>
-            {section.tiles.map((tile) => (
-              <div
-                key={tile.key}
-                className={`coordinator-tile ${tile.className}`}
-                onClick={() => navigate(tile.targetUrl)}
-                title={`Open ${tile.label} queue`}
-                role="button"
-                tabIndex={0}
-              >
-                <div className="coordinator-tile-header">
-                  <span className="coordinator-tile-label">{tile.label}</span>
-                  <div className="coordinator-tile-icon-box">{tile.icon}</div>
-                </div>
-
-                <div className="coordinator-tile-count">{tile.count}</div>
-
-                <div className="coordinator-tile-footer">
-                  <span>Open Queue</span>
-                  <ArrowRight size={13} className="footer-arrow" />
+          {/* Section Tiles Grid */}
+          <div className="coordinator-tiles-grid">
+            {/* Tile 1: Total Pick Ups */}
+            <div
+              className="coordinator-tile tile-total"
+              onClick={() => navigate(section.totalTargetUrl)}
+              role="button"
+              tabIndex={0}
+              title={`${section.heading} - Total Pickups`}
+            >
+              <div className="coordinator-tile-header">
+                <span className="coordinator-tile-label">Total Pick Ups</span>
+                <div className="coordinator-tile-icon-box">
+                  <Layers size={16} />
                 </div>
               </div>
-            ))}
+              <div className="coordinator-tile-count">{section.metrics.total}</div>
+            </div>
+
+            {/* Tile 2: From Stock (Divided into two sub-tiles) */}
+            <div className="coordinator-tile tile-stock tile-compound">
+              <div className="coordinator-tile-header" style={{ marginBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div className="coordinator-tile-icon-box">
+                    <Warehouse size={16} />
+                  </div>
+                  <span className="coordinator-tile-label" style={{ fontSize: "14px", fontWeight: 700 }}>
+                    From Stock
+                  </span>
+                </div>
+                <span className="coord-subtotal-badge">
+                  {section.metrics.fromStockTotal} Total Ready
+                </span>
+              </div>
+
+              {/* Two sub-tiles */}
+              <div className="coord-subtiles-container">
+                {/* Sub-tile 1: From Verification to Staging Room */}
+                <div
+                  className="coord-subtile"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(section.stockVerificationTargetUrl);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  title="From Verification to Staging Room"
+                >
+                  <div className="coord-subtile-header">
+                    <span className="coord-subtile-label">From Verification to Staging Room</span>
+                  </div>
+                  <div className="coord-subtile-count">{section.metrics.verificationToStaging}</div>
+                </div>
+
+                {/* Sub-tile 2: From Staging Room to Printing */}
+                <div
+                  className="coord-subtile"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(section.stockStagingTargetUrl);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  title="From Staging Room to Printing"
+                >
+                  <div className="coord-subtile-header">
+                    <span className="coord-subtile-label">From Staging Room to Printing</span>
+                  </div>
+                  <div className="coord-subtile-count">{section.metrics.stagingToPrinting}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tile 3: From Logo Cutting to Printing */}
+            <div
+              className="coordinator-tile tile-production"
+              onClick={() => navigate(section.logoCuttingTargetUrl)}
+              role="button"
+              tabIndex={0}
+              title="From Logo Cutting to Printing"
+            >
+              <div className="coordinator-tile-header">
+                <span className="coordinator-tile-label">From Logo Cutting to Printing</span>
+                <div className="coordinator-tile-icon-box">
+                  <Scissors size={16} />
+                </div>
+              </div>
+              <div className="coordinator-tile-count">{section.metrics.logoCuttingToPrinting}</div>
+            </div>
+
+            {/* Tile 4: From Printing to Staging Room */}
+            <div
+              className="coordinator-tile tile-printing"
+              onClick={() => navigate(section.printingToStagingTargetUrl)}
+              role="button"
+              tabIndex={0}
+              title="From Printing to Staging Room"
+            >
+              <div className="coordinator-tile-header">
+                <span className="coordinator-tile-label">From Printing to Staging Room</span>
+                <div className="coordinator-tile-icon-box">
+                  <Printer size={16} />
+                </div>
+              </div>
+              <div className="coordinator-tile-count">{section.metrics.printingToStaging}</div>
+            </div>
           </div>
         </section>
       ))}

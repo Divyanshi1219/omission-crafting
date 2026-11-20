@@ -34,62 +34,6 @@
   line-height: 1.2;
 }
 
-.coordinator-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.coord-refresh-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 13px;
-  background: #ffffff;
-  color: #334155;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-.coord-refresh-btn:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #94a3b8;
-  color: #0f172a;
-}
-
-.coord-refresh-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.spin-icon {
-  animation: coordSpin 0.8s linear infinite;
-}
-
-@keyframes coordSpin {
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-.coord-date-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 13px;
-  background: #ffffff;
-  color: #475569;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 12.5px;
-  font-weight: 500;
-}
-
 /* =========================================================
    2. STAGE SECTIONS - FULL PAGE FULL-WIDTH
 ========================================================= */
@@ -123,44 +67,33 @@
 }
 
 /* =========================================================
-   3. TILES GRID - RESPONSIVE FULL-PAGE ROWS
+   3. TILES GRID - RESPONSIVE 4-UNIT ROW (1fr 2fr 1fr 1fr)
 ========================================================= */
 .coordinator-tiles-grid {
   display: grid;
+  grid-template-columns: 1fr 2fr 1fr 1fr;
   gap: 14px;
   width: 100%;
 }
 
-/* 4-column layout for Sample stage */
-.coordinator-tiles-grid.grid-count-4 {
-  grid-template-columns: repeat(4, 1fr);
-}
-
-/* 5-column layout for Partial & Complete stages to span full width */
-.coordinator-tiles-grid.grid-count-5 {
-  grid-template-columns: repeat(5, 1fr);
-}
-
-@media (max-width: 1300px) {
-  .coordinator-tiles-grid.grid-count-5 {
-    grid-template-columns: repeat(3, 1fr);
+@media (max-width: 1200px) {
+  .coordinator-tiles-grid {
+    grid-template-columns: 1fr 1fr;
   }
-  .coordinator-tiles-grid.grid-count-4 {
-    grid-template-columns: repeat(2, 1fr);
+  .coordinator-tile.tile-compound {
+    grid-column: span 2;
   }
 }
 
-@media (max-width: 900px) {
-  .coordinator-tiles-grid.grid-count-5,
-  .coordinator-tiles-grid.grid-count-4 {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 580px) {
-  .coordinator-tiles-grid.grid-count-5,
-  .coordinator-tiles-grid.grid-count-4 {
+@media (max-width: 680px) {
+  .coordinator-tiles-grid {
     grid-template-columns: 1fr;
+  }
+  .coordinator-tile.tile-compound {
+    grid-column: span 1;
+  }
+  .coord-subtiles-container {
+    grid-template-columns: 1fr !important;
   }
 }
 
@@ -192,7 +125,7 @@
 
 /* Top accent border line per stage category */
 .coordinator-tile.tile-total {
-  border-top-color: #475569;
+  border-top-color: #f472b6;
 }
 .coordinator-tile.tile-stock {
   border-top-color: #2563eb;
@@ -202,9 +135,6 @@
 }
 .coordinator-tile.tile-printing {
   border-top-color: #7c3aed;
-}
-.coordinator-tile.tile-packaging {
-  border-top-color: #059669;
 }
 
 /* Tile Header: Label & Icon */
@@ -234,10 +164,19 @@
   flex-shrink: 0;
 }
 
-.tile-total .coordinator-tile-icon-box {
-  background: #f1f5f9;
-  color: #475569;
+.tile-total .coordinator-tile-label {
+  color: #0f172a;
 }
+
+.tile-total .coordinator-tile-icon-box {
+  background: #fce7f3;
+  color: #db2777;
+}
+
+.tile-total .coordinator-tile-count {
+  color: #0f172a;
+}
+
 .tile-stock .coordinator-tile-icon-box {
   background: #eff6ff;
   color: #2563eb;
@@ -250,10 +189,6 @@
   background: #faf5ff;
   color: #7c3aed;
 }
-.tile-packaging .coordinator-tile-icon-box {
-  background: #f0fdf4;
-  color: #059669;
-}
 
 /* Metric Count */
 .coordinator-tile-count {
@@ -262,59 +197,87 @@
   line-height: 1.1;
   letter-spacing: -0.6px;
   color: #0f172a;
-  margin: 4px 0 0 0;
-}
-
-/* Tile Footer */
-.coordinator-tile-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: 1px solid #f1f5f9;
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
-  transition: color 0.15s ease;
-}
-
-.footer-arrow {
-  color: #94a3b8;
-  transition: transform 0.18s ease, color 0.15s ease;
-}
-
-.coordinator-tile:hover .coordinator-tile-footer {
-  color: #0f172a;
-}
-
-.coordinator-tile:hover .footer-arrow {
-  transform: translateX(3px);
-  color: #0f172a;
+  margin: auto 0 0 0;
 }
 
 /* =========================================================
-   5. DARK THEME HARMONY (.app.dark)
+   5. COMPOUND TILE (From Stock with 2 Sub-Tiles)
+========================================================= */
+.coordinator-tile.tile-compound {
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+}
+
+.coordinator-tile.tile-compound:hover {
+  transform: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  border-color: #e2e8f0;
+}
+
+.coord-subtotal-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e40af;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: -0.2px;
+}
+
+.coord-subtiles-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  flex: 1;
+}
+
+.coord-subtile {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.coord-subtile:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.coord-subtile-header {
+  margin-bottom: 6px;
+}
+
+.coord-subtile-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #334155;
+  line-height: 1.35;
+  display: block;
+}
+
+.coord-subtile-count {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+  margin: auto 0 0 0;
+  letter-spacing: -0.4px;
+}
+
+/* =========================================================
+   6. DARK THEME HARMONY (.app.dark)
 ========================================================= */
 .app.dark .coordinator-main-title {
   color: #f8fafc;
-}
-
-.app.dark .coord-refresh-btn {
-  background: #1e293b;
-  color: #e2e8f0;
-  border-color: #334155;
-}
-
-.app.dark .coord-refresh-btn:hover:not(:disabled) {
-  background: #334155;
-  color: #ffffff;
-}
-
-.app.dark .coord-date-pill {
-  background: #1e293b;
-  color: #94a3b8;
-  border-color: #334155;
 }
 
 .app.dark .coordinator-stage-header {
@@ -349,10 +312,23 @@
   color: #f8fafc;
 }
 
-.app.dark .tile-total .coordinator-tile-icon-box {
-  background: rgba(100, 116, 139, 0.2);
-  color: #cbd5e1;
+.app.dark .coordinator-tile.tile-total {
+  border-top-color: #f472b6;
 }
+
+.app.dark .tile-total .coordinator-tile-label {
+  color: #f8fafc;
+}
+
+.app.dark .tile-total .coordinator-tile-count {
+  color: #f8fafc;
+}
+
+.app.dark .tile-total .coordinator-tile-icon-box {
+  background: rgba(244, 114, 182, 0.2);
+  color: #f472b6;
+}
+
 .app.dark .tile-stock .coordinator-tile-icon-box {
   background: rgba(37, 99, 235, 0.2);
   color: #93c5fd;
@@ -365,10 +341,6 @@
   background: rgba(124, 58, 237, 0.2);
   color: #d8b4fe;
 }
-.app.dark .tile-packaging .coordinator-tile-icon-box {
-  background: rgba(5, 150, 105, 0.2);
-  color: #86efac;
-}
 
 .app.dark .coordinator-tile-footer {
   border-top-color: #334155;
@@ -378,4 +350,41 @@
 .app.dark .coordinator-tile:hover .coordinator-tile-footer,
 .app.dark .coordinator-tile:hover .footer-arrow {
   color: #f8fafc;
+}
+
+.app.dark .coord-subtotal-badge {
+  color: #93c5fd;
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+.app.dark .coord-subtile {
+  background: #182234;
+  border-color: #334155;
+}
+
+.app.dark .coord-subtile:hover {
+  background: #202d44;
+  border-color: #475569;
+}
+
+.app.dark .coord-subtile-label {
+  color: #cbd5e1;
+}
+
+.app.dark .coord-subtile-count {
+  color: #f8fafc;
+}
+
+.app.dark .coord-subtile-footer {
+  border-top-color: #334155;
+  color: #94a3b8;
+}
+
+.app.dark .coord-subtile:hover .coord-subtile-footer {
+  color: #93c5fd;
+}
+
+.app.dark .coord-subtile:hover .coord-subtile-footer .footer-arrow {
+  color: #93c5fd;
 }

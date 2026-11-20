@@ -49,11 +49,20 @@ export default function Approvals({ defaultTab = "all" }) {
   const [employeeList, setEmployeeList] = useState(() => getStaticEmployeeNames());
 
   useEffect(() => {
-    getAllEmployeeNames(profiles).then((names) => {
-      if (Array.isArray(names) && names.length > 0) {
-        setEmployeeList(names);
-      }
-    });
+    let isMounted = true;
+    const refreshEmployees = () => {
+      getAllEmployeeNames(profiles).then((names) => {
+        if (isMounted && Array.isArray(names) && names.length > 0) {
+          setEmployeeList(names);
+        }
+      });
+    };
+    refreshEmployees();
+    window.addEventListener("focus", refreshEmployees);
+    return () => {
+      isMounted = false;
+      window.removeEventListener("focus", refreshEmployees);
+    };
   }, [profiles]);
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -467,6 +476,89 @@ export default function Approvals({ defaultTab = "all" }) {
     if (stage === "logo_cutting") return { label: "Logo Cutting", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
     return { label: "Logo Printing", color: "#334155", bg: "#f8fafc", border: "#cbd5e1" };
   };
+
+  // Helper for Coordinator Task Handover routes
+  const coordHandoverInfo = useMemo(() => {
+    if (!selectedOrder) {
+      return {
+        route: "verification-to-staging",
+        pickFrom: "Stock Room (Verified)",
+        deliverTo: "Staging Room",
+        cardTitle: "From Stock",
+        submitButtonText: "Submit to Staging Room",
+      };
+    }
+
+    const routeParam = searchParams.get("route");
+    let resolvedRoute = routeParam;
+    if (!resolvedRoute) {
+      const stockStage = getStockStage(selectedOrder);
+      const prodStage = getProductionStage(selectedOrder);
+      const subStage = (selectedOrder.subStage || "").toLowerCase().trim();
+      if (
+        subStage === "ready-to-pick-up" ||
+        subStage === "ready-to-pick-printing" ||
+        selectedOrder.printingStageData?.printingStatus === "Complete" ||
+        selectedOrder.samplePrintingStatus === "Complete" ||
+        selectedOrder.partialPrintingStatus === "Complete" ||
+        selectedOrder.completePrintingStatus === "Complete"
+      ) {
+        resolvedRoute = "printing-to-staging";
+      } else if (
+        prodStage === "logo_cutting" ||
+        prodStage === "completed" ||
+        selectedOrder.productionTaskData?.submittedToLogoCutting === true
+      ) {
+        resolvedRoute = "logo-cutting-to-printing";
+      } else if (
+        stockStage === "staging_room" ||
+        subStage === "staging-room" ||
+        subStage === "staging-ground" ||
+        Boolean(selectedOrder.sampleStagingGroundData?.stagedRackNumber) ||
+        Boolean(selectedOrder.partialStagingRoomData?.stagedRackNumber)
+      ) {
+        resolvedRoute = "staging-to-printing";
+      } else {
+        resolvedRoute = "verification-to-staging";
+      }
+    }
+
+    const isEmb = isOrderEmbroidery(selectedOrder);
+    let pickFrom = "Stock Room (Verified)";
+    let deliverTo = isEmb ? "Embroidery Staging Room" : "Staging Room";
+    let cardTitle = "From Stock";
+    let submitButtonText = isEmb ? "Submit to Embroidery Staging Room" : "Submit to Staging Room";
+
+    if (resolvedRoute === "staging-to-printing") {
+      pickFrom = isEmb ? "Embroidery Staging Room" : "Stock Staging Room";
+      deliverTo = isEmb ? "Embroidery Printing Floor" : "Production Printing Floor";
+      cardTitle = "From Stock (Staging Room to Printing)";
+      submitButtonText = "Deliver to Printing Floor";
+    } else if (resolvedRoute === "logo-cutting-to-printing") {
+      pickFrom = "Production (Logo Cutting Line)";
+      deliverTo = "Production Printing Floor";
+      cardTitle = "From Production (Logo Cutting to Printing)";
+      submitButtonText = "Deliver Logos to Printing Floor";
+    } else if (resolvedRoute === "printing-to-staging") {
+      pickFrom = "Production Printing Floor";
+      deliverTo = isEmb ? "Embroidery Staging Room" : "Staging Room";
+      cardTitle = "From Printing to Staging Room";
+      submitButtonText = isEmb ? "Submit to Embroidery Staging Room" : "Submit to Staging Room";
+    } else {
+      pickFrom = "Stock Room (Verified)";
+      deliverTo = isEmb ? "Embroidery Staging Room" : "Staging Room";
+      cardTitle = "From Stock";
+      submitButtonText = isEmb ? "Submit to Embroidery Staging Room" : "Submit to Staging Room";
+    }
+
+    return {
+      route: resolvedRoute,
+      pickFrom,
+      deliverTo,
+      cardTitle,
+      submitButtonText,
+    };
+  }, [selectedOrder, searchParams]);
 
   useEffect(() => {
     if (selectedOrder) {
@@ -1140,18 +1232,23 @@ export default function Approvals({ defaultTab = "all" }) {
             setSearchParams({});
             navigate(actionType === "submit" ? (isEmb ? "/tasks/embroidery-ready-to-pick" : "/tasks/ready-to-pick") : "/tasks/all");
             fetchOrders();
-          } else if (activeStage === "ready_to_pick") {
+          } else if (activeStage === "ready_to_pick" || isCoordinator) {
             showToast(
               actionType === "submit"
                 ? "Submitted"
-                : `Order #${selectedOrder.orderId || "Order"} referred back to Verification.`
+                : `Order #${selectedOrder.orderId || "Order"} referred back.`
             );
             setSelectedOrder(null);
-            setSearchParams({});
-            if (actionType !== "submit") {
-              navigate(isEmb ? "/tasks/embroidery-verification" : "/tasks/verification");
+            const fromParam = searchParams.get("from");
+            if (fromParam) {
+              navigate(fromParam);
             } else {
-              navigate(isEmb ? "/tasks/embroidery-ready-to-pick" : "/tasks/ready-to-pick");
+              setSearchParams({});
+              if (actionType !== "submit") {
+                navigate(isEmb ? "/tasks/embroidery-verification" : "/tasks/verification");
+              } else {
+                navigate(isEmb ? "/tasks/embroidery-ready-to-pick" : "/tasks/ready-to-pick");
+              }
             }
             fetchOrders();
           } else {
@@ -1543,6 +1640,11 @@ export default function Approvals({ defaultTab = "all" }) {
 
   // Return to list view
   const handleBackToList = () => {
+    const fromParam = searchParams.get("from");
+    if (fromParam) {
+      navigate(fromParam);
+      return;
+    }
     setSelectedOrder(null);
     setManagerComment("");
     setSearchParams({});
@@ -3158,13 +3260,15 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                             <CheckCircle size={15} />
                             <span>
                               {roleView === "stock"
-                                ? (currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
-                                  ? "Submit to From Stock"
-                                  : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
-                                  ? (isOrderEmbroidery(selectedOrder) || currentTaskTab === "embroidery-ready-to-pick" ? "Submit to Embroidery Staging Room" : "Submit to Staging Room")
-                                  : (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room")
-                                  ? "Submit Clearance"
-                                  : "Submit")
+                                ? (isCoordinator
+                                  ? coordHandoverInfo.submitButtonText
+                                  : (currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
+                                    ? "Submit to From Stock"
+                                    : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
+                                    ? (isOrderEmbroidery(selectedOrder) || currentTaskTab === "embroidery-ready-to-pick" ? "Submit to Embroidery Staging Room" : "Submit to Staging Room")
+                                    : (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room")
+                                    ? "Submit Clearance"
+                                    : "Submit"))
                                 : (currentTaskTab === "logo-printing"
                                   ? "Submit to Logo Cutting"
                                   : currentTaskTab === "logo-cutting"
@@ -3317,13 +3421,15 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                         <Package size={18} />
                         <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1e293b" }}>
-                          {currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
-                            ? "Verification"
-                            : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
-                            ? "From Stock"
-                            : currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room"
-                            ? (isOrderEmbroidery(selectedOrder) || currentTaskTab === "embroidery-staging-room" ? "Embroidery Staging Room" : "Staging Room")
-                            : `Overview (${stageBadge.label})`}
+                          {isCoordinator
+                            ? coordHandoverInfo.cardTitle
+                            : (currentTaskTab === "verification" || currentTaskTab === "embroidery-verification"
+                              ? "Verification"
+                              : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
+                              ? "From Stock"
+                              : currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-room"
+                              ? (isOrderEmbroidery(selectedOrder) || currentTaskTab === "embroidery-staging-room" ? "Embroidery Staging Room" : "Staging Room")
+                              : `Overview (${stageBadge.label})`)}
                         </h3>
                       </div>
                       {currentTaskTab === "all" && (
@@ -3406,13 +3512,13 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                           <input
                             type="text"
                             readOnly
-                            value={stockAssignedTo || "Unassigned"}
+                            value={stockAssignedTo || (isCoordinator ? (currentUser?.name || "Alex Rivera (Coordinator)") : "Unassigned")}
                             className="read-only-input bold"
                             style={{ fontSize: "14px", backgroundColor: "#f8fafc" }}
                           />
                         ) : (
                           <select
-                            value={stockAssignedTo}
+                            value={stockAssignedTo || (isCoordinator ? (currentUser?.name || "Alex Rivera (Coordinator)") : "")}
                             onChange={(e) => setStockAssignedTo(e.target.value)}
                             style={{
                               width: "100%",
@@ -3428,6 +3534,9 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                             }}
                           >
                             <option value="">-- Unassigned (Optional) --</option>
+                            {isCoordinator && currentUser?.name && !employeeList.includes(currentUser.name) && (
+                              <option value={currentUser.name}>{currentUser.name}</option>
+                            )}
                             {employeeList.map((name) => (
                               <option key={name} value={name}>{name}</option>
                             ))}
@@ -3896,7 +4005,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                     </div>
 
                     {/* READY TO PICK CLEARANCE & MULTI-FILE ATTACHMENT */}
-                    {activeStockStage === "ready_to_pick" && (
+                    {(activeStockStage === "ready_to_pick" || isCoordinator) && (
                       <div
                         style={{
                           marginTop: "14px",
@@ -3933,7 +4042,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                                 letterSpacing: "0.4px",
                               }}
                             >
-                              📍 Pick From: Stock Room (Verified)
+                              📍 Pick From: {(isCoordinator ? coordHandoverInfo.pickFrom : "Stock Room (Verified)").toUpperCase()}
                             </span>
 
                             <ArrowRight size={16} color="#64748b" />
@@ -3950,7 +4059,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                                 letterSpacing: "0.4px",
                               }}
                             >
-                              🎯 Deliver To: {isOrderEmbroidery(selectedOrder) ? "Embroidery Staging Room" : "Production Printing Floor"}
+                              🎯 Deliver To: {(isCoordinator ? coordHandoverInfo.deliverTo : (isOrderEmbroidery(selectedOrder) ? "Embroidery Staging Room" : "Production Printing Floor")).toUpperCase()}
                             </span>
                           </div>
 

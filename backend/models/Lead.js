@@ -21,6 +21,11 @@ const leadSchema = new mongoose.Schema(
       default: "Divyanshi",
       trim: true,
     },
+    backupEmployee: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     assignedTo: {
       type: String,
       default: "",
@@ -39,6 +44,11 @@ const leadSchema = new mongoose.Schema(
     query: {
       type: String,
       default: "",
+    },
+    createdOn: {
+      type: String,
+      default: () => new Date().toISOString().split("T")[0],
+      trim: true,
     },
     queryStatus: {
       type: String,

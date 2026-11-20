@@ -104,10 +104,18 @@ export default function OrderTableView() {
       valid = valid.filter(l => {
         const leadEmp = (l.employeeName || '').toLowerCase().trim();
         const leadCreatedBy = (l.createdBy || '').toLowerCase();
+        const leadBackup = (l.backupEmployee || '').toLowerCase().trim();
         const isOwner =
           (currentEmp.startsWith('divyansh') || currentId === 'sales') &&
           (leadEmp.startsWith('divyansh') || leadEmp === 'sales executive' || leadCreatedBy === 'sales');
-        return isOwner || (leadEmp && leadEmp === currentEmp);
+        const isBackup = Boolean(
+          leadBackup && (
+            (leadBackup === currentEmp || leadBackup.includes(currentEmp) || currentEmp.includes(leadBackup)) ||
+            (currentEmp.startsWith('divyansh') && leadBackup.startsWith('divyansh')) ||
+            (currentEmp.startsWith('karan') && leadBackup.startsWith('karan'))
+          )
+        );
+        return isOwner || (leadEmp && leadEmp === currentEmp) || isBackup;
       });
     }
 

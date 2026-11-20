@@ -307,7 +307,7 @@ function Sidebar() {
 
           {isOrderMenuOpen && (
             <div className="sidebar-submenu">
-              {/* 1. Create Lead */}
+              {/* 1. Lead */}
               {!isCoordinator && (
                 <NavLink
                   to="/order/create-lead"
@@ -316,7 +316,7 @@ function Sidebar() {
                   }
                 >
                   <span className="submenu-dot"></span>
-                  Create lead
+                  Lead
                 </NavLink>
               )}
 

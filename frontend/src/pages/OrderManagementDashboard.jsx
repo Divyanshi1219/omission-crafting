@@ -154,7 +154,17 @@ export default function OrderManagementDashboard() {
     return leads.filter(l => {
       const leadEmp = (l.employeeName || '').toLowerCase().trim();
       const leadCreatedBy = (l.createdBy || '').toLowerCase().trim();
+      const leadBackup = (l.backupEmployee || '').toLowerCase().trim();
 
+      if (
+        leadBackup && (
+          (currentEmp && (leadBackup === currentEmp || leadBackup.includes(currentEmp) || currentEmp.includes(leadBackup))) ||
+          (currentEmp.startsWith('divyansh') && leadBackup.startsWith('divyansh')) ||
+          (currentEmp.startsWith('karan') && leadBackup.startsWith('karan'))
+        )
+      ) {
+        return true;
+      }
       if (leadEmp && currentEmp && (leadEmp === currentEmp || leadEmp.includes(currentEmp) || currentEmp.includes(leadEmp))) {
         return true;
       }

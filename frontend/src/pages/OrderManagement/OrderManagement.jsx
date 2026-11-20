@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Plus, Trash2, ArrowLeft, ArrowRight, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2, ArrowLeft, ArrowRight, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles, ChevronDown } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { getAllEmployeeNames, getStaticEmployeeNames } from '../utils/employeeList';
@@ -190,6 +190,8 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
   if (targetWorkflow === 'embroidery') {
     if (!isEmb) return { matches: false, status: 'none', isCompleted: false };
     if (normTargetSub === 'all') {
+      const isLead = (item.query || '').toLowerCase().trim() === 'lead';
+      if (isLead) return { matches: false, status: 'none', isCompleted: false };
       return { matches: true, status: 'in_progress', isCompleted: false };
     }
     if (normTargetSub === 'leads' || normTargetSub === 'new') {
@@ -244,13 +246,15 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
   if (isEmb) {
     if (normTargetSub === 'all') {
       const isLead = (item.query || '').toLowerCase().trim() === 'lead';
-      if (!normTargetStage) {
-        const isOrderFromAnyStage =
-          ['sample', 'partial', 'complete'].includes(itemStage) ||
-          (item.query || '').toLowerCase().trim() === 'order' ||
-          Boolean(item.orderId);
+      if (isLead) return { matches: false, status: 'none', isCompleted: false };
 
-        if (isLead || isOrderFromAnyStage) {
+      const isOrderFromAnyStage =
+        (item.query || '').toLowerCase().trim() === 'order' ||
+        ['sample', 'partial', 'complete'].includes(itemStage) ||
+        Boolean(item.orderId);
+
+      if (!normTargetStage) {
+        if (isOrderFromAnyStage) {
           let isItemApproved = false;
           if (itemStage === 'sample') {
             isItemApproved = item.leadApproval?.status === 'Approved' || item.approvalStatus === 'Approved' || (itemSub !== 'order' && itemSub !== 'new');
@@ -266,13 +270,12 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
         return { matches: false, status: 'none', isCompleted: false };
       }
       if (normTargetStage === 'sample') {
-        if (isLead || itemStage === 'sample') {
+        if (itemStage === 'sample' && isOrderFromAnyStage) {
           return { matches: true, status: 'in_progress', isCompleted: false };
         }
         return { matches: false, status: 'none', isCompleted: false };
       }
-      if (isLead) return { matches: false, status: 'none', isCompleted: false };
-      if (itemStage === normTargetStage) {
+      if (itemStage === normTargetStage && isOrderFromAnyStage) {
         return { matches: true, status: 'in_progress', isCompleted: false };
       }
       return { matches: false, status: 'none', isCompleted: false };
@@ -306,14 +309,17 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
   // If viewing All tab (/order/all or /order/sample/all, /order/partial/all, /order/complete/all)
   if (normTargetSub === 'all') {
     const isLead = (item.query || '').toLowerCase().trim() === 'lead';
-    if (!normTargetStage) {
-      // DTF -> All: show all orders across all stages (sample, partial, complete) regardless of substage
-      const isOrderFromAnyStage =
-        ['sample', 'partial', 'complete'].includes(itemStage) ||
-        (item.query || '').toLowerCase().trim() === 'order' ||
-        Boolean(item.orderId);
+    // DTF -> All should never have leads (query === 'lead')
+    if (isLead) return { matches: false, status: 'none', isCompleted: false };
 
-      if (isLead || isOrderFromAnyStage) {
+    // DTF -> All: show all orders across all stages (sample, partial, complete) regardless of substage
+    const isOrderFromAnyStage =
+      (item.query || '').toLowerCase().trim() === 'order' ||
+      ['sample', 'partial', 'complete'].includes(itemStage) ||
+      Boolean(item.orderId);
+
+    if (!normTargetStage) {
+      if (isOrderFromAnyStage) {
         let isItemApproved = false;
         if (itemStage === 'sample') {
           isItemApproved = item.leadApproval?.status === 'Approved' || item.approvalStatus === 'Approved' || (itemSub !== 'order' && itemSub !== 'new');
@@ -329,13 +335,12 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
       return { matches: false, status: 'none', isCompleted: false };
     }
     if (normTargetStage === 'sample') {
-      if (isLead || itemStage === 'sample') {
+      if (itemStage === 'sample' && isOrderFromAnyStage) {
         return { matches: true, status: 'in_progress', isCompleted: false };
       }
       return { matches: false, status: 'none', isCompleted: false };
     }
-    if (isLead) return { matches: false, status: 'none', isCompleted: false };
-    if (itemStage === normTargetStage) {
+    if (itemStage === normTargetStage && isOrderFromAnyStage) {
       return { matches: true, status: 'in_progress', isCompleted: false };
     }
     return { matches: false, status: 'none', isCompleted: false };
@@ -549,15 +554,39 @@ const getDefaultDeliveryDate = () => {
 function OrderManagement() {
   const { currentUser, profiles } = useAuth();
   const [employeeList, setEmployeeList] = useState(() => getStaticEmployeeNames(profiles));
+  const [backupSearchOpen, setBackupSearchOpen] = useState(false);
+  const [backupSearchTerm, setBackupSearchTerm] = useState('');
+  const backupDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (backupDropdownRef.current && !backupDropdownRef.current.contains(e.target)) {
+        setBackupSearchOpen(false);
+      }
+    };
+    if (backupSearchOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [backupSearchOpen]);
 
   useEffect(() => {
     let isMounted = true;
-    getAllEmployeeNames(profiles).then((names) => {
-      if (isMounted && names && names.length > 0) {
-        setEmployeeList(names);
-      }
-    });
-    return () => { isMounted = false; };
+    const refreshEmployees = () => {
+      getAllEmployeeNames(profiles).then((names) => {
+        if (isMounted && names && names.length > 0) {
+          setEmployeeList(names);
+        }
+      });
+    };
+    refreshEmployees();
+    window.addEventListener('focus', refreshEmployees);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', refreshEmployees);
+    };
   }, [profiles]);
   const isAdmin = currentUser?.id === 'admin' || currentUser?.role === 'CEO' || (currentUser?.name || '').toLowerCase().startsWith('adam');
   const isCEO = currentUser?.role === 'CEO' || currentUser?.id === 'admin' || (currentUser?.name || '').toLowerCase().startsWith('adam');
@@ -669,6 +698,8 @@ function OrderManagement() {
   const canEditItemsAsManager = Boolean(editId && (isLeadManager || isApprovalReview || isAdmin));
 
   const [formData, setFormData] = useState({
+    createdOn: new Date().toISOString().split('T')[0],
+    backupEmployee: '',
     source: '',
     companyName: '',
     clientName: '',
@@ -863,6 +894,7 @@ function OrderManagement() {
     completeClientFeedback: 'Sample and bulk garments matched our exact specifications. Excellent delivery!',
 
     note: '',
+    assignedTo: '',
   });
   const [submittingStageAction, setSubmittingStageAction] = useState(false);
 
@@ -992,6 +1024,8 @@ function OrderManagement() {
     if (orderApprovalData) {
       const d = orderApprovalData;
       setFormData({
+        createdOn: d.createdOn || (d.createdAt ? new Date(d.createdAt).toISOString().split('T')[0] : '') || new Date().toISOString().split('T')[0],
+        backupEmployee: d.backupEmployee || '',
         source: d.source || '',
         companyName: d.companyName || '',
         clientName: d.clientName || '',
@@ -1535,6 +1569,43 @@ function OrderManagement() {
                 }
               }
 
+              // Determine initial assignedTo:
+              // Printing starts fresh with its own choice (does not inherit from stock/production tasks)
+              // Stages after Printing carry forward the assignedTo value from the previous stage
+              let initialAssignedTo = '';
+              const isPrintingView = fromUrl.includes('/printing');
+              const isSample = (d.orderStage || 'sample').toLowerCase() === 'sample';
+              const isPartial = (d.orderStage || '').toLowerCase() === 'partial';
+              const isComplete = (d.orderStage || '').toLowerCase() === 'complete';
+
+              if (isPrintingView) {
+                if (isPartial) initialAssignedTo = d.partialPrintingData?.assignedTo || '';
+                else if (isComplete) initialAssignedTo = d.completePrintingData?.assignedTo || '';
+                else initialAssignedTo = printingData.assignedTo || '';
+              } else {
+                if (isPartial) {
+                  if (fromUrl.includes('/quality-check')) initialAssignedTo = d.partialQualityCheckData?.assignedTo || d.partialPrintingData?.assignedTo || '';
+                  else if (fromUrl.includes('/packaging')) initialAssignedTo = d.partialPackagingData?.assignedTo || d.partialQualityCheckData?.assignedTo || d.partialPrintingData?.assignedTo || '';
+                  else if (fromUrl.includes('/staging-room')) initialAssignedTo = d.partialStagingRoomData?.assignedTo || d.partialPackagingData?.assignedTo || d.partialQualityCheckData?.assignedTo || d.partialPrintingData?.assignedTo || '';
+                  else if (fromUrl.includes('/payment-confirmation')) initialAssignedTo = d.partialPaymentConfirmationData?.assignedTo || d.partialStagingRoomData?.assignedTo || d.partialPackagingData?.assignedTo || d.partialQualityCheckData?.assignedTo || d.partialPrintingData?.assignedTo || '';
+                  else initialAssignedTo = d.partialData?.assignedTo || d.partialPrintingData?.assignedTo || '';
+                } else if (isComplete) {
+                  if (fromUrl.includes('/quality-check')) initialAssignedTo = d.completeQualityCheckData?.assignedTo || d.completePrintingData?.assignedTo || '';
+                  else if (fromUrl.includes('/packaging')) initialAssignedTo = d.completePackagingData?.assignedTo || d.completeQualityCheckData?.assignedTo || d.completePrintingData?.assignedTo || '';
+                  else if (fromUrl.includes('/staging-room')) initialAssignedTo = d.completeStagingRoomData?.assignedTo || d.completePackagingData?.assignedTo || d.completeQualityCheckData?.assignedTo || d.completePrintingData?.assignedTo || '';
+                  else if (fromUrl.includes('/delivery-pending')) initialAssignedTo = d.completeDeliveryPendingData?.assignedTo || d.completeStagingRoomData?.assignedTo || d.completePackagingData?.assignedTo || d.completePrintingData?.assignedTo || '';
+                  else if (fromUrl.includes('/delivered')) initialAssignedTo = d.completeDeliveredData?.assignedTo || d.completeDeliveryPendingData?.assignedTo || d.completeStagingRoomData?.assignedTo || d.completePrintingData?.assignedTo || '';
+                  else if (fromUrl.includes('/customer-support')) initialAssignedTo = d.completeCustomerSupportData?.assignedTo || d.completeDeliveredData?.assignedTo || d.completeDeliveryPendingData?.assignedTo || d.completePrintingData?.assignedTo || '';
+                  else initialAssignedTo = d.completeData?.assignedTo || d.completePrintingData?.assignedTo || '';
+                } else {
+                  // sample
+                  if (fromUrl.includes('/ready-to-pick-up') || fromUrl.includes('/ready-to-pick')) initialAssignedTo = readyPickupData.assignedTo || printingData.assignedTo || '';
+                  else if (fromUrl.includes('/sample/staging-room') || fromUrl.includes('/staging-ground')) initialAssignedTo = stagingGroundData.assignedTo || readyPickupData.assignedTo || printingData.assignedTo || '';
+                  else if (fromUrl.includes('/customer-approval-awaiting')) initialAssignedTo = customerData.assignedTo || stagingGroundData.assignedTo || readyPickupData.assignedTo || printingData.assignedTo || '';
+                  else initialAssignedTo = printingData.assignedTo || '';
+                }
+              }
+
               setStageForm({
                 // Sample
                 stageStatus: initialStageStatus,
@@ -1609,6 +1680,7 @@ function OrderManagement() {
                 completeClientFeedback: d.completeCustomerSupportData?.feedbackNotes || 'Sample and bulk garments matched our exact specifications. Excellent delivery!',
 
                 note: stageNote,
+                assignedTo: initialAssignedTo,
               });
               const q = (d.query || 'lead').toLowerCase();
               setQuery(q);
@@ -1617,7 +1689,9 @@ function OrderManagement() {
               setSubStage(d.subStage || 'order');
               setItems(d.items || []);
               setFormData({
+                createdOn: d.createdOn || (d.createdAt ? new Date(d.createdAt).toISOString().split('T')[0] : '') || new Date().toISOString().split('T')[0],
                 employeeName: d.employeeName || '',
+                backupEmployee: d.backupEmployee || '',
                 source: d.source || '',
                 companyName: d.companyName || '',
                 clientName: d.clientName || '',
@@ -1681,7 +1755,9 @@ function OrderManagement() {
         setIsEditing(false);
         setPhoneTouched(false);
         setFormData({
+          createdOn: new Date().toISOString().split('T')[0],
           employeeName: currentUser?.name || '',
+          backupEmployee: '',
           source: '',
           companyName: '',
           clientName: '',
@@ -1961,7 +2037,9 @@ function OrderManagement() {
     const calculatedId = maxNumber > 0 ? `ORD${String(maxNumber + 1).padStart(5, '0')}` : '';
 
     setFormData({
+      createdOn: new Date().toISOString().split('T')[0],
       employeeName: currentUser?.name || '',
+      backupEmployee: '',
       source: '',
       companyName: '',
       clientName: '',
@@ -2458,6 +2536,18 @@ function OrderManagement() {
 
   const handleOpenWorkflowModal = (lead, e) => {
     if (e) e.stopPropagation();
+    if (isCoordinator) {
+      let routeVal = "verification-to-staging";
+      if (currentSubStage === "staging-room" || currentSubStage === "staging-ground") {
+        routeVal = "staging-to-printing";
+      } else if (currentSubStage === "ready-to-pick-production") {
+        routeVal = "logo-cutting-to-printing";
+      } else if (currentSubStage === "ready-to-pick-up" || currentSubStage === "ready-to-pick-printing") {
+        routeVal = "printing-to-staging";
+      }
+      navigate(`/tasks/ready-to-pick?id=${lead._id}&route=${routeVal}&from=${encodeURIComponent(location.pathname)}`);
+      return;
+    }
     navigate(`/order/create-lead?id=${lead._id}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(lead.orderStage || 'sample')}`);
   };
 
@@ -3112,7 +3202,11 @@ function OrderManagement() {
         fromSubStage: currentSub,
         toSubStage,
         action,
-        stageData,
+        stageData: {
+          ...stageData,
+          ...(stageForm.assignedTo !== undefined ? { assignedTo: stageForm.assignedTo } : {}),
+        },
+        assignedTo: stageForm.assignedTo || '',
         comment: stageForm.note.trim(),
         author: currentUser?.name || 'Operator',
         role: currentUser?.role || 'Manager',
@@ -3354,6 +3448,12 @@ function OrderManagement() {
       isAwaitingTaskClearance
     );
 
+    const isFromPrintingOnwards = Boolean(
+      isSamplePrinting || isSampleReadyToPickup || isSampleStagingGround || isSampleCustomerApproval ||
+      isPartialPrinting || isPartialQualityCheck || isPartialPackaging || isPartialStagingRoom || isPartialPaymentConfirmation ||
+      isCompletePrinting || isCompleteQualityCheck || isCompletePackaging || isCompleteDeliveryPending || isCompleteDelivered || isCompleteCustomerSupport
+    );
+
     if (!isRecognizedWorkflowStage) {
       return null;
     }
@@ -3573,6 +3673,18 @@ function OrderManagement() {
                 style={{ fontSize: '14px', background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
               />
             </div>
+            {orderApprovalData.backupEmployee && (
+              <div className="form-field">
+                <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Back Up Employee</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={orderApprovalData.backupEmployee}
+                  className="read-only-input bold"
+                  style={{ fontSize: '14px', background: 'rgba(0,0,0,0.02)', color: '#4338ca' }}
+                />
+              </div>
+            )}
             <div className="form-field">
               <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Company Name</label>
               <input
@@ -5505,6 +5617,38 @@ function OrderManagement() {
             </div>
           )}
 
+          {/* ASSIGNED TO DROPDOWN (Active from Printing onwards across Sample, Partial & Complete) */}
+          {isFromPrintingOnwards && (
+            <div style={{ marginTop: '18px', background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                Assigned To:
+              </label>
+              <select
+                id="select-stage-assigned-to"
+                value={stageForm.assignedTo || ''}
+                onChange={(e) => setStageForm({ ...stageForm, assignedTo: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  fontSize: '13.5px',
+                  fontWeight: 600,
+                  color: '#0f172a',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              >
+                <option value="">-- Unassigned (Optional) --</option>
+                {employeeList.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* 4. REMARKS */}
           <div style={{ marginTop: '20px' }}>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
@@ -5640,6 +5784,7 @@ function OrderManagement() {
     const myId = (currentUser?.id || '').toLowerCase().trim();
     const itemEmp = (item.employeeName || '').toLowerCase().trim();
     const itemCreatedBy = (item.createdBy || '').toLowerCase().trim();
+    const itemBackup = (item.backupEmployee || '').toLowerCase().trim();
 
     let isOwner = false;
     if (
@@ -5656,6 +5801,14 @@ function OrderManagement() {
     ) {
       isOwner = true;
     } else if (itemEmp && myName && (itemEmp === myName || itemEmp.includes(myName) || myName.includes(itemEmp))) {
+      isOwner = true;
+    } else if (
+      itemBackup && (
+        (myName && (itemBackup === myName || itemBackup.includes(myName) || myName.includes(itemBackup))) ||
+        (myName.startsWith('divyansh') && itemBackup.startsWith('divyansh')) ||
+        (myName.startsWith('karan') && itemBackup.startsWith('karan'))
+      )
+    ) {
       isOwner = true;
     } else if (itemCreatedBy && myId && itemCreatedBy === myId) {
       isOwner = true;
@@ -5729,8 +5882,9 @@ function OrderManagement() {
       const comp = (item.companyName || '').toLowerCase();
       const client = (item.clientName || '').toLowerCase();
       const emp = (item.employeeName || '').toLowerCase();
+      const backup = (item.backupEmployee || '').toLowerCase();
       const phone = (item.phoneNumber || '').toLowerCase();
-      if (!oid.includes(term) && !comp.includes(term) && !client.includes(term) && !emp.includes(term) && !phone.includes(term)) {
+      if (!oid.includes(term) && !comp.includes(term) && !client.includes(term) && !emp.includes(term) && !backup.includes(term) && !phone.includes(term)) {
         return false;
       }
     }
@@ -5742,9 +5896,21 @@ function OrderManagement() {
 
   useEffect(() => {
     if (editId && location.pathname !== '/order/create-lead') {
+      if (isCoordinator) {
+        let routeVal = "verification-to-staging";
+        if (currentSubStage === "staging-room" || currentSubStage === "staging-ground") {
+          routeVal = "staging-to-printing";
+        } else if (currentSubStage === "ready-to-pick-production") {
+          routeVal = "logo-cutting-to-printing";
+        } else if (currentSubStage === "ready-to-pick-up" || currentSubStage === "ready-to-pick-printing") {
+          routeVal = "printing-to-staging";
+        }
+        navigate(`/tasks/ready-to-pick?id=${editId}&route=${routeVal}&from=${encodeURIComponent(location.pathname)}`);
+        return;
+      }
       navigate(`/order/create-lead?id=${editId}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(currentStage || 'sample')}`);
     }
-  }, [editId, location.pathname, currentStage]);
+  }, [editId, location.pathname, currentStage, currentSubStage, isCoordinator]);
 
   const isFormActive = Boolean(editId || showCreateForm || searchParams.get('mode') === 'new');
 
@@ -6171,7 +6337,7 @@ function OrderManagement() {
             )}
           </div>
         ) : (
-          <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '16px' }}>
             <button
               type="button"
               onClick={handlePreviousPage}
@@ -6184,9 +6350,6 @@ function OrderManagement() {
             <div>
               <h1 style={{ margin: 0 }}>Create Lead</h1>
               <p style={{ margin: '4px 0 0 0' }}>Fill out the form below to create a new lead.</p>
-            </div>
-            <div className="header-actions">
-              {/* Save Lead button removed from top header */}
             </div>
           </div>
         )}
@@ -6315,6 +6478,176 @@ function OrderManagement() {
                         value={formData.employeeName !== undefined ? formData.employeeName : (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || ''))}
                         onChange={(e) => setFormData({ ...formData, employeeName: e.target.value })}
                         style={{ background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
+                      />
+                    </div>
+
+                    <div className="form-group" ref={backupDropdownRef} style={{ position: 'relative' }}>
+                      <label>Back Up Employee</label>
+                      {(!isCEO || isReadOnly) ? (
+                        <input
+                          type="text"
+                          readOnly
+                          disabled
+                          value={(formData.backupEmployee !== undefined ? formData.backupEmployee : (editId && orderApprovalData?.backupEmployee ? orderApprovalData.backupEmployee : '')) || 'None'}
+                          style={{
+                            background: 'rgba(0,0,0,0.02)',
+                            color: (formData.backupEmployee || orderApprovalData?.backupEmployee) ? '#0f172a' : '#94a3b8',
+                            cursor: 'not-allowed',
+                          }}
+                        />
+                      ) : (
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBackupSearchOpen(!backupSearchOpen);
+                              setBackupSearchTerm('');
+                            }}
+                            style={{
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '10px 14px',
+                              background: '#ffffff',
+                              border: backupSearchOpen ? '1px solid #3b82f6' : '1px solid #cbd5e1',
+                              borderRadius: '8px',
+                              fontSize: '14px',
+                              color: (formData.backupEmployee !== undefined ? formData.backupEmployee : (editId && orderApprovalData?.backupEmployee ? orderApprovalData.backupEmployee : '')) ? '#0f172a' : '#64748b',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              boxShadow: backupSearchOpen ? '0 0 0 3px rgba(59, 130, 246, 0.15)' : 'none',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <span style={{ fontWeight: (formData.backupEmployee || orderApprovalData?.backupEmployee) ? 500 : 400 }}>
+                              {(formData.backupEmployee !== undefined ? formData.backupEmployee : (editId && orderApprovalData?.backupEmployee ? orderApprovalData.backupEmployee : '')) || 'Select Backup Employee'}
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {Boolean(formData.backupEmployee !== undefined ? formData.backupEmployee : (editId && orderApprovalData?.backupEmployee ? orderApprovalData.backupEmployee : '')) && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFormData({ ...formData, backupEmployee: '' });
+                                  }}
+                                  title="Clear backup employee"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '18px',
+                                    height: '18px',
+                                    borderRadius: '50%',
+                                    background: '#f1f5f9',
+                                    color: '#64748b',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <X size={12} />
+                                </span>
+                              )}
+                              <ChevronDown size={16} color="#64748b" style={{ transform: backupSearchOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+                            </div>
+                          </button>
+
+                          {backupSearchOpen && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: 'calc(100% + 4px)',
+                                left: 0,
+                                right: 0,
+                                background: '#ffffff',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '8px',
+                                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                                zIndex: 1000,
+                                padding: '8px',
+                              }}
+                            >
+                              <div style={{ position: 'relative', marginBottom: '8px' }}>
+                                <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  placeholder="Search employee..."
+                                  value={backupSearchTerm}
+                                  onChange={(e) => setBackupSearchTerm(e.target.value)}
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px 12px 8px 32px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: '13px',
+                                    outline: 'none',
+                                    boxSizing: 'border-box',
+                                    background: '#f8fafc',
+                                  }}
+                                />
+                              </div>
+
+                              <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                                {employeeList
+                                  .filter((name) => {
+                                    if (!backupSearchTerm.trim()) return true;
+                                    return name.toLowerCase().includes(backupSearchTerm.toLowerCase().trim());
+                                  })
+                                  .map((name) => {
+                                    const currentVal = (formData.backupEmployee !== undefined ? formData.backupEmployee : (editId && orderApprovalData?.backupEmployee ? orderApprovalData.backupEmployee : ''));
+                                    const isSelected = currentVal === name;
+                                    return (
+                                      <div
+                                        key={name}
+                                        onClick={() => {
+                                          setFormData({ ...formData, backupEmployee: name });
+                                          setBackupSearchOpen(false);
+                                        }}
+                                        style={{
+                                          padding: '8px 12px',
+                                          borderRadius: '6px',
+                                          fontSize: '13px',
+                                          color: isSelected ? '#1e40af' : '#1e293b',
+                                          fontWeight: isSelected ? 600 : 400,
+                                          backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          marginTop: '2px',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!isSelected) e.currentTarget.style.backgroundColor = '#f8fafc';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                                        }}
+                                      >
+                                        <span>{name}</span>
+                                        {isSelected && <Check size={14} color="#2563eb" />}
+                                      </div>
+                                    );
+                                  })}
+
+                                {employeeList.filter((name) => !backupSearchTerm.trim() || name.toLowerCase().includes(backupSearchTerm.toLowerCase().trim())).length === 0 && (
+                                  <div style={{ padding: '12px', fontSize: '13px', color: '#94a3b8', textAlign: 'center' }}>
+                                    No employee found matching "{backupSearchTerm}"
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="form-group">
+                      <label>Created On</label>
+                      <input
+                        type="text"
+                        disabled
+                        readOnly
+                        value={formData.createdOn || (orderApprovalData?.createdAt ? new Date(orderApprovalData.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0])}
+                        style={{ background: 'rgba(0,0,0,0.02)', color: '#0f172a', cursor: 'not-allowed' }}
                       />
                     </div>
 
@@ -6536,14 +6869,7 @@ function OrderManagement() {
 
                     <div className="form-grid">
                       <div className="form-group">
-                        <div className="ceo-override-container">
-                          <label style={{ margin: 0 }}>Order Stage *</label>
-                          {isCEO && (
-                            <span className="ceo-override-pill">
-                              <ShieldCheck size={11} /> CEO Override
-                            </span>
-                          )}
-                        </div>
+                        <label>Order Stage *</label>
                         {isCEO ? (
                           <select
                             className="ceo-stage-select"
@@ -6573,14 +6899,7 @@ function OrderManagement() {
                       </div>
 
                       <div className="form-group">
-                        <div className="ceo-override-container">
-                          <label style={{ margin: 0 }}>Sub Stage *</label>
-                          {isCEO && (
-                            <span className="ceo-override-pill">
-                              <Sparkles size={11} /> Auto-Approval
-                            </span>
-                          )}
-                        </div>
+                        <label>Sub Stage *</label>
                         {isCEO ? (
                           <select
                             className="ceo-stage-select"
@@ -8629,6 +8948,18 @@ function OrderManagement() {
                       key={item._id || item.orderId || `order-row-${itemIdx}`}
                       id={`order-row-${item.orderId || item._id}`}
                       onClick={() => {
+                        if (isCoordinator) {
+                          let routeVal = "verification-to-staging";
+                          if (currentSubStage === "staging-room" || currentSubStage === "staging-ground") {
+                            routeVal = "staging-to-printing";
+                          } else if (currentSubStage === "ready-to-pick-production") {
+                            routeVal = "logo-cutting-to-printing";
+                          } else if (currentSubStage === "ready-to-pick-up" || currentSubStage === "ready-to-pick-printing") {
+                            routeVal = "printing-to-staging";
+                          }
+                          navigate(`/tasks/ready-to-pick?id=${item._id}&route=${routeVal}&from=${encodeURIComponent(location.pathname)}`);
+                          return;
+                        }
                         const editParam = isLeadManager ? 'false' : 'true';
                         navigate(`/order/create-lead?id=${item._id}&edit=${editParam}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(item.orderStage || 'sample')}`);
                       }}
@@ -8654,7 +8985,12 @@ function OrderManagement() {
                       )}
                       {visibleColumns.employeeName && (
                         <td style={{ padding: '12px', color: '#64748b' }}>
-                          {item.employeeName || 'Sales Executive'}
+                          <div>{item.employeeName || 'Sales Executive'}</div>
+                          {item.backupEmployee && (
+                            <div style={{ fontSize: '11px', color: '#4f46e5', marginTop: '2px', fontWeight: 500 }}>
+                              Backup: {item.backupEmployee}
+                            </div>
+                          )}
                         </td>
                       )}
                       {visibleColumns.phoneNumber && (
