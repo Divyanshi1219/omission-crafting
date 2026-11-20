@@ -38,7 +38,9 @@ import {
   Search,
   Truck,
   ShieldCheck,
-  CreditCard
+  CreditCard,
+  RotateCcw,
+  Check
 } from "lucide-react";
 import "./EmployeeCards.css";
 import "./OverviewDashboard.css";
@@ -134,8 +136,51 @@ function Dashboard() {
     return "overview";
   });
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [selectedOverviewEmployee, setSelectedOverviewEmployee] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("selected_overview_employee");
+      if (saved && saved !== "all") return saved;
+    } catch (_) {}
+    return "all";
+  });
+  const [isOverviewDropdownOpen, setIsOverviewDropdownOpen] = useState(false);
+  const [overviewDropdownSearch, setOverviewDropdownSearch] = useState("");
+  const overviewDropdownRef = useRef(null);
   const [employeeSearchInput, setEmployeeSearchInput] = useState("");
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState("");
+
+  // Persist selected overview employee so it sticks across route navigations until "All Staff" is clicked
+  useEffect(() => {
+    try {
+      if (selectedOverviewEmployee) {
+        sessionStorage.setItem("selected_overview_employee", selectedOverviewEmployee);
+      }
+    } catch (_) {}
+  }, [selectedOverviewEmployee]);
+
+  const handleResetToAllStaff = () => {
+    setSelectedOverviewEmployee("all");
+    try {
+      sessionStorage.setItem("selected_overview_employee", "all");
+    } catch (_) {}
+    setIsOverviewDropdownOpen(false);
+    setOverviewDropdownSearch("");
+  };
+
+  // Close custom overview employee dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (overviewDropdownRef.current && !overviewDropdownRef.current.contains(e.target)) {
+        setIsOverviewDropdownOpen(false);
+      }
+    };
+    if (isOverviewDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOverviewDropdownOpen]);
 
   // Persist active tab so returning to Dashboard restores the last visited tab (e.g. Order Management)
   useEffect(() => {
@@ -568,15 +613,42 @@ function Dashboard() {
     return () => window.removeEventListener("focus", handleFocus);
   }, [activeTab]);
 
+  // Matching helper for CEO Employee Overview filter
+  const matchesOverviewEmployee = (lead, empName) => {
+    if (!empName || empName === "all") return true;
+    const target = empName.toLowerCase().trim();
+    const itemEmp = (lead.employeeName || "").toLowerCase().trim();
+    const itemAssigned = (lead.assignedTo || "").toLowerCase().trim();
+    const itemCreatedBy = (lead.createdBy || "").toLowerCase().trim();
+    const itemSales = (lead.salesPerson || lead.salesRep || "").toLowerCase().trim();
+    return (
+      (itemEmp && (itemEmp === target || itemEmp.includes(target) || target.includes(itemEmp))) ||
+      (itemAssigned && (itemAssigned === target || itemAssigned.includes(target) || target.includes(itemAssigned))) ||
+      (itemCreatedBy && (itemCreatedBy === target || itemCreatedBy.includes(target) || target.includes(itemCreatedBy))) ||
+      (itemSales && (itemSales === target || itemSales.includes(target) || target.includes(itemSales)))
+    );
+  };
+
+  // Filtered leads when CEO selects a specific employee in Overview
+  const effectiveOverviewLeads = useMemo(() => {
+    if (selectedOverviewEmployee === "all") return leads;
+    return (leads || []).filter((l) => matchesOverviewEmployee(l, selectedOverviewEmployee));
+  }, [leads, selectedOverviewEmployee]);
+
+  const effectiveOverviewRawLeads = useMemo(() => {
+    if (selectedOverviewEmployee === "all") return rawLeads;
+    return (rawLeads || []).filter((l) => matchesOverviewEmployee(l, selectedOverviewEmployee));
+  }, [rawLeads, selectedOverviewEmployee]);
+
   // Compute live repeat customer rate linked to lead form field `repeatedOrder`
   const repeatCustomerStats = useMemo(() => {
-    const ordersList = leads.filter(l => l.query === 'order' || l.orderStage || l.totalQuantity);
+    const ordersList = effectiveOverviewLeads.filter(l => l.query === 'order' || l.orderStage || l.totalQuantity);
     const hasLiveOrders = isAdmin ? ordersList.length > 0 : (leadsLoaded && ordersList.length > 0);
-    const totalCount = hasLiveOrders ? ordersList.length : (leads.length || 25);
+    const totalCount = hasLiveOrders ? ordersList.length : (effectiveOverviewLeads.length || (selectedOverviewEmployee === "all" ? 25 : 0));
     
     // Count orders where repeatedOrder === "Yes" (matching create lead form radio value)
-    const repeatLeads = (hasLiveOrders ? ordersList : leads).filter(l => (l.repeatedOrder || "").toLowerCase().trim() === "yes");
-    const repeatCount = hasLiveOrders ? repeatLeads.length : (hasLiveOrders ? 0 : 7);
+    const repeatLeads = (hasLiveOrders ? ordersList : effectiveOverviewLeads).filter(l => (l.repeatedOrder || "").toLowerCase().trim() === "yes");
+    const repeatCount = hasLiveOrders ? repeatLeads.length : (hasLiveOrders ? 0 : (selectedOverviewEmployee === "all" ? 7 : 0));
     const firstTimeCount = Math.max(0, totalCount - repeatCount);
     // Zero-division safe
     const rate = totalCount > 0 ? Math.round((repeatCount / totalCount) * 100) : 0;
@@ -591,7 +663,7 @@ function Dashboard() {
       isLive: hasLiveOrders,
       repeatLeads
     };
-  }, [leads, leadsLoaded, isAdmin]);
+  }, [effectiveOverviewLeads, leadsLoaded, isAdmin, selectedOverviewEmployee]);
 
   // Compute live stage counts for Sample, Partial, Complete
   const stageStats = useMemo(() => {
@@ -622,10 +694,10 @@ function Dashboard() {
 
   // Live Order Ageing Analytics (Packaging & beyond = Completed, Pre-Packaging = Pending)
   const orderAgeingStats = useMemo(() => {
-    const leadsList = (rawLeads && rawLeads.length > 0)
-      ? rawLeads
-      : (leads && leads.length > 0)
-        ? leads
+    const leadsList = (effectiveOverviewRawLeads && effectiveOverviewRawLeads.length > 0)
+      ? effectiveOverviewRawLeads
+      : (effectiveOverviewLeads && effectiveOverviewLeads.length > 0)
+        ? effectiveOverviewLeads
         : [];
 
     const orders = leadsList.filter(l => l.query === 'order' || l.orderStage || l.totalQuantity || l.orderId);
@@ -720,7 +792,7 @@ function Dashboard() {
       pending: calcTierStats(pendingOrders),
       allTotal: categorized.length
     };
-  }, [rawLeads, leads]);
+  }, [effectiveOverviewRawLeads, effectiveOverviewLeads]);
 
   // Currency formatter for INR
   const formatINR = (val, compact = false) => {
@@ -737,10 +809,13 @@ function Dashboard() {
   // Open dedicated Sales Orders Ledger breakdown for a selected period
   const handleOpenSalesBreakdown = (col) => {
     if (!col) {
-      navigate("/sales/orders");
+      navigate(selectedOverviewEmployee !== "all" ? `/sales/orders?employee=${encodeURIComponent(selectedOverviewEmployee)}` : "/sales/orders");
       return;
     }
     let url = `/sales/orders?label=${encodeURIComponent(col.label || col.shortLabel || "")}`;
+    if (selectedOverviewEmployee !== "all") {
+      url += `&employee=${encodeURIComponent(selectedOverviewEmployee)}`;
+    }
     if (col.start && col.end) {
       url += `&period=${salesTimeFrame}&start=${col.start.toISOString()}&end=${col.end.toISOString()}`;
       if (salesTimeFrame === "monthly") {
@@ -763,6 +838,9 @@ function Dashboard() {
     if (tier && tier !== "all") {
       params.set("ageingTier", tier);
     }
+    if (selectedOverviewEmployee !== "all") {
+      params.set("employee", selectedOverviewEmployee);
+    }
     const statusLabel = status === "completed" ? "Completed Orders" : status === "pending" ? "Pending Orders" : "All Orders";
     const tierLabel = tier === "under5" ? "Under 5 Days" : tier === "fiveTo7" ? "5 to 7 Days" : tier === "over7" ? "Over 7 Days (Aged)" : "All Tiers";
     params.set("label", `${tierLabel} • ${statusLabel}`);
@@ -772,10 +850,10 @@ function Dashboard() {
   // Clean, live aggregated sales data from actual database orders
   const salesOverviewData = useMemo(() => {
     // For executive company sales overview, prioritize full real leads
-    const leadsList = (rawLeads && rawLeads.length > 0)
-      ? rawLeads
-      : (leads && leads.length > 0)
-        ? leads
+    const leadsList = (effectiveOverviewRawLeads && effectiveOverviewRawLeads.length > 0)
+      ? effectiveOverviewRawLeads
+      : (effectiveOverviewLeads && effectiveOverviewLeads.length > 0)
+        ? effectiveOverviewLeads
         : [];
 
     const sanitizeLead = (l) => {
@@ -1024,18 +1102,62 @@ function Dashboard() {
       peakPeriod,
       peakVal: peakPeriod ? peakPeriod.val : 0
     };
-  }, [rawLeads, leads, salesTimeFrame, customStartDate, customEndDate, chartViewMode]);
+  }, [effectiveOverviewRawLeads, effectiveOverviewLeads, salesTimeFrame, customStartDate, customEndDate, chartViewMode]);
 
-  // Weekly Order Velocity Data
-  const weeklyVelocityData = [
-    { day: "Mon", standard: 10, urgent: 4, total: 14, isPeak: false },
-    { day: "Tue", standard: 13, urgent: 5, total: 18, isPeak: true },
-    { day: "Wed", standard: 9, urgent: 3, total: 12, isPeak: false },
-    { day: "Thu", standard: 7, urgent: 2, total: 9, isPeak: false },
-    { day: "Fri", standard: 11, urgent: 4, total: 15, isPeak: false },
-    { day: "Sat", standard: 6, urgent: 2, total: 8, isPeak: false },
-    { day: "Sun", standard: 4, urgent: 1, total: 5, isPeak: false },
-  ];
+  // Weekly Order Velocity Data (Dynamic when employee selected)
+  const weeklyVelocityData = useMemo(() => {
+    const baseline = [
+      { day: "Mon", standard: 10, urgent: 4, total: 14, isPeak: false },
+      { day: "Tue", standard: 13, urgent: 5, total: 18, isPeak: true },
+      { day: "Wed", standard: 9, urgent: 3, total: 12, isPeak: false },
+      { day: "Thu", standard: 7, urgent: 2, total: 9, isPeak: false },
+      { day: "Fri", standard: 11, urgent: 4, total: 15, isPeak: false },
+      { day: "Sat", standard: 6, urgent: 2, total: 8, isPeak: false },
+      { day: "Sun", standard: 4, urgent: 1, total: 5, isPeak: false },
+    ];
+    if (selectedOverviewEmployee === "all") return baseline;
+
+    const leadsList = (effectiveOverviewRawLeads && effectiveOverviewRawLeads.length > 0)
+      ? effectiveOverviewRawLeads
+      : (effectiveOverviewLeads && effectiveOverviewLeads.length > 0)
+        ? effectiveOverviewLeads
+        : [];
+
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const dayMap = {
+      Mon: { day: "Mon", standard: 0, urgent: 0, total: 0 },
+      Tue: { day: "Tue", standard: 0, urgent: 0, total: 0 },
+      Wed: { day: "Wed", standard: 0, urgent: 0, total: 0 },
+      Thu: { day: "Thu", standard: 0, urgent: 0, total: 0 },
+      Fri: { day: "Fri", standard: 0, urgent: 0, total: 0 },
+      Sat: { day: "Sat", standard: 0, urgent: 0, total: 0 },
+      Sun: { day: "Sun", standard: 0, urgent: 0, total: 0 },
+    };
+
+    leadsList.forEach((l) => {
+      const dStr = l.createdAt || l.deliveryDate || l.date;
+      const d = dStr ? new Date(dStr) : null;
+      const dayName = (d && !isNaN(d.getTime())) ? dayNames[d.getDay()] : "Mon";
+      const isUrgent = (l.priority || "").toLowerCase().trim() === "urgent" ||
+                       (l.orderType || "").toLowerCase().trim() === "urgent" ||
+                       Boolean(l.isUrgent);
+      if (dayMap[dayName]) {
+        if (isUrgent) {
+          dayMap[dayName].urgent += 1;
+        } else {
+          dayMap[dayName].standard += 1;
+        }
+        dayMap[dayName].total += 1;
+      }
+    });
+
+    const result = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((dn) => dayMap[dn]);
+    const maxVal = Math.max(...result.map((r) => r.total), 0);
+    return result.map((r) => ({
+      ...r,
+      isPeak: maxVal > 0 && r.total === maxVal,
+    }));
+  }, [selectedOverviewEmployee, effectiveOverviewRawLeads, effectiveOverviewLeads]);
 
   // Helper to determine inactive employees based on form selection (e.g., 'Inactive (Disabled)')
   const isEmployeeInactive = (emp) => {
@@ -1125,6 +1247,52 @@ function Dashboard() {
     });
   }, [employeesList, leads]);
 
+  // Clean, sorted employee options for CEO Overview filter
+  const overviewEmployeeOptions = useMemo(() => {
+    const list = normalizedEmployees
+      .filter((emp) => !emp.isInactive)
+      .map((emp) => ({
+        id: emp.id || emp._id,
+        name: emp.name,
+        role: emp.role || "",
+        department: emp.department || "",
+      }));
+
+    const existingNames = new Set(list.map((e) => (e.name || "").toLowerCase()));
+    const leadNames = new Set();
+    const allLeads = (rawLeads && rawLeads.length > 0) ? rawLeads : (leads || []);
+    allLeads.forEach((l) => {
+      const name = (l.employeeName || "").trim();
+      if (name && name.toLowerCase() !== "sales executive" && !existingNames.has(name.toLowerCase())) {
+        leadNames.add(name);
+      }
+    });
+
+    leadNames.forEach((name) => {
+      list.push({ id: `lead-${name}`, name, role: "Sales Executive", department: "Sales" });
+    });
+
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [normalizedEmployees, rawLeads, leads]);
+
+  const filteredOverviewEmployeeOptions = useMemo(() => {
+    const q = (overviewDropdownSearch || "").toLowerCase().trim();
+    if (!q) return overviewEmployeeOptions;
+    return overviewEmployeeOptions.filter((emp) =>
+      (emp.name || "").toLowerCase().includes(q) ||
+      (emp.role && emp.role.toLowerCase().includes(q))
+    );
+  }, [overviewEmployeeOptions, overviewDropdownSearch]);
+
+  const selectedEmpObj = useMemo(() => {
+    if (selectedOverviewEmployee === "all") return null;
+    return (
+      overviewEmployeeOptions.find(
+        (e) => (e.name || "").toLowerCase() === selectedOverviewEmployee.toLowerCase()
+      ) || { name: selectedOverviewEmployee, role: "Sales Executive" }
+    );
+  }, [selectedOverviewEmployee, overviewEmployeeOptions]);
+
   const filteredEmployeeCards = useMemo(() => {
     const q = (employeeSearchQuery || "").toLowerCase().trim();
     if (!q) return normalizedEmployees;
@@ -1155,7 +1323,9 @@ function Dashboard() {
   // Pending Payment Ageing & Days Passed (from DTF Partial / All Orders)
   const pendingPaymentAgeing = useMemo(() => {
     const now = new Date().getTime();
-    const allLeadsList = rawLeads && rawLeads.length > 0 ? rawLeads : leads || [];
+    const allLeadsList = (effectiveOverviewRawLeads && effectiveOverviewRawLeads.length > 0)
+      ? effectiveOverviewRawLeads
+      : (effectiveOverviewLeads || []);
 
     const calculateTierStats = (list) => {
       let totalAmount = 0;
@@ -1261,7 +1431,7 @@ function Dashboard() {
       dtfPartial: calculateTierStats(dtfPartialLeads),
       allOrders: calculateTierStats(allLeadsList),
     };
-  }, [rawLeads, leads]);
+  }, [effectiveOverviewRawLeads, effectiveOverviewLeads]);
 
   // Render Compact Order Ageing Subgraph for Completed or Pending
   const renderAgeingSubgraph = (statusType, title, stats, hoveredSegment, setHoveredSegment) => {
@@ -1525,6 +1695,369 @@ function Dashboard() {
           </h1>
         </div>
 
+        {activeTab === "overview" && (
+          <div
+            className="overview-user-filter-wrap"
+            ref={overviewDropdownRef}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              position: "relative",
+            }}
+          >
+            <div
+              className="overview-custom-dropdown-container"
+              style={{ position: "relative" }}
+            >
+              {/* Trigger Button - Clean, short, beautiful */}
+              <button
+                type="button"
+                className={`overview-user-trigger-btn ${selectedOverviewEmployee !== "all" ? "is-filtered" : ""} ${isOverviewDropdownOpen ? "is-open" : ""}`}
+                onClick={() => setIsOverviewDropdownOpen((prev) => !prev)}
+                title="CEO View: Filter dashboard by employee"
+                aria-expanded={isOverviewDropdownOpen}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "10px",
+                  background: selectedOverviewEmployee !== "all" ? "#f0fdf4" : "#ffffff",
+                  border: selectedOverviewEmployee !== "all" ? "1px solid #86efac" : "1px solid #e2e8f0",
+                  borderRadius: "10px",
+                  padding: "7px 12px",
+                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+                  cursor: "pointer",
+                  minWidth: "210px",
+                  maxWidth: "270px",
+                  textAlign: "left",
+                  transition: "all 0.15s ease",
+                  outline: "none",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    minWidth: 0,
+                    flex: 1,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "26px",
+                      height: "26px",
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "11px",
+                      fontWeight: "700",
+                      flexShrink: 0,
+                      background: selectedOverviewEmployee !== "all" ? "#bbf7d0" : "#e0e7ff",
+                      color: selectedOverviewEmployee !== "all" ? "#15803d" : "#4338ca",
+                    }}
+                  >
+                    {selectedOverviewEmployee === "all" ? (
+                      <Users size={13} />
+                    ) : (
+                      selectedEmpObj?.name?.slice(0, 2).toUpperCase() || "EM"
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      minWidth: 0,
+                      lineHeight: "1.2",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: "600",
+                        color: selectedOverviewEmployee !== "all" ? "#166534" : "#1e293b",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {selectedOverviewEmployee === "all" ? "Company Overview" : selectedEmpObj?.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "10.5px",
+                        color: "#64748b",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {selectedOverviewEmployee === "all" ? "All Staff" : (selectedEmpObj?.role || "Staff")}
+                    </span>
+                  </div>
+                </div>
+                <ChevronDown
+                  size={14}
+                  style={{
+                    color: "#64748b",
+                    flexShrink: 0,
+                    transform: isOverviewDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.2s ease",
+                  }}
+                />
+              </button>
+
+              {/* Custom Popover Menu - Short, capped at max-height 230px, never covers the screen */}
+              {isOverviewDropdownOpen && (
+                <div
+                  className="overview-custom-dropdown-menu"
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 6px)",
+                    right: 0,
+                    width: "290px",
+                    background: "#ffffff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "12px",
+                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+                    zIndex: 9999,
+                    overflow: "hidden",
+                  }}
+                >
+                  {/* Search inside dropdown */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      background: "#f8fafc",
+                      borderBottom: "1px solid #f1f5f9",
+                    }}
+                  >
+                    <Search size={13} style={{ color: "#94a3b8", flexShrink: 0 }} />
+                    <input
+                      type="text"
+                      placeholder="Search employee by name..."
+                      value={overviewDropdownSearch}
+                      onChange={(e) => setOverviewDropdownSearch(e.target.value)}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        flex: 1,
+                        border: "none",
+                        background: "transparent",
+                        outline: "none",
+                        fontSize: "12.5px",
+                        color: "#1e293b",
+                        fontFamily: "inherit",
+                      }}
+                    />
+                    {overviewDropdownSearch && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOverviewDropdownSearch("");
+                        }}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "#94a3b8",
+                          cursor: "pointer",
+                          padding: "2px",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Scrollable List with max-height: 230px */}
+                  <div
+                    style={{
+                      maxHeight: "230px",
+                      overflowY: "auto",
+                      padding: "5px",
+                    }}
+                  >
+                    {/* All Staff Option */}
+                    <div
+                      onClick={handleResetToAllStaff}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        padding: "7px 10px",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        background: selectedOverviewEmployee === "all" ? "#eff6ff" : "transparent",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedOverviewEmployee !== "all") e.currentTarget.style.background = "#f8fafc";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedOverviewEmployee !== "all") e.currentTarget.style.background = "transparent";
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "50%",
+                          background: selectedOverviewEmployee === "all" ? "#3b82f6" : "#e0e7ff",
+                          color: selectedOverviewEmployee === "all" ? "#ffffff" : "#4338ca",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Users size={13} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1, lineHeight: "1.2" }}>
+                        <span
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: "600",
+                            color: selectedOverviewEmployee === "all" ? "#1d4ed8" : "#1e293b",
+                          }}
+                        >
+                          Company Overview
+                        </span>
+                        <span style={{ fontSize: "11px", color: "#64748b" }}>
+                          All Staff • Full Organization
+                        </span>
+                      </div>
+                      {selectedOverviewEmployee === "all" && (
+                        <Check size={14} style={{ color: "#2563eb", flexShrink: 0 }} />
+                      )}
+                    </div>
+
+                    <div style={{ height: "1px", background: "#f1f5f9", margin: "4px 6px" }} />
+
+                    {/* Filtered Employee Options */}
+                    {filteredOverviewEmployeeOptions.length > 0 ? (
+                      filteredOverviewEmployeeOptions.map((emp) => {
+                        const isSelected = selectedOverviewEmployee.toLowerCase() === emp.name.toLowerCase();
+                        const initials = emp.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "EM";
+                        return (
+                          <div
+                            key={emp.id}
+                            onClick={() => {
+                              setSelectedOverviewEmployee(emp.name);
+                              try {
+                                sessionStorage.setItem("selected_overview_employee", emp.name);
+                              } catch (_) {}
+                              setIsOverviewDropdownOpen(false);
+                              setOverviewDropdownSearch("");
+                            }}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                              padding: "7px 10px",
+                              borderRadius: "8px",
+                              cursor: "pointer",
+                              background: isSelected ? "#eff6ff" : "transparent",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = "#f8fafc";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = "transparent";
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: "28px",
+                                height: "28px",
+                                borderRadius: "50%",
+                                background: isSelected ? "#3b82f6" : "#e2e8f0",
+                                color: isSelected ? "#ffffff" : "#475569",
+                                fontSize: "11px",
+                                fontWeight: "700",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {initials}
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1, lineHeight: "1.2" }}>
+                              <span
+                                style={{
+                                  fontSize: "13px",
+                                  fontWeight: "600",
+                                  color: isSelected ? "#1d4ed8" : "#1e293b",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                {emp.name}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  color: "#64748b",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                {emp.role || "Team Member"}
+                              </span>
+                            </div>
+                            {isSelected && (
+                              <Check size={14} style={{ color: "#2563eb", flexShrink: 0 }} />
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div style={{ padding: "16px 12px", textAlign: "center", fontSize: "12px", color: "#94a3b8" }}>
+                        No employees found matching "{overviewDropdownSearch}"
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {selectedOverviewEmployee !== "all" && (
+              <button
+                type="button"
+                className="overview-user-reset-btn"
+                onClick={handleResetToAllStaff}
+                title="Reset to Company Overview"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  background: "#f1f5f9",
+                  color: "#475569",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "10px",
+                  padding: "7px 11px",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <RotateCcw size={12} />
+                <span>All Staff</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {activeTab === "employee" && isAdmin && (
           <div className="emp-header-search-wrap">
             <div className="emp-search-input-box">
@@ -1563,6 +2096,22 @@ function Dashboard() {
 
       {activeTab === "overview" && (
         <div className="overview-container">
+          {selectedOverviewEmployee !== "all" && (
+            <div className="overview-filtered-banner">
+              <div className="filtered-banner-content">
+                <Users size={14} />
+                <span>Viewing individual performance for <strong>{selectedOverviewEmployee}</strong></span>
+              </div>
+              <button 
+                type="button" 
+                className="filtered-banner-clear" 
+                onClick={handleResetToAllStaff}
+              >
+                Reset to Company Overview
+              </button>
+            </div>
+          )}
+
           {/* Top Metric Tiles */}
           <div className="overview-tiles-grid">
             {/* Tile 1: Active Employees */}
@@ -1663,7 +2212,7 @@ function Dashboard() {
               return (
                 <div 
                   className="overview-tile tile-pending-payment" 
-                  onClick={() => navigate('/pending-payments', { state: { leads: rawLeads } })}
+                  onClick={() => navigate('/pending-payments', { state: { leads: effectiveOverviewRawLeads, employee: selectedOverviewEmployee } })}
                   style={{ cursor: "pointer" }}
                   title="Click to view all pending payment details"
                 >
@@ -1683,7 +2232,7 @@ function Dashboard() {
                         className="dual-metric-item"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate('/pending-payments?scope=dtf', { state: { leads: rawLeads, scope: 'dtf' } });
+                          navigate('/pending-payments?scope=dtf', { state: { leads: effectiveOverviewRawLeads, scope: 'dtf', employee: selectedOverviewEmployee } });
                         }}
                         title={`Final Payment Pending: ₹${Math.round(dtfStats.totalAmount).toLocaleString("en-IN")} (${dtfStats.count} ${dtfStats.count === 1 ? 'order' : 'orders'} in staging ready for delivery)`}
                       >
@@ -1704,7 +2253,7 @@ function Dashboard() {
                         className="dual-metric-item"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate('/pending-payments?scope=all', { state: { leads: rawLeads, scope: 'all' } });
+                          navigate('/pending-payments?scope=all', { state: { leads: effectiveOverviewRawLeads, scope: 'all', employee: selectedOverviewEmployee } });
                         }}
                         title={`Total Pipeline Pending: ₹${Math.round(allStats.totalAmount).toLocaleString("en-IN")} across ${allStats.count} orders`}
                       >
@@ -2289,7 +2838,7 @@ function Dashboard() {
                     <line x1="10" y1="105" x2="290" y2="105" stroke="#f1f5f9" strokeWidth="1" />
 
                     {(() => {
-                      const maxTotal = 20;
+                      const maxTotal = Math.max(20, ...weeklyVelocityData.map(item => item.total));
                       const colW = 20;
                       const spacing = (300 - (7 * colW)) / 8;
 

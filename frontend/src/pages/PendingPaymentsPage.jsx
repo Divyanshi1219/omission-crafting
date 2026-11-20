@@ -21,6 +21,29 @@ export default function PendingPaymentsPage() {
   const [scope, setScope] = useState(initialScope); // "dtf" | "all"
   const [searchQuery, setSearchQuery] = useState("");
 
+  const matchesOverviewEmployee = (lead, empName) => {
+    if (!empName || empName === "all") return true;
+    const target = empName.toLowerCase().trim();
+    const itemEmp = (lead.employeeName || "").toLowerCase().trim();
+    const itemAssigned = (lead.assignedTo || "").toLowerCase().trim();
+    const itemCreatedBy = (lead.createdBy || "").toLowerCase().trim();
+    const itemSales = (lead.salesPerson || lead.salesRep || "").toLowerCase().trim();
+    return (
+      (itemEmp && (itemEmp === target || itemEmp.includes(target) || target.includes(itemEmp))) ||
+      (itemAssigned && (itemAssigned === target || itemAssigned.includes(target) || target.includes(itemAssigned))) ||
+      (itemCreatedBy && (itemCreatedBy === target || itemCreatedBy.includes(target) || target.includes(itemCreatedBy))) ||
+      (itemSales && (itemSales === target || itemSales.includes(target) || target.includes(itemSales)))
+    );
+  };
+
+  const activeEmployee = location.state?.employee || (() => {
+    try {
+      const s = sessionStorage.getItem("selected_overview_employee");
+      if (s && s !== "all") return s;
+    } catch (_) {}
+    return null;
+  })();
+
   useEffect(() => {
     const s = searchParams.get("scope") || location.state?.scope;
     if (s === "all" || s === "dtf") {
@@ -37,7 +60,9 @@ export default function PendingPaymentsPage() {
       const cached = sessionStorage.getItem("omission_cached_leads");
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return activeEmployee ? parsed.filter(l => matchesOverviewEmployee(l, activeEmployee)) : parsed;
+        }
       }
     } catch (_) {}
     return [];
@@ -64,10 +89,11 @@ export default function PendingPaymentsPage() {
         if (!isMounted) return;
         const fetched = res.data?.data || (Array.isArray(res.data) ? res.data : []);
         if (Array.isArray(fetched) && fetched.length > 0) {
-          setLeads(fetched);
           try {
             sessionStorage.setItem("omission_cached_leads", JSON.stringify(fetched));
           } catch (_) {}
+          const filtered = activeEmployee ? fetched.filter(l => matchesOverviewEmployee(l, activeEmployee)) : fetched;
+          setLeads(filtered);
         }
       })
       .catch((err) => {
@@ -80,7 +106,7 @@ export default function PendingPaymentsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [activeEmployee]);
 
   // Process and sort all pending payment orders
   const { dtfOrders, allOrders } = useMemo(() => {
@@ -192,7 +218,9 @@ export default function PendingPaymentsPage() {
             <ArrowLeft size={16} />
             <span>Back</span>
           </button>
-          <h1 className="pending-page-title">Pending Payments</h1>
+          <h1 className="pending-page-title">
+            Pending Payments {activeEmployee && <span style={{ fontSize: "16px", fontWeight: "500", color: "#64748b", marginLeft: "8px" }}>• {activeEmployee}</span>}
+          </h1>
         </div>
 
         <div className="pending-header-stats">

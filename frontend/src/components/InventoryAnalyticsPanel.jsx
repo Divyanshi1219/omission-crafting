@@ -10,6 +10,7 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Info,
   IndianRupee,
   Shirt,
@@ -51,6 +52,9 @@ export default function InventoryAnalyticsPanel({
 
   // Clothing dropdown state (simple & understandable - cloth selection only)
   const [selectedProduct, setSelectedProduct] = useState('all');
+
+  // Stock Valuation dropdown filter state
+  const [valSelectedProduct, setValSelectedProduct] = useState('all');
 
   const handleCategoryClick = (category) => {
     if (onSelectCategory) {
@@ -546,25 +550,23 @@ export default function InventoryAnalyticsPanel({
     return clothColorBreakdown.reduce((sum, c) => sum + c.reservedPcs, 0);
   }, [selectedProduct, data.activeReserved, clothColorBreakdown]);
 
-  // Donut slices: Showing ALL COLORS of the selected cloth (or all garments when "all")
+  // Donut slices: Showing ALL COLORS of the selected cloth (or data.donutSlices when "all")
   const donutSlices = useMemo(() => {
-    const isClothSelected = selectedProduct !== 'all';
-    const items = isClothSelected ? clothColorBreakdown : allGarmentsBreakdown;
-    const totalCount = items.reduce((sum, item) => sum + item.totalPcs, 0);
+    if (selectedProduct === 'all') {
+      return data.donutSlices || [];
+    }
 
+    const totalCount = clothColorBreakdown.reduce((sum, item) => sum + item.totalPcs, 0);
     if (totalCount === 0) return [];
 
     const C = 427.26;
     let currentOffset = 0;
 
-    return items.map((item) => {
+    return clothColorBreakdown.map((item) => {
       const length = (item.totalPcs / totalCount) * C;
-      const key = isClothSelected ? item.colour : item.product;
-      const label = isClothSelected ? item.colour : item.product;
-
       const slice = {
-        key,
-        label,
+        key: item.colour,
+        label: item.colour,
         color: item.colorHex,
         count: item.totalPcs,
         available: item.availablePcs,
@@ -577,23 +579,144 @@ export default function InventoryAnalyticsPanel({
       currentOffset += length;
       return slice;
     });
-  }, [selectedProduct, clothColorBreakdown, allGarmentsBreakdown]);
+  }, [selectedProduct, data.donutSlices, clothColorBreakdown]);
 
   const activeSliceInfo = useMemo(() => {
-    if (!hoveredDonut) return null;
+    if (!hoveredDonut || selectedProduct === 'all') return null;
     return donutSlices.find(s => s.key === hoveredDonut) || null;
-  }, [hoveredDonut, donutSlices]);
+  }, [hoveredDonut, selectedProduct, donutSlices]);
+
+  // Comprehensive valuation breakdown by product & color
+  const valuationAnalysis = useMemo(() => {
+    const priceMap = {
+      'T-Shirt': 250,
+      'Relaxed Boat T-Shirt': 300,
+      'Hoodie': 850,
+      'Shirt': 450,
+      'pants': 550,
+      'Sweatshirt': 600,
+      'Default': 350
+    };
+
+    const getPrice = (name, itemPrice) => {
+      if (itemPrice && Number(itemPrice) > 0) return Number(itemPrice);
+      const matchKey = Object.keys(priceMap).find(k => k.toLowerCase() === (name || '').trim().toLowerCase());
+      return matchKey ? priceMap[matchKey] : priceMap.Default;
+    };
+
+    const productMap = {};
+    const sizeKeys = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+
+    stocks.forEach(s => {
+      const pName = (s.product || s.productName || s.name || 'Other Item').trim();
+      const col = (s.colour || s.color || 'Standard').trim();
+      const unitPrice = getPrice(pName, s.price || s.unitPrice);
+
+      if (!productMap[pName]) {
+        productMap[pName] = {
+          product: pName,
+          unitPrice,
+          totalPieces: 0,
+          availablePieces: 0,
+          reservedPieces: 0,
+          totalValue: 0,
+          availableValue: 0,
+          reservedValue: 0,
+          colors: {}
+        };
+      }
+
+      let sTotal = 0;
+      sizeKeys.forEach(sz => {
+        sTotal += Number(s.sizes?.[sz]) || 0;
+      });
+
+      let sRes = 0;
+      (s.reservations || []).forEach(r => {
+        if (r.status === 'Active') {
+          sRes += Number(r.quantity) || 0;
+        }
+      });
+
+      const sAvail = Math.max(0, sTotal - sRes);
+
+      productMap[pName].totalPieces += sTotal;
+      productMap[pName].reservedPieces += sRes;
+      productMap[pName].availablePieces += sAvail;
+      productMap[pName].totalValue += sTotal * unitPrice;
+      productMap[pName].availableValue += sAvail * unitPrice;
+      productMap[pName].reservedValue += sRes * unitPrice;
+
+      if (!productMap[pName].colors[col]) {
+        productMap[pName].colors[col] = {
+          colour: col,
+          colorHex: getColorHex(col),
+          cuts: new Set(),
+          totalPieces: 0,
+          availablePieces: 0,
+          reservedPieces: 0,
+          totalValue: 0,
+          availableValue: 0,
+          reservedValue: 0
+        };
+      }
+
+      if (s.cut) productMap[pName].colors[col].cuts.add(s.cut);
+      productMap[pName].colors[col].totalPieces += sTotal;
+      productMap[pName].colors[col].reservedPieces += sRes;
+      productMap[pName].colors[col].availablePieces += sAvail;
+      productMap[pName].colors[col].totalValue += sTotal * unitPrice;
+      productMap[pName].colors[col].availableValue += sAvail * unitPrice;
+      productMap[pName].colors[col].reservedValue += sRes * unitPrice;
+    });
+
+    const allProducts = Object.values(productMap);
+    // Filter active stock records and rank by value descending
+    const activeProducts = allProducts
+      .filter(p => p.totalPieces > 0)
+      .sort((a, b) => b.totalValue - a.totalValue);
+
+    const totalWarehouseVal = allProducts.reduce((sum, p) => sum + p.totalValue, 0);
+    const totalAvailVal = allProducts.reduce((sum, p) => sum + p.availableValue, 0);
+    const totalResVal = allProducts.reduce((sum, p) => sum + p.reservedValue, 0);
+
+    const productsWithShare = activeProducts.map(p => ({
+      ...p,
+      pctShare: totalWarehouseVal > 0 ? Math.round((p.totalValue / totalWarehouseVal) * 100) : 0,
+      colorList: Object.values(p.colors)
+        .sort((a, b) => b.totalValue - a.totalValue)
+        .map(c => ({
+          ...c,
+          cuts: Array.from(c.cuts),
+          pctShare: p.totalValue > 0 ? Math.round((c.totalValue / p.totalValue) * 100) : 0
+        }))
+    }));
+
+    return {
+      totalWarehouseVal: data.totalValuation > 0 ? data.totalValuation : totalWarehouseVal,
+      totalAvailVal,
+      totalResVal,
+      products: productsWithShare
+    };
+  }, [stocks, data.totalValuation]);
+
+  const selectedProductValuation = useMemo(() => {
+    if (valSelectedProduct === 'all') return null;
+    return valuationAnalysis.products.find(
+      p => p.product.toLowerCase() === valSelectedProduct.toLowerCase()
+    ) || null;
+  }, [valSelectedProduct, valuationAnalysis]);
 
   return (
     <div className="inv-standalone-charts-wrapper">
       {/* ============================================================== */}
       {/* 1. STOCK ALLOCATION STATUS (Individual Standalone Card)        */}
       {/* ============================================================== */}
-      <div className="inv-standalone-card">
+      <div className="inv-standalone-card stock-allocation-card">
         <div className="inv-card-header">
           <div className="inv-card-header-left">
             <span className="dot dot-indigo"></span>
-            <h3>Stock Allocation Status</h3>
+            <h3>Stock Status</h3>
           </div>
 
           <div className="inv-card-header-actions">
@@ -685,7 +808,7 @@ export default function InventoryAnalyticsPanel({
                       className={`inv-donut-slice segment-${slice.key}`}
                       onClick={() => {
                         if (selectedProduct === 'all') {
-                          setSelectedProduct(slice.label);
+                          handleCategoryClick(slice.key);
                         }
                       }}
                       onMouseEnter={() => setHoveredDonut(slice.key)}
@@ -701,101 +824,216 @@ export default function InventoryAnalyticsPanel({
                             : 'none'
                       }}
                     >
-                      <title>{slice.label}: {slice.count} pcs in stock ({slice.available} available)</title>
+                      <title>
+                        {selectedProduct === 'all'
+                          ? `Click to view ${slice.label} items in table (${slice.displayVal || `${slice.count} pcs`})`
+                          : `${slice.label}: ${slice.count} pcs in stock (${slice.available} available)`}
+                      </title>
                     </circle>
                   );
                 })}
               </svg>
 
-              {/* Center Typography: Shows hovered Color & Count or Total Cloth Count */}
+              {/* Center Typography: Clean, non-overlapping label */}
               <div
                 className="donut-center-label clickable-center"
                 onClick={() => {
-                  if (activeSliceInfo && selectedProduct === 'all') {
-                    setSelectedProduct(activeSliceInfo.label);
+                  if (selectedProduct === 'all') {
+                    handleCategoryClick(hoveredDonut || 'total');
                   } else {
                     handleCategoryClick('total');
                   }
                 }}
-                title={activeSliceInfo ? `${activeSliceInfo.label}: ${activeSliceInfo.count} pcs` : 'Click to view inventory table'}
+                title={
+                  selectedProduct === 'all'
+                    ? `Click to view ${hoveredDonut ? (hoveredDonut === 'available' ? 'Available' : hoveredDonut === 'reserved' ? 'Reserved' : hoveredDonut === 'overdue' ? 'Overdue' : 'Low Stock') : 'complete'} stock table`
+                    : activeSliceInfo
+                      ? `${activeSliceInfo.label}: ${activeSliceInfo.count} pcs`
+                      : 'Click to view inventory table'
+                }
                 style={{ cursor: 'pointer' }}
               >
-                <span className="donut-center-title">
-                  {activeSliceInfo
-                    ? activeSliceInfo.label
-                    : selectedProduct !== 'all' ? selectedProduct : 'Total'}
-                </span>
-                <span className="donut-center-value">
-                  {activeSliceInfo
-                    ? activeSliceInfo.count.toLocaleString('en-IN')
-                    : currentTotalPieces.toLocaleString('en-IN')}
-                </span>
-                <span className="donut-center-sub">
-                  {activeSliceInfo
-                    ? `${activeSliceInfo.available} free`
-                    : `${currentAvailablePieces.toLocaleString('en-IN')} available`}
-                </span>
+                {selectedProduct === 'all' ? (
+                  <>
+                    <span className="donut-center-title">
+                      {hoveredDonut === 'available'
+                        ? 'Available'
+                        : hoveredDonut === 'reserved'
+                          ? 'Reserved'
+                          : hoveredDonut === 'overdue'
+                            ? 'Overdue'
+                            : hoveredDonut === 'low_stock'
+                              ? 'Low Stock'
+                              : 'Total'}
+                    </span>
+                    <span className="donut-center-value">
+                      {hoveredDonut === 'available'
+                        ? data.availableStock.toLocaleString('en-IN')
+                        : hoveredDonut === 'reserved'
+                          ? data.activeReserved.toLocaleString('en-IN')
+                          : hoveredDonut === 'overdue'
+                            ? data.overduePcs.toLocaleString('en-IN')
+                            : hoveredDonut === 'low_stock'
+                              ? data.lowStockCount.toLocaleString('en-IN')
+                              : data.totalStock.toLocaleString('en-IN')}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="donut-center-title" title={activeSliceInfo ? activeSliceInfo.label : selectedProduct}>
+                      {activeSliceInfo ? activeSliceInfo.label : selectedProduct}
+                    </span>
+                    <span className="donut-center-value">
+                      {activeSliceInfo
+                        ? activeSliceInfo.count.toLocaleString('en-IN')
+                        : currentTotalPieces.toLocaleString('en-IN')}
+                    </span>
+                    <span className="donut-center-sub">
+                      {activeSliceInfo
+                        ? `${activeSliceInfo.available} free`
+                        : `${currentAvailablePieces.toLocaleString('en-IN')} available`}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Colors / Garments Legend List */}
+            {/* Colors / Status Legend List */}
             <div className="donut-legend-wrap">
               <div className="donut-legend-list custom-scrollbar">
-                {donutSlices.map((slice) => {
-                  const isHovered = hoveredDonut === slice.key;
-                  const isWhite = (slice.color || '').toLowerCase() === '#cbd5e1';
-
-                  return (
+                {selectedProduct === 'all' ? (
+                  // DEFAULT VIEW: Exact 4 Status Rows Matching Reference Photo
+                  <>
                     <div
-                      key={slice.key}
-                      className={`donut-legend-row ${isHovered ? 'is-hovered' : ''}`}
-                      onMouseEnter={() => setHoveredDonut(slice.key)}
+                      className={`donut-legend-row ${hoveredDonut === 'available' ? 'is-hovered' : ''}`}
+                      onClick={() => handleCategoryClick('available')}
+                      onMouseEnter={() => setHoveredDonut('available')}
                       onMouseLeave={() => setHoveredDonut(null)}
-                      onClick={() => {
-                        if (selectedProduct === 'all') {
-                          setSelectedProduct(slice.label);
-                        }
-                      }}
-                      title={`${slice.label}: ${slice.count} pcs (${slice.available} available)`}
+                      title="Click to view Available stock table"
                     >
                       <div className="donut-legend-left">
-                        <span
-                          className="donut-legend-dot"
-                          style={{
-                            backgroundColor: slice.color,
-                            border: isWhite ? '1px solid #94a3b8' : 'none'
-                          }}
-                        />
-                        <span className="donut-legend-name">{slice.label}</span>
+                        <span className="donut-legend-dot" style={{ backgroundColor: '#10b981' }} />
+                        <span className="donut-legend-name">Available</span>
                       </div>
                       <div className="donut-legend-right">
-                        <span className="donut-legend-qty">{slice.count.toLocaleString('en-IN')} pcs</span>
-                        <span className="donut-legend-pct">({slice.pct}%)</span>
+                        <span className="donut-legend-qty">{data.availableStock.toLocaleString('en-IN')} pcs</span>
+                        <span className="donut-legend-pct">({data.availablePct}%)</span>
                       </div>
                     </div>
-                  );
-                })}
+
+                    <div
+                      className={`donut-legend-row ${hoveredDonut === 'reserved' ? 'is-hovered' : ''}`}
+                      onClick={() => handleCategoryClick('reserved')}
+                      onMouseEnter={() => setHoveredDonut('reserved')}
+                      onMouseLeave={() => setHoveredDonut(null)}
+                      title="Click to view Active Reservations table"
+                    >
+                      <div className="donut-legend-left">
+                        <span className="donut-legend-dot" style={{ backgroundColor: '#8b5cf6' }} />
+                        <span className="donut-legend-name">Reserved</span>
+                      </div>
+                      <div className="donut-legend-right">
+                        <span className="donut-legend-qty">{data.activeReserved.toLocaleString('en-IN')} pcs</span>
+                        <span className="donut-legend-pct">({data.reservedPct}%)</span>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`donut-legend-row ${hoveredDonut === 'overdue' ? 'is-hovered' : ''}`}
+                      onClick={() => handleCategoryClick('overdue')}
+                      onMouseEnter={() => setHoveredDonut('overdue')}
+                      onMouseLeave={() => setHoveredDonut(null)}
+                      title="Click to view Overdue Reservations table"
+                    >
+                      <div className="donut-legend-left">
+                        <span className="donut-legend-dot" style={{ backgroundColor: '#ef4444' }} />
+                        <span className="donut-legend-name">Overdue</span>
+                        {data.overdueCount > 0 && (
+                          <span className="donut-legend-tag">{data.overdueCount} orders</span>
+                        )}
+                      </div>
+                      <div className="donut-legend-right">
+                        <span className="donut-legend-qty">{data.overduePcs.toLocaleString('en-IN')} pcs</span>
+                        <span className="donut-legend-pct">
+                          ({data.overduePct > 0 ? `${data.overduePct}%` : '<1%'})
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`donut-legend-row ${hoveredDonut === 'low_stock' ? 'is-hovered' : ''}`}
+                      onClick={() => handleCategoryClick('low_stock')}
+                      onMouseEnter={() => setHoveredDonut('low_stock')}
+                      onMouseLeave={() => setHoveredDonut(null)}
+                      title="Click to view Low & Out of Stock table"
+                    >
+                      <div className="donut-legend-left">
+                        <span className="donut-legend-dot" style={{ backgroundColor: '#f59e0b' }} />
+                        <span className="donut-legend-name">Low Stock</span>
+                      </div>
+                      <div className="donut-legend-right">
+                        <span className="donut-legend-qty">{data.lowStockCount.toLocaleString('en-IN')} items</span>
+                        <span className="donut-legend-pct">
+                          ({stocks.length > 0 ? Math.round((data.lowStockCount / stocks.length) * 100) : 0}%)
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  // GARMENT SELECTED VIEW: Colors Breakdown for Selected Garment
+                  donutSlices.map((slice) => {
+                    const isHovered = hoveredDonut === slice.key;
+                    const isWhite = (slice.color || '').toLowerCase() === '#cbd5e1';
+
+                    return (
+                      <div
+                        key={slice.key}
+                        className={`donut-legend-row ${isHovered ? 'is-hovered' : ''}`}
+                        onMouseEnter={() => setHoveredDonut(slice.key)}
+                        onMouseLeave={() => setHoveredDonut(null)}
+                        title={`${slice.label}: ${slice.count} pcs (${slice.available} available)`}
+                      >
+                        <div className="donut-legend-left">
+                          <span
+                            className="donut-legend-dot"
+                            style={{
+                              backgroundColor: slice.color,
+                              border: isWhite ? '1px solid #94a3b8' : 'none'
+                            }}
+                          />
+                          <span className="donut-legend-name">{slice.label}</span>
+                        </div>
+                        <div className="donut-legend-right">
+                          <span className="donut-legend-qty">{slice.count.toLocaleString('en-IN')} pcs</span>
+                          <span className="donut-legend-pct">({slice.pct}%)</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
-              {/* Bottom Allocation Status Indicators */}
-              <div className="allocation-mini-summary-pills">
-                <span
-                  className="mini-summary-pill green"
-                  onClick={() => handleCategoryClick('available')}
-                  title="Click to view available stock table"
-                >
-                  <span className="mini-pill-dot green" />
-                  <span>{currentAvailablePieces.toLocaleString('en-IN')} Available</span>
-                </span>
-                <span
-                  className="mini-summary-pill purple"
-                  onClick={() => handleCategoryClick('reserved')}
-                  title="Click to view reserved stock table"
-                >
-                  <span className="mini-pill-dot purple" />
-                  <span>{currentReservedPieces.toLocaleString('en-IN')} Reserved</span>
-                </span>
-              </div>
+              {/* Bottom Allocation Status Indicators: Only when a garment is selected */}
+              {selectedProduct !== 'all' && (
+                <div className="allocation-mini-summary-pills">
+                  <span
+                    className="mini-summary-pill green"
+                    onClick={() => handleCategoryClick('available')}
+                    title="Click to view available stock table"
+                  >
+                    <span className="mini-pill-dot green" />
+                    <span>{currentAvailablePieces.toLocaleString('en-IN')} Available</span>
+                  </span>
+                  <span
+                    className="mini-summary-pill purple"
+                    onClick={() => handleCategoryClick('reserved')}
+                    title="Click to view reserved stock table"
+                  >
+                    <span className="mini-pill-dot purple" />
+                    <span>{currentReservedPieces.toLocaleString('en-IN')} Reserved</span>
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -809,7 +1047,7 @@ export default function InventoryAnalyticsPanel({
                       <strong>{selectedProduct}</strong> Size Matrix &amp; Types
                     </>
                   ) : (
-                    'Garment Catalog & Sizes'
+                    'Garment Catalog'
                   )}
                 </span>
                 <span className="variants-count-chip">
@@ -821,14 +1059,14 @@ export default function InventoryAnalyticsPanel({
               <span className="variants-header-hint">
                 {selectedProduct !== 'all'
                   ? `${currentAvailablePieces} available • ${currentReservedPieces} reserved`
-                  : 'Click a garment to view colors'}
+                  : 'Click to inspect sizes & colors'}
               </span>
             </div>
 
             {/* Overall Sizes Summary Bar for the selected cloth */}
             {selectedProduct !== 'all' && clothOverallSizes.length > 0 && (
               <div className="cloth-overall-sizes-bar">
-                <span className="overall-sizes-lbl">XS – XXL Breakdown:</span>
+                <span className="overall-sizes-lbl">Sizes:</span>
                 <div className="overall-sizes-chips">
                   {clothOverallSizes.map(s => {
                     const isLow = s.available > 0 && s.available <= 3;
@@ -914,57 +1152,56 @@ export default function InventoryAnalyticsPanel({
                   })
                 )
               ) : (
-                // "ALL GARMENTS" SELECTED - Garment cards with 1-click drilldown
-                allGarmentsBreakdown.map(g => (
-                  <div
-                    key={g.product}
-                    className="garment-summary-card"
-                    onClick={() => {
-                      setSelectedProduct(g.product);
-                      setHoveredDonut(null);
-                    }}
-                    title={`Click to view all colors and counts for ${g.product}`}
-                  >
-                    <div className="garment-card-header">
-                      <div className="garment-title-wrap">
-                        <Shirt size={13} className="garment-icon" />
-                        <span className="garment-name">{g.product}</span>
-                        <span className="garment-variants-badge">
-                          {g.colours.length} {g.colours.length === 1 ? 'color' : 'colors'}
-                        </span>
+                // "ALL GARMENTS" SELECTED - Sleek, simplified modern row list
+                allGarmentsBreakdown.map(g => {
+                  const isHovered = hoveredDonut === g.product;
+                  return (
+                    <div
+                      key={g.product}
+                      className={`garment-summary-row ${isHovered ? 'highlighted' : ''}`}
+                      onClick={() => {
+                        setSelectedProduct(g.product);
+                        setHoveredDonut(null);
+                      }}
+                      onMouseEnter={() => setHoveredDonut(g.product)}
+                      onMouseLeave={() => setHoveredDonut(null)}
+                      title={`Click to view sizes & colors for ${g.product}`}
+                    >
+                      <div className="garment-row-left">
+                        <div className="garment-icon-badge">
+                          <Shirt size={13} className="garment-row-icon" />
+                        </div>
+                        <div className="garment-info-wrap">
+                          <span className="garment-name">{g.product}</span>
+                          <div className="garment-sub-meta">
+                            <span className="garment-color-count">
+                              {g.colours.length} {g.colours.length === 1 ? 'color' : 'colors'}
+                            </span>
+                            <span className="garment-meta-dot">•</span>
+                            <div className="garment-colors-strip">
+                              {g.colours.slice(0, 5).map(col => (
+                                <span
+                                  key={col}
+                                  className="garment-color-dot"
+                                  style={{ backgroundColor: getColorHex(col) }}
+                                  title={col}
+                                />
+                              ))}
+                              {g.colours.length > 5 && (
+                                <span className="garment-more-colors">+{g.colours.length - 5}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="garment-card-qty">
-                        <span className="garment-pcs">{g.totalPcs.toLocaleString('en-IN')} pcs</span>
-                        <span className="garment-drilldown-hint">View colors &rarr;</span>
+
+                      <div className="garment-row-right">
+                        <span className="garment-pcs-pill">{g.totalPcs.toLocaleString('en-IN')} pcs</span>
+                        <ChevronRight size={13} className="garment-row-arrow" />
                       </div>
                     </div>
-
-                    {/* Color Swatch Dots */}
-                    <div className="garment-colors-strip">
-                      {g.colours.slice(0, 7).map(col => (
-                        <span
-                          key={col}
-                          className="garment-color-dot"
-                          style={{ backgroundColor: getColorHex(col) }}
-                          title={col}
-                        />
-                      ))}
-                      {g.colours.length > 7 && (
-                        <span className="garment-more-colors">+{g.colours.length - 7}</span>
-                      )}
-                    </div>
-
-                    {/* Quick Size Matrix */}
-                    <div className="garment-mini-sizes">
-                      {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(sz => (
-                        <span key={sz} className="mini-size-item">
-                          <span className="mini-sz-lbl">{sz}</span>
-                          <span className="mini-sz-val">{g.sizes[sz] || 0}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -1093,33 +1330,164 @@ export default function InventoryAnalyticsPanel({
         <div className="inv-card-header">
           <div className="inv-card-header-left">
             <span className="dot dot-gold"></span>
-            <div>
-              <h3>Stock Valuation</h3>
-              <p>Total asset capital tied up in stock across categories</p>
-            </div>
+            <h3>Stock Valuation</h3>
           </div>
-          <span className="inv-card-kpi-val">{formatINR(data.totalValuation)}</span>
+
+          <div className="inv-card-header-actions">
+            {/* Clothing Dropdown for Valuation */}
+            <div className="inv-filter-select-wrapper" title="Choose garment to inspect its valuation">
+              <Shirt size={14} className="inv-filter-icon" />
+              <select
+                className="inv-filter-select"
+                value={valSelectedProduct}
+                onChange={(e) => setValSelectedProduct(e.target.value)}
+                aria-label="Filter valuation by cloth"
+              >
+                <option value="all">All Garments ({valuationAnalysis.products.length})</option>
+                {valuationAnalysis.products.map((p) => (
+                  <option key={p.product} value={p.product}>
+                    {p.product}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={13} className="inv-select-chevron" />
+            </div>
+
+            {/* Reset to All Garments */}
+            {valSelectedProduct !== 'all' && (
+              <button
+                type="button"
+                className="inv-filter-reset-btn"
+                onClick={() => setValSelectedProduct('all')}
+                title="Reset to All Garments"
+              >
+                <RotateCcw size={12} />
+                <span>All Garments</span>
+              </button>
+            )}
+
+            {/* Valuation KPI Value */}
+            <span className="inv-card-kpi-val">
+              {formatINR(
+                selectedProductValuation
+                  ? selectedProductValuation.totalValue
+                  : valuationAnalysis.totalWarehouseVal
+              )}
+            </span>
+          </div>
+        </div>
+
+        {/* Executive Capital Summary Strip */}
+        <div className="val-summary-strip">
+          <div className="val-summary-pill liquid">
+            <span className="val-summary-dot green"></span>
+            <span className="val-summary-lbl">Liquid / Free Capital:</span>
+            <span className="val-summary-amt">
+              {formatINR(
+                selectedProductValuation
+                  ? selectedProductValuation.availableValue
+                  : valuationAnalysis.totalAvailVal,
+                true
+              )}
+            </span>
+          </div>
+
+          <div className="val-summary-pill reserved">
+            <span className="val-summary-dot purple"></span>
+            <span className="val-summary-lbl">Committed in Orders:</span>
+            <span className="val-summary-amt">
+              {formatINR(
+                selectedProductValuation
+                  ? selectedProductValuation.reservedValue
+                  : valuationAnalysis.totalResVal,
+                true
+              )}
+            </span>
+          </div>
+
+          {selectedProductValuation && (
+            <div className="val-summary-pill rate">
+              <span className="val-summary-lbl">Unit Rate:</span>
+              <span className="val-summary-amt">₹ {selectedProductValuation.unitPrice} / pc</span>
+            </div>
+          )}
         </div>
 
         <div className="valuation-spacious-body">
-          <div className="val-cards-grid">
-            {data.productsList.slice(0, 4).map(p => {
-              const pct = data.totalValuation > 0 ? Math.round((p.totalValue / data.totalValuation) * 100) : 0;
-              return (
-                <div key={p.product} className="val-card-item">
+          {valSelectedProduct === 'all' ? (
+            /* ALL PRODUCTS VALUATION GRID */
+            <div className="val-cards-grid">
+              {valuationAnalysis.products.map(p => (
+                <div
+                  key={p.product}
+                  className="val-card-item clickable-val-card"
+                  onClick={() => setValSelectedProduct(p.product)}
+                  title={`Click to view ${p.product} valuation breakdown by color`}
+                >
                   <div className="val-card-top">
                     <span className="val-card-name">{p.product}</span>
-                    <span className="val-card-share">{pct}% Share</span>
+                    <span className="val-unit-rate-badge">@ ₹ {p.unitPrice}/pc</span>
+                    <span className="val-card-share">{p.pctShare}% Share</span>
                   </div>
                   <div className="val-card-amount">{formatINR(p.totalValue, true)}</div>
-                  <div className="val-card-sub">{p.onHand.toLocaleString('en-IN')} pcs in stock</div>
+                  <div className="val-card-sub">
+                    <span>{p.totalPieces.toLocaleString('en-IN')} pcs in stock</span>
+                    <span className="val-free-sub">({p.availablePieces} free • {p.reservedPieces} reserved)</span>
+                  </div>
                   <div className="val-progress-track">
-                    <div className="val-progress-fill" style={{ width: `${Math.max(pct, 6)}%` }}></div>
+                    <div
+                      className="val-progress-fill"
+                      style={{ width: `${Math.max(p.pctShare, 6)}%` }}
+                    ></div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          ) : (
+            /* SPECIFIC GARMENT COLOR VALUATION BREAKDOWN */
+            selectedProductValuation ? (
+              <div className="val-cards-grid">
+                {selectedProductValuation.colorList.map(c => {
+                  const isWhite = (c.colorHex || '').toLowerCase() === '#cbd5e1';
+                  return (
+                    <div key={c.colour} className="val-card-item">
+                      <div className="val-card-top">
+                        <div className="val-color-title-wrap">
+                          <span
+                            className="variant-color-dot"
+                            style={{
+                              backgroundColor: c.colorHex,
+                              border: isWhite ? '1px solid #94a3b8' : 'none'
+                            }}
+                          />
+                          <span className="val-card-name">{c.colour}</span>
+                          {c.cuts.length > 0 && (
+                            <span className="variant-cut-badge">{c.cuts.join(' • ')}</span>
+                          )}
+                        </div>
+                        <span className="val-card-share">{c.pctShare}% Share</span>
+                      </div>
+                      <div className="val-card-amount">{formatINR(c.totalValue, true)}</div>
+                      <div className="val-card-sub">
+                        <span>{c.totalPieces.toLocaleString('en-IN')} pcs</span>
+                        <span className="val-free-sub">({c.availablePieces} free • {c.reservedPieces} reserved)</span>
+                      </div>
+                      <div className="val-progress-track">
+                        <div
+                          className="val-progress-fill"
+                          style={{ width: `${Math.max(c.pctShare, 6)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="variants-empty-state">
+                No active stock records found for {valSelectedProduct}.
+              </div>
+            )
+          )}
         </div>
       </div>
     </div>
