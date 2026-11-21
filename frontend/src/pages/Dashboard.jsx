@@ -1047,7 +1047,7 @@ function Dashboard() {
 
     const columns = periodBuckets.map((b, i) => {
       const val = chartViewMode === "volume" ? b.units : b.revenue;
-      const y = val > 0 ? Math.round(190 - (val / maxVal) * 135) : 190;
+      const y = val > 0 ? Math.round(118 - (val / maxVal) * 85) : 118;
       const x = xCenters[i];
       return {
         ...b,
@@ -1076,8 +1076,8 @@ function Dashboard() {
         const cp2x = p2.x - (p3.x - p1.x) / 6;
         let cp2y = p2.y - (p3.y - p1.y) / 6;
 
-        cp1y = Math.min(190, Math.max(45, cp1y));
-        cp2y = Math.min(190, Math.max(45, cp2y));
+        cp1y = Math.min(118, Math.max(28, cp1y));
+        cp2y = Math.min(118, Math.max(28, cp2y));
 
         d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
       }
@@ -1086,7 +1086,7 @@ function Dashboard() {
 
     const linePath = buildSmoothSpline(columns);
     const areaPath = columns.length > 0
-      ? `${linePath} L ${columns[columns.length - 1].x} 190 L ${columns[0].x} 190 Z`
+      ? `${linePath} L ${columns[columns.length - 1].x} 118 L ${columns[0].x} 118 Z`
       : "";
 
     const peakPeriod = columns.reduce((p, c) => (c.val > (p?.val || 0) ? c : p), columns[0]);
@@ -2143,10 +2143,6 @@ function Dashboard() {
               <div className="tile-capacity-bar">
                 <div className="tile-capacity-fill green" style={{ width: `${activePct}%` }}></div>
               </div>
-              <div className="tile-footer-action">
-                <span>{isAdmin ? "View online roster" : "Active on duty"}</span>
-                {isAdmin && <ArrowRight size={14} className="arrow-icon" />}
-              </div>
             </div>
 
             {/* Tile 2: Inactive Employees */}
@@ -2172,10 +2168,6 @@ function Dashboard() {
               <div className="tile-capacity-bar">
                 <div className="tile-capacity-fill red" style={{ width: `${totalEmployees > 0 ? (inactiveEmployees / totalEmployees) * 100 : 0}%` }}></div>
               </div>
-              <div className="tile-footer-action">
-                <span>View inactive employees</span>
-                <ArrowRight size={14} className="arrow-icon" />
-              </div>
             </div>
 
             {/* Tile 3: On Leave Today */}
@@ -2196,10 +2188,6 @@ function Dashboard() {
               </div>
               <div className="tile-capacity-bar">
                 <div className="tile-capacity-fill orange" style={{ width: `${totalEmployees > 0 ? (leaveEmployees / totalEmployees) * 100 : 0}%` }}></div>
-              </div>
-              <div className="tile-footer-action">
-                <span>Manage leave calendar</span>
-                <ArrowRight size={14} className="arrow-icon" />
               </div>
             </div>
 
@@ -2292,11 +2280,6 @@ function Dashboard() {
                         />
                       );
                     })}
-                  </div>
-
-                  <div className="tile-footer-action">
-                    <span>View all details</span>
-                    <ArrowRight size={14} className="arrow-icon" />
                   </div>
                 </div>
               );
@@ -2419,21 +2402,28 @@ function Dashboard() {
                 <div 
                   className="stage-chart-scroll-wrapper"
                   ref={chartScrollRef}
-                  style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', overflowY: 'hidden' }}
+                  style={{ 
+                    width: '100%', 
+                    maxWidth: '100%', 
+                    minWidth: 0, 
+                    overflowX: salesOverviewData.isScrollable ? 'auto' : 'hidden', 
+                    overflowY: 'visible',
+                    paddingBottom: salesOverviewData.isScrollable ? '6px' : '0px'
+                  }}
                 >
                   <div 
                     className="stage-chart-canvas-container"
                     style={{ 
-                      width: `${salesOverviewData.chartSvgWidth}px`,
+                      width: salesOverviewData.isScrollable ? `${salesOverviewData.chartSvgWidth}px` : '100%',
                       minWidth: '100%',
                       position: 'relative',
-                      height: '240px'
+                      height: '145px'
                     }}
                   >
                     <svg 
-                      viewBox={`0 0 ${salesOverviewData.chartSvgWidth} 240`} 
+                      viewBox={`0 0 ${salesOverviewData.chartSvgWidth} 145`} 
                       className="stage-chart-svg"
-                      style={{ width: `${salesOverviewData.chartSvgWidth}px`, minWidth: '100%', height: '240px' }}
+                      style={{ width: '100%', minWidth: '100%', height: '145px', display: 'block' }}
                     >
                       <defs>
                         <linearGradient id="salesLineGradUnits" x1="0" y1="0" x2="1" y2="0">
@@ -2463,10 +2453,10 @@ function Dashboard() {
                       </defs>
 
                       {/* Horizontal Gridlines */}
-                      <line x1="16" y1="55" x2={salesOverviewData.chartSvgWidth - 16} y2="55" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
-                      <line x1="16" y1="100" x2={salesOverviewData.chartSvgWidth - 16} y2="100" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
-                      <line x1="16" y1="145" x2={salesOverviewData.chartSvgWidth - 16} y2="145" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
-                      <line x1="16" y1="190" x2={salesOverviewData.chartSvgWidth - 16} y2="190" stroke="#e2e8f0" strokeWidth="1.5" />
+                      <line x1="16" y1="32" x2={salesOverviewData.chartSvgWidth - 16} y2="32" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
+                      <line x1="16" y1="60" x2={salesOverviewData.chartSvgWidth - 16} y2="60" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
+                      <line x1="16" y1="89" x2={salesOverviewData.chartSvgWidth - 16} y2="89" stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
+                      <line x1="16" y1="118" x2={salesOverviewData.chartSvgWidth - 16} y2="118" stroke="#e2e8f0" strokeWidth="1.5" />
 
                       {/* Area Fill Under Line */}
                       {salesOverviewData.areaPath && (
@@ -2495,9 +2485,9 @@ function Dashboard() {
                       {hoveredSalesPoint && (
                         <line
                           x1={hoveredSalesPoint.x}
-                          y1="40"
+                          y1="18"
                           x2={hoveredSalesPoint.x}
-                          y2="190"
+                          y2="118"
                           stroke={chartViewMode === "volume" ? "#818cf8" : "#34d399"}
                           strokeDasharray="3 3"
                           strokeWidth="1.5"
@@ -2521,9 +2511,9 @@ function Dashboard() {
                             {/* Full vertical slice hit area */}
                             <rect
                               x={col.x - sliceWidth / 2}
-                              y="30"
+                              y="8"
                               width={sliceWidth}
-                              height="210"
+                              height="135"
                               fill="transparent"
                               style={{ cursor: 'pointer' }}
                               onMouseEnter={() => {
@@ -2574,7 +2564,7 @@ function Dashboard() {
                             {showValueLabel && (
                               <text
                                 x={col.x}
-                                y={Math.max(22, col.y - 10)}
+                                y={Math.max(16, col.y - 6)}
                                 textAnchor="middle"
                                 fontSize={salesOverviewData.columns.length > 15 ? "10" : "11"}
                                 fontWeight={isHovered ? "700" : "600"}
@@ -2590,7 +2580,7 @@ function Dashboard() {
                             {/* Bottom Primary Short Label */}
                             <text
                               x={col.x}
-                              y="212"
+                              y="132"
                               textAnchor="middle"
                               fontSize={salesOverviewData.columns.length > 20 ? "10" : "11"}
                               fontWeight={isHovered ? "700" : "600"}
@@ -2604,7 +2594,7 @@ function Dashboard() {
                             {col.subLabel && (
                               <text
                                 x={col.x}
-                                y="226"
+                                y="142"
                                 textAnchor="middle"
                                 fontSize="9"
                                 fontWeight="500"
@@ -2625,8 +2615,8 @@ function Dashboard() {
                         className="chart-floating-tooltip"
                         style={{ 
                           left: `${hoveredSalesPoint.x}px`, 
-                          top: hoveredSalesPoint.y < 105 ? `${hoveredSalesPoint.y + 16}px` : `${hoveredSalesPoint.y}px`,
-                          transform: hoveredSalesPoint.y < 105 ? 'translate(-50%, 0)' : 'translate(-50%, -110%)'
+                          top: hoveredSalesPoint.y < 70 ? `${hoveredSalesPoint.y + 10}px` : `${hoveredSalesPoint.y - 6}px`,
+                          transform: hoveredSalesPoint.y < 70 ? 'translate(-50%, 0)' : 'translate(-50%, -100%)'
                         }}
                         onClick={() => handleOpenSalesBreakdown(hoveredSalesPoint.colData)}
                         title="Click to view detailed orders list"
@@ -2638,16 +2628,16 @@ function Dashboard() {
                           </span>
                         </div>
                         <div className="tooltip-row">
-                          <span>Volume Sold:</span>
+                          <span>Volume:</span>
                           <strong>{hoveredSalesPoint.units.toLocaleString('en-IN')} Units</strong>
                         </div>
                         <div className="tooltip-row">
-                          <span>Total Revenue (INR):</span>
+                          <span>Revenue:</span>
                           <strong style={{ color: '#34d399' }}>{hoveredSalesPoint.revenue}</strong>
                         </div>
-                        <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.15)', fontSize: '11px', color: '#a5b4fc', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ marginTop: '5px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.15)', fontSize: '10px', color: '#a5b4fc', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span>Click to view orders</span>
-                          <ArrowUpRight size={12} />
+                          <ArrowUpRight size={11} />
                         </div>
                       </div>
                     )}
