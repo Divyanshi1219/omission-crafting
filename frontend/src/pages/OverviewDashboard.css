@@ -1999,6 +1999,19 @@
   align-items: center;
   position: relative;
   padding: 0 0 2px 0;
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+  user-select: none;
+  border-radius: 12px;
+}
+
+.repeat-gauge-body:hover {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 6px 14px rgba(16, 185, 129, 0.15));
+}
+
+.repeat-gauge-body:active {
+  transform: translateY(0);
 }
 
 .repeat-gauge-svg {
@@ -2084,7 +2097,8 @@
   padding-top: 6px;
   border-top: 1px solid #f1f5f9;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 28px;
   align-items: center;
 }
 

@@ -1033,7 +1033,19 @@ export default function OrderManagementDashboard() {
             </button>
           </div>
 
-          <div className="repeat-gauge-body">
+          <div 
+            className="repeat-gauge-body clickable-chart"
+            onClick={() => setShowRepeatDetailsModal(true)}
+            title="Click graph to view repeat customer details"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setShowRepeatDetailsModal(true);
+              }
+            }}
+          >
             <svg viewBox="0 0 200 115" className="repeat-gauge-svg">
               <defs>
                 <linearGradient id="orderGaugeActiveGrad" x1="0" y1="0" x2="1" y2="0">
@@ -1111,12 +1123,6 @@ export default function OrderManagementDashboard() {
                 {repeatCustomerStats.firstTimeCount} ({100 - repeatCustomerStats.rate}%)
               </span>
             </div>
-            <button 
-              className="repeat-details-btn"
-              onClick={() => setShowRepeatDetailsModal(true)}
-            >
-              Details <ArrowUpRight size={13} />
-            </button>
           </div>
         </div>
       </div>

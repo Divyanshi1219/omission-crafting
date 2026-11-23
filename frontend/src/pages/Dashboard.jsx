@@ -2102,22 +2102,6 @@ function Dashboard() {
 
       {activeTab === "overview" && (
         <div className="overview-container">
-          {selectedOverviewEmployee !== "all" && (
-            <div className="overview-filtered-banner">
-              <div className="filtered-banner-content">
-                <Users size={14} />
-                <span>Viewing individual performance for <strong>{selectedOverviewEmployee}</strong></span>
-              </div>
-              <button 
-                type="button" 
-                className="filtered-banner-clear" 
-                onClick={handleResetToAllStaff}
-              >
-                Reset to Company Overview
-              </button>
-            </div>
-          )}
-
           {/* Top Metric Tiles */}
           <div className="overview-tiles-grid">
             {/* Tile 1: Active Employees */}
@@ -2677,7 +2661,19 @@ function Dashboard() {
                 </button>
               </div>
 
-              <div className="repeat-gauge-body">
+              <div 
+                className="repeat-gauge-body clickable-chart"
+                onClick={() => setShowRepeatDetailsModal(true)}
+                title="Click graph to view repeat customer details"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setShowRepeatDetailsModal(true);
+                  }
+                }}
+              >
                 <svg viewBox="0 0 200 115" className="repeat-gauge-svg">
                   <defs>
                     <linearGradient id="gaugeActiveGrad" x1="0" y1="0" x2="1" y2="0">
@@ -2755,12 +2751,6 @@ function Dashboard() {
                     {repeatCustomerStats.firstTimeCount} ({100 - repeatCustomerStats.rate}%)
                   </span>
                 </div>
-                <button 
-                  className="repeat-details-btn"
-                  onClick={() => setShowRepeatDetailsModal(true)}
-                >
-                  Details <ArrowUpRight size={13} />
-                </button>
               </div>
             </div>
           </div>
