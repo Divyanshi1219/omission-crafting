@@ -8,7 +8,7 @@ import './OrderManagement.css';
 
 const FULL_ORDER_STAGES = [
   'New',
-  'Order',
+  'Review',
   'DTF Pending',
   'Stock',
   'Printing',
@@ -19,7 +19,7 @@ const FULL_ORDER_STAGES = [
 ];
 
 const SAMPLE_STAGES = [
-  'Order',
+  'Review',
   'DTF Pending',
   'Stock',
   'Printing',
@@ -29,7 +29,7 @@ const SAMPLE_STAGES = [
 ];
 
 const EMBROIDERY_SAMPLE_STAGES = [
-  'Order',
+  'Review',
   'Stock Dispatch',
   'Vendor Received',
   'Vendor Dispatch at Staging Room',
@@ -78,7 +78,7 @@ const INDIAN_STATES = [
 ];
 
 const PARTIAL_STAGES = [
-  'Order',
+  'Review',
   'DTF Pending',
   'Stock',
   'Printing',
@@ -89,7 +89,7 @@ const PARTIAL_STAGES = [
 ];
 
 const COMPLETE_STAGES = [
-  'Order',
+  'Review',
   'DTF Pending',
   'Stock',
   'Printing',
@@ -108,7 +108,7 @@ const ORDER_DEFINITIONS = [
 
 const SUB_STAGES_BY_ORDER_STAGE = {
   sample: [
-    'Order',
+    'Review',
     'DTF Pending',
     'Stock',
     'Printing',
@@ -117,7 +117,7 @@ const SUB_STAGES_BY_ORDER_STAGE = {
     'Customer Approval Awaiting'
   ],
   partial: [
-    'Order',
+    'Review',
     'DTF Pending',
     'Stock',
     'Printing',
@@ -127,7 +127,7 @@ const SUB_STAGES_BY_ORDER_STAGE = {
     'Payment Confirmation'
   ],
   complete: [
-    'Order',
+    'Review',
     'DTF Pending',
     'Stock',
     'Printing',
@@ -141,7 +141,7 @@ const SUB_STAGES_BY_ORDER_STAGE = {
 
 const SUB_STAGE_OPTIONS_BY_ORDER_STAGE = {
   sample: [
-    { label: 'Order', slug: 'order' },
+    { label: 'Review', slug: 'order' },
     { label: 'DTF Pending', slug: 'dtf-pending' },
     { label: 'Stock', slug: 'stock' },
     { label: 'Printing', slug: 'printing' },
@@ -150,7 +150,7 @@ const SUB_STAGE_OPTIONS_BY_ORDER_STAGE = {
     { label: 'Customer Approval Awaiting', slug: 'customer-approval-awaiting' },
   ],
   partial: [
-    { label: 'Order', slug: 'order' },
+    { label: 'Review', slug: 'order' },
     { label: 'DTF Pending', slug: 'dtf-pending' },
     { label: 'Stock', slug: 'stock' },
     { label: 'Printing', slug: 'printing' },
@@ -160,7 +160,7 @@ const SUB_STAGE_OPTIONS_BY_ORDER_STAGE = {
     { label: 'Payment Confirmation', slug: 'payment-confirmation' },
   ],
   complete: [
-    { label: 'Order', slug: 'order' },
+    { label: 'Review', slug: 'order' },
     { label: 'DTF Pending', slug: 'dtf-pending' },
     { label: 'Stock', slug: 'stock' },
     { label: 'Printing', slug: 'printing' },
@@ -464,7 +464,7 @@ const STAGE_ROUTE_MAP = {
   '/order/all': 'All',
   '/order/create-lead': 'New',
   '/order/leads': 'New',
-  '/order/order': 'Order',
+  '/order/order': 'Review',
   '/order/dtf-pending': 'DTF Pending',
   '/order/stock': 'Stock',
   '/order/printing': 'Printing',
@@ -475,10 +475,10 @@ const STAGE_ROUTE_MAP = {
   '/order/customer-support': 'Customer Support',
 
   // Sample child routes
-  '/order/sample': 'Order',
+  '/order/sample': 'Review',
   '/order/sample/all': 'All',
-  '/order/sample/leads': 'Order',
-  '/order/sample/order': 'Order',
+  '/order/sample/leads': 'Review',
+  '/order/sample/order': 'Review',
   '/order/sample/dtf-pending': 'DTF Pending',
   '/order/sample/stock': 'Stock',
   '/order/sample/ready-to-pick': 'From Stock',
@@ -491,10 +491,10 @@ const STAGE_ROUTE_MAP = {
   '/order/sample/customer-approval-awaiting': 'Customer Approval Awaiting',
 
   // Partial child routes
-  '/order/partial': 'Order',
+  '/order/partial': 'Review',
   '/order/partial/all': 'All',
-  '/order/partial/leads': 'Order',
-  '/order/partial/order': 'Order',
+  '/order/partial/leads': 'Review',
+  '/order/partial/order': 'Review',
   '/order/partial/dtf-pending': 'DTF Pending',
   '/order/partial/stock': 'Stock',
   '/order/partial/ready-to-pick': 'From Stock',
@@ -509,10 +509,10 @@ const STAGE_ROUTE_MAP = {
   '/order/partial/payment-confirmation': 'Payment Confirmation',
 
   // Complete child routes
-  '/order/complete': 'Order',
+  '/order/complete': 'Review',
   '/order/complete/all': 'All',
-  '/order/complete/leads': 'Order',
-  '/order/complete/order': 'Order',
+  '/order/complete/leads': 'Review',
+  '/order/complete/order': 'Review',
   '/order/complete/dtf-pending': 'DTF Pending',
   '/order/complete/stock': 'Stock',
   '/order/complete/ready-to-pick': 'From Stock',
@@ -531,7 +531,7 @@ const STAGE_ROUTE_MAP = {
   '/order/embroidery/all': 'All',
   '/order/embroidery/leads': 'Leads',
   '/order/embroidery/sample/all': 'All',
-  '/order/embroidery/sample/order': 'Order',
+  '/order/embroidery/sample/order': 'Review',
   '/order/embroidery/sample/stock-dispatch': 'Stock Dispatch',
   '/order/embroidery/sample/vendor-received': 'Vendor Received',
   '/order/embroidery/sample/vendor-dispatch-at-staging-room': 'Vendor Dispatch at Staging Room',
@@ -1087,7 +1087,7 @@ function OrderManagement() {
     if (exists) {
       setSelectedStage(exists.label);
     } else {
-      const firstOpt = validOptions[0] || { label: 'Order', slug: 'order' };
+      const firstOpt = validOptions[0] || { label: 'Review', slug: 'order' };
       setSubStage(firstOpt.slug);
       setSelectedStage(firstOpt.label);
     }
@@ -1935,7 +1935,12 @@ function OrderManagement() {
       const activeStages = getCurrentStages();
       const currentSub = (subStage || orderApprovalData?.subStage || '').toLowerCase().replace(/\s+/g, '-');
       if (currentSub) {
-        const matched = activeStages.find(s => s.toLowerCase().replace(/\s+/g, '-') === currentSub);
+        const matched = activeStages.find(s => {
+          const sSlug = s.toLowerCase().replace(/\s+/g, '-');
+          if (sSlug === currentSub) return true;
+          if ((currentSub === 'order' || currentSub === 'new' || currentSub === 'leads') && s === 'Review') return true;
+          return false;
+        });
         if (matched) {
           setSelectedStage(matched);
           return;
@@ -6474,10 +6479,15 @@ function OrderManagement() {
                       <label>Employee Name</label>
                       <input
                         type="text"
-                        disabled={isReadOnly}
+                        readOnly={!isCEO || isReadOnly}
+                        disabled={!isCEO || isReadOnly}
                         value={formData.employeeName !== undefined ? formData.employeeName : (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || ''))}
                         onChange={(e) => setFormData({ ...formData, employeeName: e.target.value })}
-                        style={{ background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
+                        style={{
+                          background: 'rgba(0,0,0,0.02)',
+                          color: '#0f172a',
+                          ...((!isCEO || isReadOnly) ? { cursor: 'not-allowed' } : {}),
+                        }}
                       />
                     </div>
 
@@ -8067,11 +8077,11 @@ function OrderManagement() {
                   }
                   combinedLogs.push({
                     action: isOrd ? 'Order Created & Submitted' : 'Lead Created & Saved',
-                    stage: isOrd ? 'Sample → Order' : 'Leads',
+                    stage: isOrd ? 'Sample → Review' : 'Leads',
                     performedBy: d.employeeName || formData.employeeName || 'Sales Executive',
                     role: 'Sales Executive',
                     details: isOrd
-                      ? `Application (${d.orderId || formData.orderId || 'Order'}) created and submitted by ${d.employeeName || 'Sales Executive'}. Sent to Sample → Order for Lead Manager Clearance.`
+                      ? `Application (${d.orderId || formData.orderId || 'Order'}) created and submitted by ${d.employeeName || 'Sales Executive'}. Sent to Sample → Review for Lead Manager Clearance.`
                       : `Lead application (${d.orderId || formData.orderId || 'Lead'}) created and saved to Leads by ${d.employeeName || 'Sales Executive'}.`,
                     changes: initChanges,
                     timestamp: d.createdAt || new Date().toISOString(),
@@ -8097,9 +8107,9 @@ function OrderManagement() {
                     stage: 'Sample → DTF Pending',
                     performedBy: lmAuthor,
                     role: 'Lead Manager',
-                    details: `Task 0 (Lead Manager Clearance) approved by ${lmAuthor} (Lead Manager). Application moved from Sample → Order to Sample → DTF Pending, and assigned to Stock Room Manager (Elena Rostova) & Production Room (Marcus Vance).`,
+                    details: `Task 0 (Lead Manager Clearance) approved by ${lmAuthor} (Lead Manager). Application moved from Sample → Review to Sample → DTF Pending, and assigned to Stock Room Manager (Elena Rostova) & Production Room (Marcus Vance).`,
                     changes: [
-                      'From Stage: Sample → Order',
+                      'From Stage: Sample → Review',
                       'To Stage: Sample → DTF Pending',
                       'Task 0 (Lead Manager Clearance): Approved',
                       'Assigned Task 1: Stock Room Clearance (Elena Rostova — Verification)',
@@ -8391,7 +8401,7 @@ function OrderManagement() {
                     if (!isAlreadyCovered) {
                       combinedLogs.push({
                         action: `${c.role || 'Department'} - ${c.status || 'Update'}`,
-                        stage: d.orderStage ? `${d.orderStage.toUpperCase()} → ${(d.subStage || 'order').replace(/-/g, ' ').toUpperCase()}` : 'Sample → Order',
+                        stage: d.orderStage ? `${d.orderStage.toUpperCase()} → ${(d.subStage || 'order').replace(/-/g, ' ').toUpperCase() === 'ORDER' ? 'REVIEW' : (d.subStage || 'order').replace(/-/g, ' ').toUpperCase()}` : 'Sample → Review',
                         performedBy: c.author || 'Manager',
                         role: c.role || 'Manager',
                         details: c.comment || `Application ${c.status || 'updated'} by ${c.author || 'Manager'}.`,
@@ -8897,10 +8907,10 @@ function OrderManagement() {
               {isStagingRoomListView && statusParam === 'warning'
                 ? 'All clear! There are currently no orders in the 5–7 day warning window. (All staging orders are either on track or past 7 days limit).'
                 : isStagingRoomListView && statusParam === 'return'
-                ? 'All clear! No orders have exceeded the 7-day staging limit.'
-                : isStagingRoomListView && statusParam === 'normal'
-                ? 'No normal orders found in staging room.'
-                : `No data available for ${location.pathname === '/order/create-lead' ? 'Leads' : (currentSection || 'Order Management')} yet.`}
+                  ? 'All clear! No orders have exceeded the 7-day staging limit.'
+                  : isStagingRoomListView && statusParam === 'normal'
+                    ? 'No normal orders found in staging room.'
+                    : `No data available for ${location.pathname === '/order/create-lead' ? 'Leads' : (currentSection || 'Order Management')} yet.`}
             </p>
           </div>
         ) : (
@@ -9008,7 +9018,7 @@ function OrderManagement() {
                       {visibleColumns.subStage && (
                         <td style={{ padding: '12px' }}>
                           <span style={{ color: '#334155', textTransform: 'capitalize', fontSize: '13px' }}>
-                            {(item.subStage === 'new' || (item.query || '').toLowerCase() === 'lead' ? 'Leads' : (item.subStage || 'Order')).replace(/-/g, ' ')}
+                            {(item.subStage === 'new' || (item.query || '').toLowerCase() === 'lead' ? 'Leads' : ((item.subStage || 'order').toLowerCase() === 'order' ? 'Review' : item.subStage)).replace(/-/g, ' ')}
                           </span>
                         </td>
                       )}

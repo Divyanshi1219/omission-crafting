@@ -31,10 +31,11 @@ import {
 } from "lucide-react";
 import "./OrderDashboard.css";
 import "./OverviewDashboard.css";
+import BackupEmployeeWidget from "../components/BackupEmployeeWidget";
 
 // Exact child side menu stages from Sidebar.jsx
 const SAMPLE_STAGES = [
-  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/order/sample/order' },
+  { key: 'order', shortLabel: 'Review', fullLabel: 'Review', path: '/order/sample/order' },
   { key: 'dtf-pending', shortLabel: ['DTF', 'Pending'], fullLabel: 'DTF Pending', path: '/order/sample/dtf-pending' },
   { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/sample/stock' },
   { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/sample/printing' },
@@ -44,7 +45,7 @@ const SAMPLE_STAGES = [
 ];
 
 const PARTIAL_STAGES = [
-  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/order/partial/order' },
+  { key: 'order', shortLabel: 'Review', fullLabel: 'Review', path: '/order/partial/order' },
   { key: 'dtf-pending', shortLabel: ['DTF', 'Pending'], fullLabel: 'DTF Pending', path: '/order/partial/dtf-pending' },
   { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/partial/stock' },
   { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/partial/printing' },
@@ -55,7 +56,7 @@ const PARTIAL_STAGES = [
 ];
 
 const COMPLETE_STAGES = [
-  { key: 'order', shortLabel: 'Order', fullLabel: 'Order', path: '/order/complete/order' },
+  { key: 'order', shortLabel: 'Review', fullLabel: 'Review', path: '/order/complete/order' },
   { key: 'dtf-pending', shortLabel: ['DTF', 'Pending'], fullLabel: 'DTF Pending', path: '/order/complete/dtf-pending' },
   { key: 'stock', shortLabel: 'Stock', fullLabel: 'Stock', path: '/order/complete/stock' },
   { key: 'printing', shortLabel: 'Printing', fullLabel: 'Printing', path: '/order/complete/printing' },
@@ -105,6 +106,12 @@ export default function OrderManagementDashboard() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
+  const isAdmin =
+    currentUser?.id === "admin" ||
+    currentUser?.role === "CEO" ||
+    (currentUser?.role && currentUser.role.toLowerCase().includes("admin")) ||
+    (currentUser?.name || "").toLowerCase().startsWith("adam") ||
+    (currentUser?.department || "").toLowerCase() === "ceo";
   const [leads, setLeads] = useState(() => {
     try {
       const cached = sessionStorage.getItem("omission_cached_leads");
@@ -758,7 +765,7 @@ export default function OrderManagementDashboard() {
                       <span className="badge-urgent-tag">Urgent</span>
                     )}
                     <span className={`status-badge-pill ${order.normStage}`}>
-                      {order.normStage} ({order.normSub.replace(/-/g, ' ')})
+                      {order.normStage} ({order.normSub === 'order' ? 'Review' : order.normSub.replace(/-/g, ' ')})
                     </span>
                     <ArrowUpRight size={14} color="#94a3b8" />
                   </div>
@@ -1125,6 +1132,14 @@ export default function OrderManagementDashboard() {
             </div>
           </div>
         </div>
+
+        {/* Backup Employee Widget */}
+        <BackupEmployeeWidget
+          leads={leads}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+          className="order-chart-card"
+        />
       </div>
 
       {/* 4. RECENT ORDERS & INQUIRIES TABLE */}
@@ -1206,7 +1221,7 @@ export default function OrderManagementDashboard() {
                         </span>
                       </td>
                       <td style={{ textTransform: 'capitalize' }}>
-                        {order.normSub.replace(/-/g, ' ')}
+                        {order.normSub === 'order' ? 'Review' : order.normSub.replace(/-/g, ' ')}
                       </td>
                       <td style={{ fontWeight: 600 }}>
                         {order.totalQuantity ? `${order.totalQuantity} pcs` : '—'}

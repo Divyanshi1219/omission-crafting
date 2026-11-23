@@ -45,6 +45,7 @@ import {
 import "./EmployeeCards.css";
 import "./OverviewDashboard.css";
 import "./StockRoom/StockRoom.css";
+import BackupEmployeeWidget from "../components/BackupEmployeeWidget";
 import OrderManagementDashboard from "./OrderManagementDashboard";
 import InventoryManagement from "./InventoryManagement";
 import StockRoom from "./StockRoom/StockRoom";
@@ -2753,6 +2754,14 @@ function Dashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Backup Employee Handover Widget */}
+            <BackupEmployeeWidget
+              leads={effectiveOverviewRawLeads || rawLeads || leads}
+              currentUser={currentUser}
+              isAdmin={isAdmin}
+              className="ov-card"
+            />
           </div>
 
           {/* Sub-Mid Row: Order Ageing & Weekly Activity */}

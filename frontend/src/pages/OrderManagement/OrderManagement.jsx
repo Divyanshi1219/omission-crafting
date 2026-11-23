@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Plus, Trash2, ArrowLeft, ArrowRight, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles, ChevronDown } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2, ArrowLeft, ArrowRight, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles, ChevronDown, User, Users, ArrowRightLeft } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { getAllEmployeeNames, getStaticEmployeeNames } from '../utils/employeeList';
+import { matchesEmployeeName } from '../../components/BackupEmployeeWidget';
 import './OrderManagement.css';
 
 const FULL_ORDER_STAGES = [
   'New',
-  'Order',
+  'Review',
   'DTF Pending',
   'Stock',
   'Printing',
@@ -19,7 +20,7 @@ const FULL_ORDER_STAGES = [
 ];
 
 const SAMPLE_STAGES = [
-  'Order',
+  'Review',
   'DTF Pending',
   'Stock',
   'Printing',
@@ -29,7 +30,7 @@ const SAMPLE_STAGES = [
 ];
 
 const EMBROIDERY_SAMPLE_STAGES = [
-  'Order',
+  'Review',
   'Stock Dispatch',
   'Vendor Received',
   'Vendor Dispatch at Staging Room',
@@ -78,7 +79,7 @@ const INDIAN_STATES = [
 ];
 
 const PARTIAL_STAGES = [
-  'Order',
+  'Review',
   'DTF Pending',
   'Stock',
   'Printing',
@@ -89,7 +90,7 @@ const PARTIAL_STAGES = [
 ];
 
 const COMPLETE_STAGES = [
-  'Order',
+  'Review',
   'DTF Pending',
   'Stock',
   'Printing',
@@ -108,7 +109,7 @@ const ORDER_DEFINITIONS = [
 
 const SUB_STAGES_BY_ORDER_STAGE = {
   sample: [
-    'Order',
+    'Review',
     'DTF Pending',
     'Stock',
     'Printing',
@@ -117,7 +118,7 @@ const SUB_STAGES_BY_ORDER_STAGE = {
     'Customer Approval Awaiting'
   ],
   partial: [
-    'Order',
+    'Review',
     'DTF Pending',
     'Stock',
     'Printing',
@@ -127,7 +128,7 @@ const SUB_STAGES_BY_ORDER_STAGE = {
     'Payment Confirmation'
   ],
   complete: [
-    'Order',
+    'Review',
     'DTF Pending',
     'Stock',
     'Printing',
@@ -141,7 +142,7 @@ const SUB_STAGES_BY_ORDER_STAGE = {
 
 const SUB_STAGE_OPTIONS_BY_ORDER_STAGE = {
   sample: [
-    { label: 'Order', slug: 'order' },
+    { label: 'Review', slug: 'order' },
     { label: 'DTF Pending', slug: 'dtf-pending' },
     { label: 'Stock', slug: 'stock' },
     { label: 'Printing', slug: 'printing' },
@@ -150,7 +151,7 @@ const SUB_STAGE_OPTIONS_BY_ORDER_STAGE = {
     { label: 'Customer Approval Awaiting', slug: 'customer-approval-awaiting' },
   ],
   partial: [
-    { label: 'Order', slug: 'order' },
+    { label: 'Review', slug: 'order' },
     { label: 'DTF Pending', slug: 'dtf-pending' },
     { label: 'Stock', slug: 'stock' },
     { label: 'Printing', slug: 'printing' },
@@ -160,7 +161,7 @@ const SUB_STAGE_OPTIONS_BY_ORDER_STAGE = {
     { label: 'Payment Confirmation', slug: 'payment-confirmation' },
   ],
   complete: [
-    { label: 'Order', slug: 'order' },
+    { label: 'Review', slug: 'order' },
     { label: 'DTF Pending', slug: 'dtf-pending' },
     { label: 'Stock', slug: 'stock' },
     { label: 'Printing', slug: 'printing' },
@@ -464,7 +465,7 @@ const STAGE_ROUTE_MAP = {
   '/order/all': 'All',
   '/order/create-lead': 'New',
   '/order/leads': 'New',
-  '/order/order': 'Order',
+  '/order/order': 'Review',
   '/order/dtf-pending': 'DTF Pending',
   '/order/stock': 'Stock',
   '/order/printing': 'Printing',
@@ -475,10 +476,10 @@ const STAGE_ROUTE_MAP = {
   '/order/customer-support': 'Customer Support',
 
   // Sample child routes
-  '/order/sample': 'Order',
+  '/order/sample': 'Review',
   '/order/sample/all': 'All',
-  '/order/sample/leads': 'Order',
-  '/order/sample/order': 'Order',
+  '/order/sample/leads': 'Review',
+  '/order/sample/order': 'Review',
   '/order/sample/dtf-pending': 'DTF Pending',
   '/order/sample/stock': 'Stock',
   '/order/sample/ready-to-pick': 'From Stock',
@@ -491,10 +492,10 @@ const STAGE_ROUTE_MAP = {
   '/order/sample/customer-approval-awaiting': 'Customer Approval Awaiting',
 
   // Partial child routes
-  '/order/partial': 'Order',
+  '/order/partial': 'Review',
   '/order/partial/all': 'All',
-  '/order/partial/leads': 'Order',
-  '/order/partial/order': 'Order',
+  '/order/partial/leads': 'Review',
+  '/order/partial/order': 'Review',
   '/order/partial/dtf-pending': 'DTF Pending',
   '/order/partial/stock': 'Stock',
   '/order/partial/ready-to-pick': 'From Stock',
@@ -509,10 +510,10 @@ const STAGE_ROUTE_MAP = {
   '/order/partial/payment-confirmation': 'Payment Confirmation',
 
   // Complete child routes
-  '/order/complete': 'Order',
+  '/order/complete': 'Review',
   '/order/complete/all': 'All',
-  '/order/complete/leads': 'Order',
-  '/order/complete/order': 'Order',
+  '/order/complete/leads': 'Review',
+  '/order/complete/order': 'Review',
   '/order/complete/dtf-pending': 'DTF Pending',
   '/order/complete/stock': 'Stock',
   '/order/complete/ready-to-pick': 'From Stock',
@@ -531,7 +532,7 @@ const STAGE_ROUTE_MAP = {
   '/order/embroidery/all': 'All',
   '/order/embroidery/leads': 'Leads',
   '/order/embroidery/sample/all': 'All',
-  '/order/embroidery/sample/order': 'Order',
+  '/order/embroidery/sample/order': 'Review',
   '/order/embroidery/sample/stock-dispatch': 'Stock Dispatch',
   '/order/embroidery/sample/vendor-received': 'Vendor Received',
   '/order/embroidery/sample/vendor-dispatch-at-staging-room': 'Vendor Dispatch at Staging Room',
@@ -549,6 +550,31 @@ const getDefaultDeliveryDate = () => {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const formatLeadCreatedOn = (item) => {
+  const val = item?.createdOn || item?.createdAt;
+  if (!val) return '—';
+  try {
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val.trim())) {
+      const [y, m, d] = val.trim().split('-');
+      const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
+      return dateObj.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    }
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    }
+  } catch (_) {}
+  return String(val);
 };
 
 function OrderManagement() {
@@ -794,6 +820,34 @@ function OrderManagement() {
     clearanceStatus: true,
     query: false,
     clientName: false,
+    companyAddress: false,
+    state: false,
+    pincode: false,
+    source: false,
+    repeatedOrder: false,
+    additionalNote: false,
+    logoName: false,
+    pricePerPiece: false,
+    totalAmount: false,
+    gst: false,
+    netAmount: false,
+    advanceAmount: false,
+    pendingAmount: false,
+    urgency: false,
+    deliveryDate: false,
+    modeOfDelivery: false,
+    items: false,
+  });
+
+  const isLeadListView = location.pathname === '/order/create-lead' || location.pathname === '/order/leads';
+  const [leadVisibleColumns, setLeadVisibleColumns] = useState({
+    orderId: true,
+    companyName: true,
+    employeeName: true,
+    phoneNumber: true,
+    query: true,
+    createdOn: true,
+    clientName: true,
     companyAddress: false,
     state: false,
     pincode: false,
@@ -1087,7 +1141,7 @@ function OrderManagement() {
     if (exists) {
       setSelectedStage(exists.label);
     } else {
-      const firstOpt = validOptions[0] || { label: 'Order', slug: 'order' };
+      const firstOpt = validOptions[0] || { label: 'Review', slug: 'order' };
       setSubStage(firstOpt.slug);
       setSelectedStage(firstOpt.label);
     }
@@ -1102,6 +1156,34 @@ function OrderManagement() {
     if (matched) {
       setSelectedStage(matched.label);
     }
+  };
+
+  const getActorInfo = (defaultEmpName) => {
+    const backupPerson = (formData.backupEmployee || orderApprovalData?.backupEmployee || '').trim();
+    const orderOwner = (formData.employeeName || orderApprovalData?.employeeName || defaultEmpName || 'Sales Executive').trim();
+    const currentUserName = currentUser?.name || '';
+    const isBackupActor = Boolean(
+      backupPerson &&
+      backupPerson.toLowerCase() !== 'none' &&
+      currentUserName &&
+      matchesEmployeeName(backupPerson, currentUserName) &&
+      !matchesEmployeeName(orderOwner, currentUserName)
+    );
+
+    if (isBackupActor) {
+      return {
+        performedBy: `${currentUserName} (Backup for ${orderOwner})`,
+        performedByRole: `Sales Executive (Backup for ${orderOwner})`,
+        isBackupActor: true,
+        orderOwner
+      };
+    }
+    return {
+      performedBy: currentUser?.name || (isCEO ? 'Adam' : (orderOwner || 'Sales Executive')),
+      performedByRole: isCEO ? 'CEO' : (currentUser?.role || 'Sales Executive'),
+      isBackupActor: false,
+      orderOwner
+    };
   };
 
   const handleSaveExistingOrder = async () => {
@@ -1180,19 +1262,23 @@ function OrderManagement() {
       const targetOrderStage = isLeadQuery ? '' : (orderStage || 'sample').toLowerCase();
       const targetSubStage = isLeadQuery ? 'leads' : ((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage.toLowerCase().replace(/\s+/g, '-'));
       const stageChangedByCEO = isCEO && !isLeadQuery && (targetOrderStage !== prevStage || targetSubStage !== prevSub);
+      const actorInfo = getActorInfo(currentEmpName);
 
       const payload = {
         _id: editId,
         employeeName: currentEmpName,
         createdBy: currentUser?.id || 'sales',
-        performedBy: currentUser?.name || (isCEO ? 'Adam' : currentEmpName),
-        performedByRole: isCEO ? 'CEO' : (currentUser?.role || 'Sales Executive'),
+        performedBy: actorInfo.performedBy,
+        performedByRole: actorInfo.performedByRole,
         performedById: currentUser?.id || (isCEO ? 'admin' : 'sales'),
         logAction: stageChangedByCEO
           ? `Stage override to ${targetOrderStage.toUpperCase()} → ${targetSubStage} by CEO`
           : ((wasLeadBefore && !isLeadQuery)
             ? 'Lead Converted to Order & Submitted'
-            : (isLeadQuery ? 'Lead Edited' : 'Order Edited')),
+            : (isLeadQuery ? (actorInfo.isBackupActor ? `Lead Edited by ${actorInfo.performedBy}` : 'Lead Edited') : (actorInfo.isBackupActor ? `Order Edited by ${actorInfo.performedBy}` : 'Order Edited'))),
+        logDetails: actorInfo.isBackupActor
+          ? `Order details updated by ${currentUser?.name} acting as backup employee for ${actorInfo.orderOwner}.`
+          : undefined,
         query: isLeadQuery ? 'lead' : 'order',
         queryStatus,
         orderStage: targetOrderStage,
@@ -1935,7 +2021,12 @@ function OrderManagement() {
       const activeStages = getCurrentStages();
       const currentSub = (subStage || orderApprovalData?.subStage || '').toLowerCase().replace(/\s+/g, '-');
       if (currentSub) {
-        const matched = activeStages.find(s => s.toLowerCase().replace(/\s+/g, '-') === currentSub);
+        const matched = activeStages.find(s => {
+          const sSlug = s.toLowerCase().replace(/\s+/g, '-');
+          if (sSlug === currentSub) return true;
+          if ((currentSub === 'order' || currentSub === 'new' || currentSub === 'leads') && s === 'Review') return true;
+          return false;
+        });
         if (matched) {
           setSelectedStage(matched);
           return;
@@ -2145,13 +2236,14 @@ function OrderManagement() {
       try {
         const isLeadQuery = (query || 'lead').toLowerCase().trim() === 'lead';
         const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
+        const actorInfo = getActorInfo(currentEmpName);
         const payload = {
           employeeName: currentEmpName,
           createdBy: currentUser?.id || 'sales',
-          performedBy: currentUser?.name || currentEmpName,
-          performedByRole: currentUser?.role || 'Sales Executive',
+          performedBy: actorInfo.performedBy,
+          performedByRole: actorInfo.performedByRole,
           performedById: currentUser?.id || 'sales',
-          logAction: editId ? 'Lead Edited & Saved' : 'Lead Created & Saved',
+          logAction: editId ? (actorInfo.isBackupActor ? `${isLeadQuery ? 'Lead' : 'Order'} Edited by ${actorInfo.performedBy}` : (isLeadQuery ? 'Lead Edited & Saved' : 'Order Edited & Saved')) : 'Lead Created & Saved',
           query: query || 'lead',
           queryStatus,
           orderStage: isLeadQuery ? '' : orderStage,
@@ -2186,13 +2278,14 @@ function OrderManagement() {
       if (isLeadQuery) {
         try {
           const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
+          const actorInfo = getActorInfo(currentEmpName);
           const payload = {
             employeeName: currentEmpName,
             createdBy: currentUser?.id || 'sales',
-            performedBy: currentUser?.name || currentEmpName,
-            performedByRole: currentUser?.role || 'Sales Executive',
+            performedBy: actorInfo.performedBy,
+            performedByRole: actorInfo.performedByRole,
             performedById: currentUser?.id || 'sales',
-            logAction: editId ? 'Lead Edited & Submitted to Leads' : 'Lead Created & Submitted to Leads',
+            logAction: editId ? (actorInfo.isBackupActor ? `Lead Edited by ${actorInfo.performedBy}` : 'Lead Edited & Submitted to Leads') : 'Lead Created & Submitted to Leads',
             query: 'lead',
             queryStatus,
             orderStage: '',
@@ -6451,6 +6544,87 @@ function OrderManagement() {
             </div>
           )}
 
+          {/* Handover / Backup Employee Context Banner */}
+          {editId && (formData.backupEmployee || orderApprovalData?.backupEmployee) && (
+            (() => {
+              const activeBackup = (formData.backupEmployee || orderApprovalData?.backupEmployee || '').trim();
+              const activeOwner = (formData.employeeName || orderApprovalData?.employeeName || 'Sales Executive').trim();
+              const currentUserName = currentUser?.name || '';
+              if (!activeBackup || activeBackup.toLowerCase() === 'none') return null;
+
+              const isBackupPerson = matchesEmployeeName(activeBackup, currentUserName);
+              const isOwnerPerson = matchesEmployeeName(activeOwner, currentUserName);
+
+              if (isBackupPerson) {
+                return (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '14px 18px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)',
+                    border: '1px solid #a7f3d0',
+                    color: '#065f46',
+                    marginBottom: '16px',
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)'
+                  }}>
+                    <ShieldCheck size={22} color="#10b981" style={{ flexShrink: 0 }} />
+                    <div style={{ fontSize: '13px', lineHeight: 1.5 }}>
+                      <strong>Active Backup Mode:</strong> You are managing this order on behalf of <strong>{activeOwner}</strong> while they are away. You have full access to edit order details, request approvals, and advance stages. Actions will be logged under your backup assignment.
+                    </div>
+                  </div>
+                );
+              }
+
+              if (isOwnerPerson) {
+                return (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '14px 18px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)',
+                    border: '1px solid #bfdbfe',
+                    color: '#1e40af',
+                    marginBottom: '16px',
+                    boxShadow: '0 2px 8px rgba(59, 130, 246, 0.08)'
+                  }}>
+                    <User size={22} color="#3b82f6" style={{ flexShrink: 0 }} />
+                    <div style={{ fontSize: '13px', lineHeight: 1.5 }}>
+                      <strong>Handover Active:</strong> This order is assigned to <strong>{activeBackup}</strong> as your backup employee. They can actively manage and fulfill this order during your absence.
+                    </div>
+                  </div>
+                );
+              }
+
+              if (isCEO || isAdmin) {
+                return (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '14px 18px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #f5f3ff 0%, #faf5ff 100%)',
+                    border: '1px solid #ddd6fe',
+                    color: '#5b21b6',
+                    marginBottom: '16px',
+                    boxShadow: '0 2px 8px rgba(139, 92, 246, 0.08)'
+                  }}>
+                    <ArrowRightLeft size={20} color="#8b5cf6" style={{ flexShrink: 0 }} />
+                    <div style={{ fontSize: '13px', lineHeight: 1.5 }}>
+                      <strong>Delegated Order (CEO View):</strong> Primary owner is <strong>{activeOwner}</strong>, assigned backup employee is <strong>{activeBackup}</strong>.
+                    </div>
+                  </div>
+                );
+              }
+
+              return null;
+            })()
+          )}
+
           {(!isExecutionStageView || (hasExecutionStageTabs && executionActiveTab === 'order')) && (
             <form className="form-container" onSubmit={handleFormSubmit} ref={formRef}>
               <fieldset disabled={isExecutionStageView && !isEditingItems} style={{ border: 'none', padding: 0, margin: 0, width: '100%' }}>
@@ -6474,10 +6648,15 @@ function OrderManagement() {
                       <label>Employee Name</label>
                       <input
                         type="text"
-                        disabled={isReadOnly}
+                        readOnly={!isCEO || isReadOnly}
+                        disabled={!isCEO || isReadOnly}
                         value={formData.employeeName !== undefined ? formData.employeeName : (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || ''))}
                         onChange={(e) => setFormData({ ...formData, employeeName: e.target.value })}
-                        style={{ background: 'rgba(0,0,0,0.02)', color: '#0f172a' }}
+                        style={{
+                          background: 'rgba(0,0,0,0.02)',
+                          color: '#0f172a',
+                          ...((!isCEO || isReadOnly) ? { cursor: 'not-allowed' } : {}),
+                        }}
                       />
                     </div>
 
@@ -8067,11 +8246,11 @@ function OrderManagement() {
                   }
                   combinedLogs.push({
                     action: isOrd ? 'Order Created & Submitted' : 'Lead Created & Saved',
-                    stage: isOrd ? 'Sample → Order' : 'Leads',
+                    stage: isOrd ? 'Sample → Review' : 'Leads',
                     performedBy: d.employeeName || formData.employeeName || 'Sales Executive',
                     role: 'Sales Executive',
                     details: isOrd
-                      ? `Application (${d.orderId || formData.orderId || 'Order'}) created and submitted by ${d.employeeName || 'Sales Executive'}. Sent to Sample → Order for Lead Manager Clearance.`
+                      ? `Application (${d.orderId || formData.orderId || 'Order'}) created and submitted by ${d.employeeName || 'Sales Executive'}. Sent to Sample → Review for Lead Manager Clearance.`
                       : `Lead application (${d.orderId || formData.orderId || 'Lead'}) created and saved to Leads by ${d.employeeName || 'Sales Executive'}.`,
                     changes: initChanges,
                     timestamp: d.createdAt || new Date().toISOString(),
@@ -8097,9 +8276,9 @@ function OrderManagement() {
                     stage: 'Sample → DTF Pending',
                     performedBy: lmAuthor,
                     role: 'Lead Manager',
-                    details: `Task 0 (Lead Manager Clearance) approved by ${lmAuthor} (Lead Manager). Application moved from Sample → Order to Sample → DTF Pending, and assigned to Stock Room Manager (Elena Rostova) & Production Room (Marcus Vance).`,
+                    details: `Task 0 (Lead Manager Clearance) approved by ${lmAuthor} (Lead Manager). Application moved from Sample → Review to Sample → DTF Pending, and assigned to Stock Room Manager (Elena Rostova) & Production Room (Marcus Vance).`,
                     changes: [
-                      'From Stage: Sample → Order',
+                      'From Stage: Sample → Review',
                       'To Stage: Sample → DTF Pending',
                       'Task 0 (Lead Manager Clearance): Approved',
                       'Assigned Task 1: Stock Room Clearance (Elena Rostova — Verification)',
@@ -8391,7 +8570,7 @@ function OrderManagement() {
                     if (!isAlreadyCovered) {
                       combinedLogs.push({
                         action: `${c.role || 'Department'} - ${c.status || 'Update'}`,
-                        stage: d.orderStage ? `${d.orderStage.toUpperCase()} → ${(d.subStage || 'order').replace(/-/g, ' ').toUpperCase()}` : 'Sample → Order',
+                        stage: d.orderStage ? `${d.orderStage.toUpperCase()} → ${(d.subStage || 'order').replace(/-/g, ' ').toUpperCase() === 'ORDER' ? 'REVIEW' : (d.subStage || 'order').replace(/-/g, ' ').toUpperCase()}` : 'Sample → Review',
                         performedBy: c.author || 'Manager',
                         role: c.role || 'Manager',
                         details: c.comment || `Application ${c.status || 'updated'} by ${c.author || 'Manager'}.`,
@@ -8634,6 +8813,33 @@ function OrderManagement() {
     { key: 'items', label: 'Add Items' },
   ];
 
+  const LEAD_TABLE_COLUMNS = [
+    { key: 'orderId', label: 'Order ID' },
+    { key: 'companyName', label: 'Company' },
+    { key: 'employeeName', label: 'Employee' },
+    { key: 'phoneNumber', label: 'Phone' },
+    { key: 'query', label: 'Query' },
+    { key: 'createdOn', label: 'Created On' },
+    { key: 'clientName', label: 'Client Name' },
+    { key: 'companyAddress', label: 'Company Address' },
+    { key: 'state', label: 'State' },
+    { key: 'pincode', label: 'Pincode' },
+    { key: 'source', label: 'Source' },
+    { key: 'repeatedOrder', label: 'Repeated Order' },
+    { key: 'additionalNote', label: 'Additional Note' },
+    { key: 'logoName', label: 'Logo Name' },
+    { key: 'pricePerPiece', label: 'Price Per Piece' },
+    { key: 'totalAmount', label: 'Total Amount' },
+    { key: 'gst', label: 'GST (%)' },
+    { key: 'netAmount', label: 'Net Amount' },
+    { key: 'advanceAmount', label: 'Advance Amount' },
+    { key: 'pendingAmount', label: 'Pending Amount' },
+    { key: 'urgency', label: 'Urgency' },
+    { key: 'deliveryDate', label: 'Delivery Date' },
+    { key: 'modeOfDelivery', label: 'Mode of Delivery' },
+    { key: 'items', label: 'Add Items' },
+  ];
+
   const stagingCounts = (() => {
     if (!isStagingView) return { all: 0, return: 0, warning: 0, normal: 0 };
     const now = Date.now();
@@ -8851,7 +9057,7 @@ function OrderManagement() {
                   Show / Hide Columns
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {ALL_TABLE_COLUMNS.map((col) => (
+                  {(isLeadListView ? LEAD_TABLE_COLUMNS : ALL_TABLE_COLUMNS).map((col) => (
                     <label
                       key={col.key}
                       style={{
@@ -8866,13 +9072,20 @@ function OrderManagement() {
                     >
                       <input
                         type="checkbox"
-                        checked={Boolean(visibleColumns[col.key])}
-                        onChange={() =>
-                          setVisibleColumns((prev) => ({
-                            ...prev,
-                            [col.key]: !prev[col.key],
-                          }))
-                        }
+                        checked={Boolean(isLeadListView ? leadVisibleColumns[col.key] : visibleColumns[col.key])}
+                        onChange={() => {
+                          if (isLeadListView) {
+                            setLeadVisibleColumns((prev) => ({
+                              ...prev,
+                              [col.key]: !prev[col.key],
+                            }));
+                          } else {
+                            setVisibleColumns((prev) => ({
+                              ...prev,
+                              [col.key]: !prev[col.key],
+                            }));
+                          }
+                        }}
                         style={{ width: '14px', height: '14px', accentColor: '#2563eb', cursor: 'pointer', margin: 0 }}
                       />
                       <span>{col.label}</span>
@@ -8908,36 +9121,67 @@ function OrderManagement() {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {visibleColumns.orderId && <th style={{ padding: '10px 12px' }}>Order ID</th>}
-                  {visibleColumns.companyName && <th style={{ padding: '10px 12px' }}>Company</th>}
-                  {visibleColumns.employeeName && <th style={{ padding: '10px 12px' }}>Employee</th>}
-                  {visibleColumns.phoneNumber && <th style={{ padding: '10px 12px' }}>Phone</th>}
-                  {visibleColumns.orderStage && <th style={{ padding: '10px 12px' }}>Stage</th>}
-                  {visibleColumns.subStage && <th style={{ padding: '10px 12px' }}>Sub Stage</th>}
-                  {isStagingRoomListView && visibleColumns.daysInStaging && <th style={{ padding: '10px 12px' }}>Days in Staging</th>}
-                  {isStagingRoomListView && visibleColumns.stagingAlert && <th style={{ padding: '10px 12px' }}>Rerack SLA Alert</th>}
-                  {!isReadyToPickListView && visibleColumns.stageStatus && <th style={{ padding: '10px 12px' }}>Stage Status</th>}
-                  {!isPrintingListView && visibleColumns.totalQuantity && <th style={{ padding: '10px 12px' }}>Quantity</th>}
-                  {!isPrintingListView && !isReadyToPickListView && !isStagingRoomListView && !isCustomerApprovalListView && visibleColumns.clearanceStatus && <th style={{ padding: '10px 12px' }}>Clearance Status</th>}
-                  {visibleColumns.query && <th style={{ padding: '10px 12px' }}>Query</th>}
-                  {visibleColumns.clientName && <th style={{ padding: '10px 12px' }}>Client Name</th>}
-                  {visibleColumns.companyAddress && <th style={{ padding: '10px 12px' }}>Company Address</th>}
-                  {visibleColumns.state && <th style={{ padding: '10px 12px' }}>State</th>}
-                  {visibleColumns.pincode && <th style={{ padding: '10px 12px' }}>Pincode</th>}
-                  {visibleColumns.source && <th style={{ padding: '10px 12px' }}>Source</th>}
-                  {visibleColumns.repeatedOrder && <th style={{ padding: '10px 12px' }}>Repeated Order</th>}
-                  {visibleColumns.additionalNote && <th style={{ padding: '10px 12px' }}>Additional Note</th>}
-                  {visibleColumns.logoName && <th style={{ padding: '10px 12px' }}>Logo Name</th>}
-                  {visibleColumns.pricePerPiece && <th style={{ padding: '10px 12px' }}>Price Per Piece</th>}
-                  {visibleColumns.totalAmount && <th style={{ padding: '10px 12px' }}>Total Amount</th>}
-                  {visibleColumns.gst && <th style={{ padding: '10px 12px' }}>GST (%)</th>}
-                  {visibleColumns.netAmount && <th style={{ padding: '10px 12px' }}>Net Amount</th>}
-                  {visibleColumns.advanceAmount && <th style={{ padding: '10px 12px' }}>Advance Amount</th>}
-                  {visibleColumns.pendingAmount && <th style={{ padding: '10px 12px' }}>Pending Amount</th>}
-                  {visibleColumns.urgency && <th style={{ padding: '10px 12px' }}>Urgency</th>}
-                  {visibleColumns.deliveryDate && <th style={{ padding: '10px 12px' }}>Delivery Date</th>}
-                  {visibleColumns.modeOfDelivery && <th style={{ padding: '10px 12px' }}>Mode of Delivery</th>}
-                  {visibleColumns.items && <th style={{ padding: '10px 12px' }}>Add Items</th>}
+                  {isLeadListView ? (
+                    <>
+                      {leadVisibleColumns.orderId && <th style={{ padding: '10px 12px' }}>Order ID</th>}
+                      {leadVisibleColumns.companyName && <th style={{ padding: '10px 12px' }}>Company</th>}
+                      {leadVisibleColumns.employeeName && <th style={{ padding: '10px 12px' }}>Employee</th>}
+                      {leadVisibleColumns.phoneNumber && <th style={{ padding: '10px 12px' }}>Phone</th>}
+                      {leadVisibleColumns.query && <th style={{ padding: '10px 12px' }}>Query</th>}
+                      {leadVisibleColumns.createdOn && <th style={{ padding: '10px 12px' }}>Created On</th>}
+                      {leadVisibleColumns.clientName && <th style={{ padding: '10px 12px' }}>Client Name</th>}
+                      {leadVisibleColumns.companyAddress && <th style={{ padding: '10px 12px' }}>Company Address</th>}
+                      {leadVisibleColumns.state && <th style={{ padding: '10px 12px' }}>State</th>}
+                      {leadVisibleColumns.pincode && <th style={{ padding: '10px 12px' }}>Pincode</th>}
+                      {leadVisibleColumns.source && <th style={{ padding: '10px 12px' }}>Source</th>}
+                      {leadVisibleColumns.repeatedOrder && <th style={{ padding: '10px 12px' }}>Repeated Order</th>}
+                      {leadVisibleColumns.additionalNote && <th style={{ padding: '10px 12px' }}>Additional Note</th>}
+                      {leadVisibleColumns.logoName && <th style={{ padding: '10px 12px' }}>Logo Name</th>}
+                      {leadVisibleColumns.pricePerPiece && <th style={{ padding: '10px 12px' }}>Price Per Piece</th>}
+                      {leadVisibleColumns.totalAmount && <th style={{ padding: '10px 12px' }}>Total Amount</th>}
+                      {leadVisibleColumns.gst && <th style={{ padding: '10px 12px' }}>GST (%)</th>}
+                      {leadVisibleColumns.netAmount && <th style={{ padding: '10px 12px' }}>Net Amount</th>}
+                      {leadVisibleColumns.advanceAmount && <th style={{ padding: '10px 12px' }}>Advance Amount</th>}
+                      {leadVisibleColumns.pendingAmount && <th style={{ padding: '10px 12px' }}>Pending Amount</th>}
+                      {leadVisibleColumns.urgency && <th style={{ padding: '10px 12px' }}>Urgency</th>}
+                      {leadVisibleColumns.deliveryDate && <th style={{ padding: '10px 12px' }}>Delivery Date</th>}
+                      {leadVisibleColumns.modeOfDelivery && <th style={{ padding: '10px 12px' }}>Mode of Delivery</th>}
+                      {leadVisibleColumns.items && <th style={{ padding: '10px 12px' }}>Add Items</th>}
+                    </>
+                  ) : (
+                    <>
+                      {visibleColumns.orderId && <th style={{ padding: '10px 12px' }}>Order ID</th>}
+                      {visibleColumns.companyName && <th style={{ padding: '10px 12px' }}>Company</th>}
+                      {visibleColumns.employeeName && <th style={{ padding: '10px 12px' }}>Employee</th>}
+                      {visibleColumns.phoneNumber && <th style={{ padding: '10px 12px' }}>Phone</th>}
+                      {visibleColumns.orderStage && <th style={{ padding: '10px 12px' }}>Stage</th>}
+                      {visibleColumns.subStage && <th style={{ padding: '10px 12px' }}>Sub Stage</th>}
+                      {isStagingRoomListView && visibleColumns.daysInStaging && <th style={{ padding: '10px 12px' }}>Days in Staging</th>}
+                      {isStagingRoomListView && visibleColumns.stagingAlert && <th style={{ padding: '10px 12px' }}>Rerack SLA Alert</th>}
+                      {!isReadyToPickListView && visibleColumns.stageStatus && <th style={{ padding: '10px 12px' }}>Stage Status</th>}
+                      {!isPrintingListView && visibleColumns.totalQuantity && <th style={{ padding: '10px 12px' }}>Quantity</th>}
+                      {!isPrintingListView && !isReadyToPickListView && !isStagingRoomListView && !isCustomerApprovalListView && visibleColumns.clearanceStatus && <th style={{ padding: '10px 12px' }}>Clearance Status</th>}
+                      {visibleColumns.query && <th style={{ padding: '10px 12px' }}>Query</th>}
+                      {visibleColumns.clientName && <th style={{ padding: '10px 12px' }}>Client Name</th>}
+                      {visibleColumns.companyAddress && <th style={{ padding: '10px 12px' }}>Company Address</th>}
+                      {visibleColumns.state && <th style={{ padding: '10px 12px' }}>State</th>}
+                      {visibleColumns.pincode && <th style={{ padding: '10px 12px' }}>Pincode</th>}
+                      {visibleColumns.source && <th style={{ padding: '10px 12px' }}>Source</th>}
+                      {visibleColumns.repeatedOrder && <th style={{ padding: '10px 12px' }}>Repeated Order</th>}
+                      {visibleColumns.additionalNote && <th style={{ padding: '10px 12px' }}>Additional Note</th>}
+                      {visibleColumns.logoName && <th style={{ padding: '10px 12px' }}>Logo Name</th>}
+                      {visibleColumns.pricePerPiece && <th style={{ padding: '10px 12px' }}>Price Per Piece</th>}
+                      {visibleColumns.totalAmount && <th style={{ padding: '10px 12px' }}>Total Amount</th>}
+                      {visibleColumns.gst && <th style={{ padding: '10px 12px' }}>GST (%)</th>}
+                      {visibleColumns.netAmount && <th style={{ padding: '10px 12px' }}>Net Amount</th>}
+                      {visibleColumns.advanceAmount && <th style={{ padding: '10px 12px' }}>Advance Amount</th>}
+                      {visibleColumns.pendingAmount && <th style={{ padding: '10px 12px' }}>Pending Amount</th>}
+                      {visibleColumns.urgency && <th style={{ padding: '10px 12px' }}>Urgency</th>}
+                      {visibleColumns.deliveryDate && <th style={{ padding: '10px 12px' }}>Delivery Date</th>}
+                      {visibleColumns.modeOfDelivery && <th style={{ padding: '10px 12px' }}>Mode of Delivery</th>}
+                      {visibleColumns.items && <th style={{ padding: '10px 12px' }}>Add Items</th>}
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -8973,7 +9217,141 @@ function OrderManagement() {
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                       title="Click to open order lead"
                     >
-                      {visibleColumns.orderId && (
+                      {isLeadListView ? (
+                        <>
+                          {leadVisibleColumns.orderId && (
+                            <td style={{ padding: '12px', fontWeight: 600, color: '#1e293b' }}>
+                              {item.orderId || (item._id ? `ORD-${String(item._id).slice(-5).toUpperCase()}` : '—')}
+                            </td>
+                          )}
+                          {leadVisibleColumns.companyName && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.companyName || '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.employeeName && (
+                            <td style={{ padding: '12px', color: '#64748b' }}>
+                              <div>{item.employeeName || 'Sales Executive'}</div>
+                              {item.backupEmployee && (
+                                <div style={{ fontSize: '11px', color: '#4f46e5', marginTop: '2px', fontWeight: 500 }}>
+                                  Backup: {item.backupEmployee}
+                                </div>
+                              )}
+                            </td>
+                          )}
+                          {leadVisibleColumns.phoneNumber && (
+                            <td style={{ padding: '12px', color: '#64748b' }}>
+                              {item.phoneNumber || '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.query && (
+                            <td style={{ padding: '12px' }}>
+                              <span style={{ color: '#334155', textTransform: 'capitalize', fontSize: '13px' }}>
+                                {item.query || 'lead'}
+                              </span>
+                            </td>
+                          )}
+                          {leadVisibleColumns.createdOn && (
+                            <td style={{ padding: '12px', color: '#475569', fontSize: '13px' }}>
+                              {formatLeadCreatedOn(item)}
+                            </td>
+                          )}
+                          {leadVisibleColumns.clientName && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.clientName || '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.companyAddress && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.companyAddress || '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.state && (
+                            <td style={{ padding: '12px', color: '#475569', textTransform: 'uppercase' }}>
+                              {item.state ? String(item.state).toUpperCase() : '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.pincode && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.pincode || '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.source && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.source ? item.source.charAt(0).toUpperCase() + item.source.slice(1) : '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.repeatedOrder && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.repeatedOrder || 'No'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.additionalNote && (
+                            <td style={{ padding: '12px', color: '#475569', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {item.additionalNote || '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.logoName && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.logoName || '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.pricePerPiece && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.pricePerPiece ? `₹${item.pricePerPiece}` : '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.totalAmount && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.totalAmount ? `₹${item.totalAmount}` : '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.gst && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.gst ? `${item.gst}%` : '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.netAmount && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.netAmount ? `₹${item.netAmount}` : '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.advanceAmount && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.advanceAmount ? `₹${item.advanceAmount}` : '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.pendingAmount && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.pendingAmount !== undefined && item.pendingAmount !== '' ? `₹${item.pendingAmount}` : '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.urgency && (
+                            <td style={{ padding: '12px', color: '#475569', textTransform: 'capitalize' }}>
+                              {item.urgency || '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.deliveryDate && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {item.deliveryDate ? (item.deliveryDate.includes('T') ? item.deliveryDate.split('T')[0] : item.deliveryDate) : '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.modeOfDelivery && (
+                            <td style={{ padding: '12px', color: '#475569', textTransform: 'capitalize' }}>
+                              {item.modeOfDelivery || '—'}
+                            </td>
+                          )}
+                          {leadVisibleColumns.items && (
+                            <td style={{ padding: '12px', color: '#475569' }}>
+                              {Array.isArray(item.items) && item.items.length > 0
+                                ? item.items.map((it) => `${it.item || it.enterItem || 'Item'} (${it.quantity || 0})`).join(', ')
+                                : '—'}
+                            </td>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {visibleColumns.orderId && (
                         <td style={{ padding: '12px', fontWeight: 600, color: '#1e293b' }}>
                           {item.orderId || (item._id ? `ORD-${String(item._id).slice(-5).toUpperCase()}` : '—')}
                         </td>
@@ -9008,7 +9386,7 @@ function OrderManagement() {
                       {visibleColumns.subStage && (
                         <td style={{ padding: '12px' }}>
                           <span style={{ color: '#334155', textTransform: 'capitalize', fontSize: '13px' }}>
-                            {(item.subStage === 'new' || (item.query || '').toLowerCase() === 'lead' ? 'Leads' : (item.subStage || 'Order')).replace(/-/g, ' ')}
+                            {(item.subStage === 'new' || (item.query || '').toLowerCase() === 'lead' ? 'Leads' : ((item.subStage || 'order').toLowerCase() === 'order' ? 'Review' : item.subStage)).replace(/-/g, ' ')}
                           </span>
                         </td>
                       )}
@@ -9201,6 +9579,8 @@ function OrderManagement() {
                             ? item.items.map((it) => `${it.item || it.enterItem || 'Item'} (${it.quantity || 0})`).join(', ')
                             : '—'}
                         </td>
+                      )}
+                        </>
                       )}
                     </tr>
                   );

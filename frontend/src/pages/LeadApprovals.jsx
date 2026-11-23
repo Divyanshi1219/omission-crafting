@@ -383,7 +383,7 @@ export default function LeadApprovals() {
                     </td>
 
                     <td style={{ textTransform: 'capitalize', color: '#334155' }}>
-                      {order.normSub.replace(/-/g, ' ')}
+                      {order.normSub === 'order' ? 'Review' : order.normSub.replace(/-/g, ' ')}
                     </td>
 
                     <td style={{ color: '#334155' }}>
@@ -553,7 +553,7 @@ export default function LeadApprovals() {
                   <strong>Sales Executive:</strong> {approveModal.order.employeeName || 'Sales Executive'}
                 </div>
                 <div>
-                  <strong>Stage Progression:</strong> Moves from <strong>Sample → Order</strong> to <strong>Sample → DTF Pending</strong>
+                  <strong>Stage Progression:</strong> Moves from <strong>Sample → Review</strong> to <strong>Sample → DTF Pending</strong>
                 </div>
               </div>
 

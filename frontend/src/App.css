@@ -917,6 +917,10 @@
   padding: 16px 24px 38px 24px;
 }
 
+.main-content:has(.role-management-page) {
+  padding: 18px 24px 28px 24px;
+}
+
 
 /* =========================================================
    DASHBOARD PAGE

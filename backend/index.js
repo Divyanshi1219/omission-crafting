@@ -12,6 +12,7 @@ const taskRoutes = require("./routes/taskRoutes");
 const itemRoutes = require("./routes/itemRoutes");
 const fabricRoutes = require("./routes/fabricRoutes");
 const stockRoomRoutes = require("./routes/stockRoomRoutes");
+const roleRoutes = require("./routes/roleRoutes");
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use("/api/tasks", taskRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/fabrics", fabricRoutes);
 app.use("/api/stock-room", stockRoomRoutes);
+app.use("/api/roles", roleRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({

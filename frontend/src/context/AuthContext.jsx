@@ -256,8 +256,8 @@ export function AuthProvider({ children }) {
     } catch (_) {}
   }, [currentUser]);
 
-  const switchProfile = (profileId) => {
-    const target = profiles[profileId] || PROFILES[profileId];
+  const switchProfile = (profileId, customProfileObj = null) => {
+    const target = customProfileObj || profiles[profileId] || PROFILES[profileId];
     if (target) {
       setCurrentUser(target);
       setIsAuthenticated(true);

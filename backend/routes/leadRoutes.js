@@ -340,6 +340,8 @@ const computeLeadChanges = (existing, incoming) => {
     { key: "query", label: "Query Type" },
     { key: "orderStage", label: "Order Stage" },
     { key: "subStage", label: "Sub Stage" },
+    { key: "employeeName", label: "Order Owner" },
+    { key: "backupEmployee", label: "Backup Employee" },
     { key: "source", label: "Source" },
     { key: "companyName", label: "Company Name" },
     { key: "clientName", label: "Client Name" },

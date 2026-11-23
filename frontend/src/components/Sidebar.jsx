@@ -11,9 +11,12 @@ import {
   ClipboardCheck,
   Lightbulb,
   SlidersHorizontal,
-  Boxes
+  Boxes,
+  ShieldCheck,
+  Package
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { usePermissions } from "../context/PermissionContext";
 
 function Sidebar() {
   const { currentUser } = useAuth();
@@ -45,11 +48,22 @@ function Sidebar() {
   const isProductionUser =
     currentUser?.id === "production" ||
     Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("production") && !currentUser.role.toLowerCase().includes("lead manager"));
+  const { canAccessMenu, isSuperAdmin } = usePermissions();
+  const showDashboard = canAccessMenu('dashboard');
+  const showEmployees = isSuperAdmin || canAccessMenu('employees');
+  const showApprovals = isSuperAdmin || isLeadManager || canAccessMenu('approvals');
+  const showOrders = canAccessMenu('orders');
+  const showInvoices = isSuperAdmin || isInvoiceUser || canAccessMenu('invoices');
+  const showTasks = isSuperAdmin || isTaskUser || canAccessMenu('tasks');
+  const showStockRoom = isSuperAdmin || isOnlyStockRoomUser || canAccessMenu('stockRoom');
+  const showConsole = isSuperAdmin || canAccessMenu('console');
+
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const isOrderRoute = location.pathname.startsWith('/order');
   const isInvoiceRoute = location.pathname.startsWith('/invoices');
   const isTaskRoute = location.pathname.startsWith('/tasks');
+  const isConsoleRoute = location.pathname.startsWith('/console');
 
   const isViewingOrder = isOrderRoute && searchParams.has('id');
   const fromPath = isOrderRoute ? searchParams.get('from') : null;
@@ -61,6 +75,13 @@ function Sidebar() {
   const [isOrderMenuOpen, setIsOrderMenuOpen] = useState(isOrderRoute);
   const [isInvoiceMenuOpen, setIsInvoiceMenuOpen] = useState(isInvoiceRoute);
   const [isTaskMenuOpen, setIsTaskMenuOpen] = useState(isTaskRoute);
+  const [isConsoleMenuOpen, setIsConsoleMenuOpen] = useState(isConsoleRoute);
+
+  useEffect(() => {
+    if (isConsoleRoute) {
+      setIsConsoleMenuOpen(true);
+    }
+  }, [isConsoleRoute]);
 
   useEffect(() => {
     setIsInvoiceMenuOpen(isInvoiceRoute);
@@ -152,7 +173,7 @@ function Sidebar() {
   const sampleItems = isCoordinator
     ? [
         { name: 'All', path: '/order/sample/all' },
-        { name: 'Order', path: '/order/sample/order' },
+        { name: 'Review', path: '/order/sample/order' },
         { name: 'DTF Pending', path: '/order/sample/dtf-pending' },
         { name: 'Stock', path: '/order/sample/stock' },
         { name: 'From Stock', path: '/order/sample/ready-to-pick' },
@@ -164,7 +185,7 @@ function Sidebar() {
       ]
     : [
         { name: 'All', path: '/order/sample/all' },
-        { name: 'Order', path: '/order/sample/order' },
+        { name: 'Review', path: '/order/sample/order' },
         { name: 'DTF Pending', path: '/order/sample/dtf-pending' },
         { name: 'Stock', path: '/order/sample/stock' },
         { name: 'Ready to Pick', path: '/order/sample/ready-to-pick' },
@@ -177,7 +198,7 @@ function Sidebar() {
   const partialItems = isCoordinator
     ? [
         { name: 'All', path: '/order/partial/all' },
-        { name: 'Order', path: '/order/partial/order' },
+        { name: 'Review', path: '/order/partial/order' },
         { name: 'DTF Pending', path: '/order/partial/dtf-pending' },
         { name: 'Stock', path: '/order/partial/stock' },
         { name: 'From Stock', path: '/order/partial/ready-to-pick' },
@@ -192,7 +213,7 @@ function Sidebar() {
       ]
     : [
         { name: 'All', path: '/order/partial/all' },
-        { name: 'Order', path: '/order/partial/order' },
+        { name: 'Review', path: '/order/partial/order' },
         { name: 'DTF Pending', path: '/order/partial/dtf-pending' },
         { name: 'Stock', path: '/order/partial/stock' },
         { name: 'Ready to Pick', path: '/order/partial/ready-to-pick' },
@@ -207,7 +228,7 @@ function Sidebar() {
   const completeItems = isCoordinator
     ? [
         { name: 'All', path: '/order/complete/all' },
-        { name: 'Order', path: '/order/complete/order' },
+        { name: 'Review', path: '/order/complete/order' },
         { name: 'DTF Pending', path: '/order/complete/dtf-pending' },
         { name: 'Stock', path: '/order/complete/stock' },
         { name: 'From Stock', path: '/order/complete/ready-to-pick' },
@@ -222,7 +243,7 @@ function Sidebar() {
       ]
     : [
         { name: 'All', path: '/order/complete/all' },
-        { name: 'Order', path: '/order/complete/order' },
+        { name: 'Review', path: '/order/complete/order' },
         { name: 'DTF Pending', path: '/order/complete/dtf-pending' },
         { name: 'Stock', path: '/order/complete/stock' },
         { name: 'Ready to Pick', path: '/order/complete/ready-to-pick' },
@@ -246,7 +267,7 @@ function Sidebar() {
 
   const embroiderySampleItems = [
     { name: 'All', path: '/order/embroidery/sample/all' },
-    { name: 'Order', path: '/order/embroidery/sample/order' },
+    { name: 'Review', path: '/order/embroidery/sample/order' },
     { name: 'Stock Dispatch', path: '/order/embroidery/sample/stock-dispatch' },
     { name: 'Vendor Received', path: '/order/embroidery/sample/vendor-received' },
     { name: 'Vendor Dispatch at Staging Room', path: '/order/embroidery/sample/vendor-dispatch-at-staging-room' },
@@ -258,17 +279,19 @@ function Sidebar() {
   return (
     <aside className="sidebar">
       <nav className="sidebar-menu">
-        <NavLink
-          to="/"
-          className={({ isActive }) =>
-            `sidebar-item ${isActive ? "active" : ""}`
-          }
-        >
-          <LayoutDashboard size={20} />
-          <span>Dashboard</span>
-        </NavLink>
+        {showDashboard && (
+          <NavLink
+            to="/"
+            className={({ isActive }) =>
+              `sidebar-item ${isActive ? "active" : ""}`
+            }
+          >
+            <LayoutDashboard size={20} />
+            <span>Dashboard</span>
+          </NavLink>
+        )}
 
-        {isAdmin && (
+        {showEmployees && (
           <NavLink
             to="/employees"
             className={({ isActive }) =>
@@ -280,7 +303,7 @@ function Sidebar() {
           </NavLink>
         )}
 
-        {(isLeadManager || isAdmin) && (
+        {showApprovals && (
           <NavLink
             to="/approvals"
             className={({ isActive }) =>
@@ -292,14 +315,15 @@ function Sidebar() {
           </NavLink>
         )}
 
-        <div className="sidebar-accordion">
-          <div
-            className={`sidebar-item ${isOrderRoute ? 'active' : ''}`}
-            onClick={() => setIsOrderMenuOpen(!isOrderMenuOpen)}
-            style={{ cursor: 'pointer' }}
-          >
-            <ShoppingCart size={20} />
-            <span>Order Management</span>
+        {showOrders && (
+          <div className="sidebar-accordion">
+            <div
+              className={`sidebar-item ${isOrderRoute ? 'active' : ''}`}
+              onClick={() => setIsOrderMenuOpen(!isOrderMenuOpen)}
+              style={{ cursor: 'pointer' }}
+            >
+              <ShoppingCart size={20} />
+              <span>Order Management</span>
             <div className="menu-toggle" style={{ marginLeft: 'auto', display: 'flex' }}>
               {isOrderMenuOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </div>
@@ -515,9 +539,10 @@ function Sidebar() {
             </div>
           )}
         </div>
+        )}
 
         {/* Invoice Section for Sales Executive, Lead Manager & Admin */}
-        {isInvoiceUser && (
+        {showInvoices && (
           <div className="sidebar-accordion">
             <div
               className={`sidebar-item ${isInvoiceRoute ? "active" : ""}`}
@@ -572,7 +597,7 @@ function Sidebar() {
         )}
 
         {/* Task Section */}
-        {isTaskUser && (
+        {showTasks && (
           <div className="sidebar-accordion">
             <div
               className={`sidebar-item ${isTaskRoute ? "active" : ""}`}
@@ -740,8 +765,8 @@ function Sidebar() {
           </div>
         )}
 
-        {/* Stock Room Section - ONLY visible to Stock Room role */}
-        {isOnlyStockRoomUser && (
+        {/* Stock Room Section */}
+        {showStockRoom && (
           <NavLink
             to="/stock-room"
             className={({ isActive }) =>
@@ -753,17 +778,45 @@ function Sidebar() {
           </NavLink>
         )}
 
-        {isAdmin && (
-          <NavLink
-            to="/console"
-            className={({ isActive }) =>
-              `sidebar-item ${isActive ? "active" : ""}`
-            }
-            style={{ marginTop: '16px', borderTop: '1px solid rgba(0, 0, 0, 0.08)', paddingTop: '12px' }}
-          >
-            <SlidersHorizontal size={20} />
-            <span>Console</span>
-          </NavLink>
+        {/* Console Section with Dropdown (Role & Items) */}
+        {showConsole && (
+          <div className="sidebar-accordion" style={{ marginTop: '16px', borderTop: '1px solid rgba(0, 0, 0, 0.08)', paddingTop: '12px' }}>
+            <div
+              className={`sidebar-item ${isConsoleRoute ? "active" : ""}`}
+              onClick={() => setIsConsoleMenuOpen(!isConsoleMenuOpen)}
+              style={{ cursor: "pointer" }}
+            >
+              <SlidersHorizontal size={20} />
+              <span>Console</span>
+              <div className="menu-toggle" style={{ marginLeft: "auto", display: "flex" }}>
+                {isConsoleMenuOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </div>
+            </div>
+
+            {isConsoleMenuOpen && (
+              <div className="sidebar-submenu">
+                <NavLink
+                  to="/console/roles"
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${isActive || location.pathname === "/console/role" ? "active" : ""}`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  Role
+                </NavLink>
+
+                <NavLink
+                  to="/console/items"
+                  className={({ isActive }) =>
+                    `sidebar-submenu-item ${isActive || location.pathname === "/console" ? "active" : ""}`
+                  }
+                >
+                  <span className="submenu-dot"></span>
+                  Items
+                </NavLink>
+              </div>
+            )}
+          </div>
         )}
       </nav>
     </aside>

@@ -656,14 +656,20 @@
    -------------------------------------------------------------------------- */
 .overview-mid-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.85fr) minmax(0, 0.85fr);
   gap: 20px;
   width: 100%;
   max-width: 100%;
   min-width: 0;
 }
 
-@media (max-width: 1150px) {
+@media (max-width: 1350px) {
+  .overview-mid-row {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 950px) {
   .overview-mid-row {
     grid-template-columns: minmax(0, 1fr);
   }

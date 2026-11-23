@@ -5663,10 +5663,10 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                     }
                     combinedLogs.push({
                       action: "Order Created & Submitted",
-                      stage: "Sample → Order",
+                      stage: "Sample → Review",
                       performedBy: d.employeeName || "Sales Executive",
                       role: "Sales Executive",
-                      details: `Application (${d.orderId || "Order"}) created and submitted by ${d.employeeName || "Sales Executive"}. Sent to Sample → Order for Lead Manager Clearance.`,
+                      details: `Application (${d.orderId || "Order"}) created and submitted by ${d.employeeName || "Sales Executive"}. Sent to Sample → Review for Lead Manager Clearance.`,
                       changes: initChanges,
                       timestamp: d.createdAt,
                     });
@@ -5691,9 +5691,9 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                       stage: "Sample → DTF Pending",
                       performedBy: lmAuthor,
                       role: "Lead Manager",
-                      details: `Task 0 (Lead Manager Clearance) approved by ${lmAuthor} (Lead Manager). Application moved from Sample → Order to Sample → DTF Pending, and assigned to Stock Room Manager (Elena Rostova) & Production Room (Marcus Vance).`,
+                      details: `Task 0 (Lead Manager Clearance) approved by ${lmAuthor} (Lead Manager). Application moved from Sample → Review to Sample → DTF Pending, and assigned to Stock Room Manager (Elena Rostova) & Production Room (Marcus Vance).`,
                       changes: [
-                        "From Stage: Sample → Order",
+                        "From Stage: Sample → Review",
                         "To Stage: Sample → DTF Pending",
                         "Task 0 (Lead Manager Clearance): Approved",
                         "Assigned Task 1: Stock Room Clearance (Elena Rostova — Verification)",
@@ -5985,7 +5985,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                       if (!isAlreadyCovered) {
                         combinedLogs.push({
                           action: `${c.role || "Department"} - ${c.status || "Update"}`,
-                          stage: d.orderStage ? `${d.orderStage.toUpperCase()} → ${(d.subStage || "order").replace(/-/g, " ").toUpperCase()}` : "Sample → Order",
+                          stage: d.orderStage ? `${d.orderStage.toUpperCase()} → ${(d.subStage || "order").replace(/-/g, " ").toUpperCase() === "ORDER" ? "REVIEW" : (d.subStage || "order").replace(/-/g, " ").toUpperCase()}` : "Sample → Review",
                           performedBy: c.author || "Manager",
                           role: c.role || "Manager",
                           details: c.comment || `Application ${c.status || "updated"} by ${c.author || "Manager"}.`,

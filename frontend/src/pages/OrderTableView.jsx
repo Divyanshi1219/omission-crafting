@@ -13,9 +13,15 @@ import {
   Layers,
   Calendar,
   AlertTriangle,
-  FileText
+  FileText,
+  ShieldCheck,
+  User,
+  Users2,
+  ArrowRightLeft,
+  X
 } from "lucide-react";
 import "./OrderDashboard.css";
+import { matchesEmployeeName } from "../components/BackupEmployeeWidget";
 
 // Helper to normalize stage and subStage from database records
 const normalizeRecord = (lead) => {
@@ -43,9 +49,24 @@ export default function OrderTableView() {
   const { stage: rawStage } = useParams();
   const [searchParams] = useSearchParams();
   const subParam = searchParams.get('sub');
+  const filterParam = searchParams.get('filter');
+  const backupTabParam = searchParams.get('backupTab');
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
+  const isAdmin =
+    currentUser?.id === "admin" ||
+    currentUser?.role === "CEO" ||
+    (currentUser?.name || "").toLowerCase().startsWith("adam") ||
+    (currentUser?.department || "").toLowerCase() === "ceo";
+
+  const [backupTab, setBackupTab] = useState(() => backupTabParam || (isAdmin ? "all" : "incoming"));
+
+  useEffect(() => {
+    if (backupTabParam) {
+      setBackupTab(backupTabParam);
+    }
+  }, [backupTabParam]);
 
   const stage = (rawStage || 'all').toLowerCase();
 
@@ -122,11 +143,51 @@ export default function OrderTableView() {
     return valid.map(normalizeRecord);
   }, [leads, isSales, currentUser]);
 
-  // Stage-scoped orders
+  const currentEmpName = currentUser?.name || '';
+
+  // Incoming: orders where logged-in user is assigned as backup (covering for a colleague)
+  const incomingBackupOrders = useMemo(() => {
+    return allOrders.filter(o => {
+      const backup = (o.backupEmployee || '').trim();
+      const owner = (o.employeeName || '').trim();
+      if (!backup || backup.toLowerCase() === 'none') return false;
+      return matchesEmployeeName(backup, currentEmpName) && !matchesEmployeeName(owner, currentEmpName);
+    });
+  }, [allOrders, currentEmpName]);
+
+  // Outgoing: orders owned by logged-in user that have a backup assigned while away
+  const outgoingBackupOrders = useMemo(() => {
+    return allOrders.filter(o => {
+      const backup = (o.backupEmployee || '').trim();
+      const owner = (o.employeeName || '').trim();
+      if (!backup || backup.toLowerCase() === 'none') return false;
+      return matchesEmployeeName(owner, currentEmpName) && !matchesEmployeeName(backup, currentEmpName);
+    });
+  }, [allOrders, currentEmpName]);
+
+  // All active backup delegations company-wide
+  const allBackupOrders = useMemo(() => {
+    return allOrders.filter(o => {
+      const backup = (o.backupEmployee || '').trim();
+      return Boolean(backup && backup.toLowerCase() !== 'none');
+    });
+  }, [allOrders]);
+
+  // Stage-scoped orders (respecting filter=backup and active backupTab)
   const stageOrders = useMemo(() => {
-    if (stage === 'all') return allOrders;
-    return allOrders.filter(o => o.normStage === stage);
-  }, [allOrders, stage]);
+    let base = allOrders;
+    if (filterParam === 'backup') {
+      if (backupTab === 'incoming') {
+        base = incomingBackupOrders;
+      } else if (backupTab === 'outgoing') {
+        base = outgoingBackupOrders;
+      } else {
+        base = allBackupOrders;
+      }
+    }
+    if (stage === 'all') return base;
+    return base.filter(o => o.normStage === stage);
+  }, [allOrders, stage, filterParam, backupTab, incomingBackupOrders, outgoingBackupOrders, allBackupOrders]);
 
   // Apply search and sub-stage filters
   const filteredOrders = useMemo(() => {
@@ -181,13 +242,35 @@ export default function OrderTableView() {
 
   // Stage titles and theme colors
   const stageMeta = useMemo(() => {
+    if (filterParam === 'backup') {
+      const tabTitle = backupTab === 'incoming'
+        ? 'Covering For Others'
+        : (backupTab === 'outgoing' ? 'Delegated While Away' : 'All Active Delegations');
+      return {
+        title: `Backup Handover: ${tabTitle}`,
+        color: backupTab === 'incoming' ? '#10b981' : (backupTab === 'outgoing' ? '#3b82f6' : '#8b5cf6'),
+        subStages: [
+          { key: 'all', label: 'All Sub-Stages' },
+          { key: 'order', label: 'Review' },
+          { key: 'dtf-pending', label: 'DTF Pending' },
+          { key: 'stock', label: 'Stock' },
+          { key: 'printing', label: 'Printing' },
+          { key: 'ready-to-pick-up', label: 'Ready to Pick Up' },
+          { key: 'quality-check', label: 'Quality Check' },
+          { key: 'packaging', label: 'Packaging' },
+          { key: 'delivery-pending', label: 'Delivery Pending' },
+          { key: 'delivered', label: 'Delivered' },
+          { key: 'customer-support', label: 'Customer Support' }
+        ]
+      };
+    }
     if (stage === 'sample') {
       return {
         title: 'Sample Orders Pipeline',
         color: '#0284c7',
         subStages: [
           { key: 'all', label: 'All Sub-Stages' },
-          { key: 'order', label: 'Order' },
+          { key: 'order', label: 'Review' },
           { key: 'dtf-pending', label: 'DTF Pending' },
           { key: 'stock', label: 'Stock' },
           { key: 'printing', label: 'Printing' },
@@ -203,7 +286,7 @@ export default function OrderTableView() {
         color: '#7c3aed',
         subStages: [
           { key: 'all', label: 'All Sub-Stages' },
-          { key: 'order', label: 'Order' },
+          { key: 'order', label: 'Review' },
           { key: 'dtf-pending', label: 'DTF Pending' },
           { key: 'stock', label: 'Stock' },
           { key: 'printing', label: 'Printing' },
@@ -220,7 +303,7 @@ export default function OrderTableView() {
         color: '#059669',
         subStages: [
           { key: 'all', label: 'All Sub-Stages' },
-          { key: 'order', label: 'Order' },
+          { key: 'order', label: 'Review' },
           { key: 'dtf-pending', label: 'DTF Pending' },
           { key: 'stock', label: 'Stock' },
           { key: 'printing', label: 'Printing' },
@@ -237,7 +320,7 @@ export default function OrderTableView() {
       color: '#2563eb',
       subStages: [
         { key: 'all', label: 'All Sub-Stages' },
-        { key: 'order', label: 'Order' },
+        { key: 'order', label: 'Review' },
         { key: 'dtf-pending', label: 'DTF Pending' },
         { key: 'stock', label: 'Stock' },
         { key: 'printing', label: 'Printing' },
@@ -314,6 +397,135 @@ export default function OrderTableView() {
         </button>
       </div>
 
+      {/* Handover Tabs Banner when filter=backup */}
+      {filterParam === 'backup' && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+          border: '1px solid #cbd5e1',
+          borderRadius: '16px',
+          padding: '12px 18px',
+          marginBottom: '14px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', marginRight: '6px' }}>
+              <ShieldCheck size={17} color="#10b981" /> Handover Tabs:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setBackupTab('incoming');
+                navigate(`/orders/view/${stage}?filter=backup&backupTab=incoming`, { replace: true });
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 14px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: backupTab === 'incoming' ? '1px solid #10b981' : '1px solid #cbd5e1',
+                background: backupTab === 'incoming' ? '#ecfdf5' : '#ffffff',
+                color: backupTab === 'incoming' ? '#065f46' : '#475569',
+                boxShadow: backupTab === 'incoming' ? '0 2px 6px rgba(16, 185, 129, 0.2)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span>📥 Covering For Others</span>
+              <span style={{ padding: '1px 7px', borderRadius: '10px', background: backupTab === 'incoming' ? '#10b981' : '#f1f5f9', color: backupTab === 'incoming' ? '#ffffff' : '#64748b', fontSize: '11px', fontWeight: 700 }}>
+                {incomingBackupOrders.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setBackupTab('outgoing');
+                navigate(`/orders/view/${stage}?filter=backup&backupTab=outgoing`, { replace: true });
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 14px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: backupTab === 'outgoing' ? '1px solid #3b82f6' : '1px solid #cbd5e1',
+                background: backupTab === 'outgoing' ? '#eff6ff' : '#ffffff',
+                color: backupTab === 'outgoing' ? '#1e40af' : '#475569',
+                boxShadow: backupTab === 'outgoing' ? '0 2px 6px rgba(59, 130, 246, 0.2)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span>📤 Delegated While Away</span>
+              <span style={{ padding: '1px 7px', borderRadius: '10px', background: backupTab === 'outgoing' ? '#3b82f6' : '#f1f5f9', color: backupTab === 'outgoing' ? '#ffffff' : '#64748b', fontSize: '11px', fontWeight: 700 }}>
+                {outgoingBackupOrders.length}
+              </span>
+            </button>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBackupTab('all');
+                  navigate(`/orders/view/${stage}?filter=backup&backupTab=all`, { replace: true });
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: backupTab === 'all' ? '1px solid #8b5cf6' : '1px solid #cbd5e1',
+                  background: backupTab === 'all' ? '#f5f3ff' : '#ffffff',
+                  color: backupTab === 'all' ? '#5b21b6' : '#475569',
+                  boxShadow: backupTab === 'all' ? '0 2px 6px rgba(139, 92, 246, 0.2)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <span>🏢 All Active Delegations</span>
+                <span style={{ padding: '1px 7px', borderRadius: '10px', background: backupTab === 'all' ? '#8b5cf6' : '#f1f5f9', color: backupTab === 'all' ? '#ffffff' : '#64748b', fontSize: '11px', fontWeight: 700 }}>
+                  {allBackupOrders.length}
+                </span>
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate(`/orders/view/${stage}`, { replace: true })}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              color: '#64748b',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+            title="Clear handover filter and view all pipeline orders"
+          >
+            <X size={13} /> View All Orders
+          </button>
+        </div>
+      )}
+
       {/* Filter and Search Bar */}
       <div style={{ background: '#ffffff', borderRadius: '16px', padding: '16px 20px', border: '1px solid #f1f5f9', boxShadow: '0 4px 14px rgba(0,0,0,0.02)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
         {/* Search input */}
@@ -335,6 +547,31 @@ export default function OrderTableView() {
 
         {/* Dropdowns */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Quick Handover Mode Pill if not currently active */}
+          {filterParam !== 'backup' && (incomingBackupOrders.length > 0 || outgoingBackupOrders.length > 0 || allBackupOrders.length > 0) && (
+            <button
+              type="button"
+              onClick={() => navigate(`/orders/view/${stage}?filter=backup&backupTab=${isSales ? (incomingBackupOrders.length > 0 ? 'incoming' : 'outgoing') : 'all'}`)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: '10px',
+                border: '1px solid #a7f3d0',
+                background: '#ecfdf5',
+                color: '#065f46',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+              title="Filter to orders with active backup employee delegation"
+            >
+              <ShieldCheck size={14} color="#059669" />
+              <span>Backup Orders ({isSales ? incomingBackupOrders.length + outgoingBackupOrders.length : allBackupOrders.length})</span>
+            </button>
+          )}
+
           {/* Sub-stage filter */}
           <select
             value={subStageFilter}
@@ -378,6 +615,7 @@ export default function OrderTableView() {
                 <th>Order ID</th>
                 <th>Client Name</th>
                 <th>Company</th>
+                {filterParam === 'backup' && <th>Handover Assignment</th>}
                 <th>Pipeline</th>
                 <th>Current Sub-Stage</th>
                 <th>Quantity</th>
@@ -389,14 +627,14 @@ export default function OrderTableView() {
             <tbody>
               {loading && filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>
+                  <td colSpan={filterParam === 'backup' ? 10 : 9} style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>
                     <Clock size={22} className="spin-animation" style={{ marginBottom: '8px' }} />
                     <div>Loading orders...</div>
                   </td>
                 </tr>
               ) : filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>
+                  <td colSpan={filterParam === 'backup' ? 10 : 9} style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>
                     No orders found matching your filter criteria.
                   </td>
                 </tr>
@@ -405,7 +643,7 @@ export default function OrderTableView() {
                   <tr
                     key={order._id}
                     className="table-row-hover"
-                    onClick={() => navigate(`/order/create-lead?id=${order._id}&from=${encodeURIComponent(`/order/${order.normStage}/${order.normSub}`)}&stage=${order.normStage}`)}
+                    onClick={() => navigate(`/order/create-lead?id=${order._id}&from=${encodeURIComponent(`/orders/view/${order.normStage}${filterParam === 'backup' ? `?filter=backup&backupTab=${backupTab}` : ''}`)}&stage=${order.normStage}`)}
                     title="Click to open and edit order"
                   >
                     <td>
@@ -418,14 +656,57 @@ export default function OrderTableView() {
                         {order.clientName || 'Unnamed Client'}
                       </span>
                     </td>
-                    <td>{order.companyName || '—'}</td>
+                    <td>
+                      <div>
+                        <span>{order.companyName || '—'}</span>
+                        {order.backupEmployee && (
+                          <div style={{ marginTop: '2px' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              background: '#ecfdf5',
+                              color: '#065f46',
+                              fontSize: '10px',
+                              fontWeight: 600
+                            }}>
+                              <ShieldCheck size={10} color="#10b981" /> Backup: {order.backupEmployee}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    {filterParam === 'backup' && (
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '12px' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#0f172a', fontWeight: 600 }}>
+                            <User size={12} color="#64748b" /> {order.employeeName || 'Sales Executive'}
+                            <span style={{ color: '#94a3b8' }}>➔</span>
+                            <span style={{ color: '#059669', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                              <ShieldCheck size={12} /> {order.backupEmployee}
+                            </span>
+                          </span>
+                          <span style={{
+                            fontSize: '10px',
+                            color: matchesEmployeeName(order.backupEmployee, currentEmpName) ? '#059669' : '#3b82f6',
+                            fontWeight: 600
+                          }}>
+                            {matchesEmployeeName(order.backupEmployee, currentEmpName)
+                              ? '• Covering on behalf of colleague'
+                              : (matchesEmployeeName(order.employeeName, currentEmpName) ? '• Covered while you are away' : '• Company Delegation')}
+                          </span>
+                        </div>
+                      </td>
+                    )}
                     <td>
                       <span className={`status-badge-pill ${order.normStage}`}>
                         {order.normStage}
                       </span>
                     </td>
                     <td style={{ textTransform: 'capitalize' }}>
-                      {order.normSub.replace(/-/g, ' ')}
+                      {order.normSub === 'order' ? 'Review' : order.normSub.replace(/-/g, ' ')}
                     </td>
                     <td style={{ fontWeight: 600 }}>
                       {order.totalQuantity ? `${Number(order.totalQuantity).toLocaleString('en-IN')} pcs` : '—'}

@@ -13,6 +13,7 @@ import CreateInvoice from "./pages/Invoices/CreateInvoice";
 import Approvals from "./pages/Approvals";
 import LeadApprovals from "./pages/LeadApprovals";
 import ItemConsole from "./pages/ItemConsole";
+import RoleManagement from "./pages/RoleManagement";
 import StockRoom from "./pages/StockRoom/StockRoom";
 import OrderTableView from "./pages/OrderTableView";
 import SalesOrdersBreakdown from "./pages/SalesOrdersBreakdown";
@@ -21,6 +22,7 @@ import Login from "./pages/Login";
 import DemoIdeasPage from "./pages/DemoIdeasPage"; // TEMP demo page ideas (delete after client approves)
 import ErrorBoundary from "./components/ErrorBoundary";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { PermissionProvider, usePermissions } from "./context/PermissionContext";
 
 import "./App.css";
 
@@ -62,6 +64,15 @@ function AppContent({ darkMode, setDarkMode }) {
       Boolean(currentUser?.role && currentUser.role.toLowerCase().includes("stock"))) &&
     currentUser?.id !== "admin" &&
     currentUser?.role !== "CEO";
+
+  const { canAccessMenu, isSuperAdmin } = usePermissions();
+  const canAccessInvoices = isSalesOrAdmin || canAccessMenu('invoices');
+  const canAccessStock = isOnlyStockRoomUser || isAdmin || canAccessMenu('stockRoom');
+  const canAccessApprovals = isLeadManager || isAdmin || canAccessMenu('approvals');
+  const canAccessEmployees = isAdmin || canAccessMenu('employees');
+  const canAccessTasks = isTaskUser || canAccessMenu('tasks');
+  const canAccessConsole = isSuperAdmin || canAccessMenu('console');
+
   const isLoginPage = location.pathname === "/login";
 
   if (isLoginPage) {
@@ -99,17 +110,32 @@ function AppContent({ darkMode, setDarkMode }) {
 
             <Route
               path="/employees"
-              element={isAdmin ? <AllEmployees /> : <Navigate to="/" replace />}
+              element={canAccessEmployees ? <AllEmployees /> : <Navigate to="/" replace />}
             />
 
             <Route
               path="/console"
-              element={isAdmin ? <ItemConsole /> : <Navigate to="/" replace />}
+              element={canAccessConsole ? <ItemConsole /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/console/items"
+              element={canAccessConsole ? <ItemConsole /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/console/roles"
+              element={canAccessConsole ? <RoleManagement /> : <Navigate to="/" replace />}
+            />
+
+            <Route
+              path="/console/role"
+              element={canAccessConsole ? <RoleManagement /> : <Navigate to="/" replace />}
             />
 
             <Route
               path="/stock-room"
-              element={(isOnlyStockRoomUser || isAdmin) ? <StockRoom /> : <Navigate to="/" replace />}
+              element={canAccessStock ? <StockRoom /> : <Navigate to="/" replace />}
             />
 
             <Route
@@ -159,12 +185,12 @@ function AppContent({ darkMode, setDarkMode }) {
 
             <Route
               path="/invoices"
-              element={isSalesOrAdmin ? <InvoicesList /> : <Navigate to="/" replace />}
+              element={canAccessInvoices ? <InvoicesList /> : <Navigate to="/" replace />}
             />
 
             <Route
               path="/invoices/create"
-              element={isSalesOrAdmin ? <CreateInvoice /> : <Navigate to="/" replace />}
+              element={canAccessInvoices ? <CreateInvoice /> : <Navigate to="/" replace />}
             />
 
             {/* TEMP demo page ideas (mock UI concepts — not connected to app data) */}
@@ -175,30 +201,30 @@ function AppContent({ darkMode, setDarkMode }) {
 
             <Route
               path="/tasks"
-              element={isTaskUser ? <Navigate to="/tasks/all" replace /> : <Navigate to="/" replace />}
+              element={canAccessTasks ? <Navigate to="/tasks/all" replace /> : <Navigate to="/" replace />}
             />
 
             <Route
               path="/tasks/all"
-              element={isTaskUser ? <Approvals /> : <Navigate to="/" replace />}
+              element={canAccessTasks ? <Approvals /> : <Navigate to="/" replace />}
             />
 
             <Route
               path="/tasks/:status"
-              element={isTaskUser ? <Approvals /> : <Navigate to="/" replace />}
+              element={canAccessTasks ? <Approvals /> : <Navigate to="/" replace />}
             />
 
             <Route
               path="/tasks/embroidery/:status"
-              element={isTaskUser ? <Approvals /> : <Navigate to="/" replace />}
+              element={canAccessTasks ? <Approvals /> : <Navigate to="/" replace />}
             />
 
             <Route
               path="/approvals"
               element={
-                (isLeadManager || isAdmin) ? (
+                canAccessApprovals ? (
                   <LeadApprovals />
-                ) : isTaskUser ? (
+                ) : canAccessTasks ? (
                   <Navigate to="/tasks/all" replace />
                 ) : (
                   <Navigate to="/" replace />
@@ -222,11 +248,13 @@ function App() {
 
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <ErrorBoundary>
-          <AppContent darkMode={darkMode} setDarkMode={setDarkMode} />
-        </ErrorBoundary>
-      </BrowserRouter>
+      <PermissionProvider>
+        <BrowserRouter>
+          <ErrorBoundary>
+            <AppContent darkMode={darkMode} setDarkMode={setDarkMode} />
+          </ErrorBoundary>
+        </BrowserRouter>
+      </PermissionProvider>
     </AuthProvider>
   );
 }
