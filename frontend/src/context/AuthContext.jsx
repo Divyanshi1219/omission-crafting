@@ -21,10 +21,10 @@ export const PROFILES = {
   },
   production: {
     id: "production",
-    name: "Marcus Vance",
+    name: "Marcus Shell",
     role: "Production Lead Manager",
     department: "Production Lead Manager",
-    subtitle: "Manufacturing & Print Operations",
+    subtitle: "Production Lead Manager",
     email: "production@omissioncrafting.com",
     initials: "PR",
     avatarBg: "#e0e7ff",
@@ -185,6 +185,7 @@ export function AuthProvider({ children }) {
         if (PROFILES[saved]) return PROFILES[saved];
         try {
           const parsed = JSON.parse(saved);
+          if (parsed && parsed.id && PROFILES[parsed.id]) return PROFILES[parsed.id];
           if (parsed && parsed.name) return parsed;
         } catch (_) {}
       }

@@ -104,7 +104,7 @@ const DEFAULT_ROLES = [
       canManageStock: false,
       canAssignBackup: false,
     },
-    assignedEmployees: ["Marcus Vance", "production"],
+    assignedEmployees: ["Marcus Shell", "Production Lead Manager", "Marcus Vance", "production"],
   },
   {
     slug: "coordinator",

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Shield,
   ShieldCheck,
@@ -82,6 +82,23 @@ export default function RoleManagement() {
   const [activeTab, setActiveTab] = useState("authorities"); // "authorities" | "members" | "preview"
   const [searchRoleTerm, setSearchRoleTerm] = useState("");
   const [memberSearchTerm, setMemberSearchTerm] = useState("");
+
+  // Top-Right User Search state (to check which role a user is under)
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [selectedUserRoleResult, setSelectedUserRoleResult] = useState(null);
+  const searchContainerRef = useRef(null);
+
+  // Close search dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+        setShowSearchResults(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Editable local state for the currently active role's permissions
   const [localMenuPerms, setLocalMenuPerms] = useState({});
@@ -167,6 +184,130 @@ export default function RoleManagement() {
 
     return list.sort((a, b) => a.name.localeCompare(b.name));
   }, [profiles]);
+
+  // Comprehensive list of all users from profiles, role assignments, and company employees
+  const allKnownUsers = useMemo(() => {
+    const userMap = new Map();
+
+    // 1. Add all from allCompanyEmployees
+    allCompanyEmployees.forEach((emp) => {
+      if (emp?.name) {
+        userMap.set(emp.name.toLowerCase().trim(), {
+          id: emp.id || emp.name,
+          name: emp.name,
+          email: emp.email || "",
+          department: emp.department || "",
+          initials: emp.initials || getInitials(emp.name),
+          avatarBg: emp.avatarBg || getAvatarBg(emp.name),
+        });
+      }
+    });
+
+    // 2. Add any assigned employee appearing in any role
+    roles.forEach((r) => {
+      (r.assignedEmployees || []).forEach((assigned) => {
+        const strName = typeof assigned === "string" ? assigned : assigned?.name;
+        if (strName && strName.trim()) {
+          const key = strName.toLowerCase().trim();
+          if (!userMap.has(key)) {
+            userMap.set(key, {
+              id: key,
+              name: strName.trim(),
+              email: `${key.replace(/\s+/g, ".")}@omissioncrafting.com`,
+              department: r.name,
+              initials: getInitials(strName),
+              avatarBg: getAvatarBg(strName),
+            });
+          }
+        }
+      });
+    });
+
+    return Array.from(userMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allCompanyEmployees, roles]);
+
+  // Helper to find all roles a user is under
+  const getRolesForUser = (userObj) => {
+    if (!userObj) return [];
+    const uName = (userObj.name || "").toLowerCase().trim();
+    const uId = (userObj.id || "").toLowerCase().trim();
+    const uEmail = (userObj.email || "").toLowerCase().trim();
+
+    return roles.filter((role) => {
+      // 1. Direct match in assignedEmployees
+      const isExplicit = (role.assignedEmployees || []).some((assigned) => {
+        const a = (typeof assigned === "string" ? assigned : assigned?.name || "").toLowerCase().trim();
+        return a === uName || a === uId || (uEmail && a === uEmail);
+      });
+      if (isExplicit) return true;
+
+      // 2. Profile role fallbacks
+      if (role.slug === "ceo" && (uId === "admin" || uName.startsWith("adam") || userObj.department?.toLowerCase() === "ceo")) {
+        return true;
+      }
+      if (role.slug === "sales_executive" && (uId.startsWith("sales") || userObj.department?.toLowerCase() === "sales")) {
+        return true;
+      }
+      if (role.slug === "stock_room_manager" && (uId === "stock" || userObj.department?.toLowerCase().includes("stock"))) {
+        return true;
+      }
+      if (role.slug === "production_lead_manager" && (uId === "production" || uName.includes("marcus"))) {
+        return true;
+      }
+      if (role.slug === "lead_manager" && (uId === "lead_manager" || uName.includes("alex rivera"))) {
+        return true;
+      }
+
+      return false;
+    });
+  };
+
+  // Search results for user-to-role lookup
+  const userSearchResults = useMemo(() => {
+    const query = userSearchQuery.toLowerCase().trim();
+    if (!query) return [];
+
+    return allKnownUsers
+      .filter((user) => {
+        const name = (user.name || "").toLowerCase();
+        const email = (user.email || "").toLowerCase();
+        const id = (user.id || "").toLowerCase();
+        return name.includes(query) || email.includes(query) || id.includes(query);
+      })
+      .map((user) => {
+        const userRolesList = getRolesForUser(user);
+        return {
+          user,
+          roles: userRolesList,
+        };
+      });
+  }, [userSearchQuery, allKnownUsers, roles]);
+
+  // Handle clicking a role in the user search results
+  const handleSelectUserRoleResult = (user, role) => {
+    if (role) {
+      setActiveSlug(role.slug || role._id);
+      setActiveTab("members");
+      setMemberSearchTerm(user.name);
+    }
+    setSelectedUserRoleResult({ user, role });
+    setShowSearchResults(false);
+  };
+
+  // Handle Enter key in user search input
+  const handleSearchKeyDown = (e) => {
+    if (e.key === "Enter" && userSearchResults.length > 0) {
+      const first = userSearchResults[0];
+      if (first.roles.length > 0) {
+        handleSelectUserRoleResult(first.user, first.roles[0]);
+      } else {
+        setSelectedUserRoleResult({ user: first.user, role: null });
+        setShowSearchResults(false);
+      }
+    } else if (e.key === "Escape") {
+      setShowSearchResults(false);
+    }
+  };
 
   // Find other roles an employee holds (Multi-Role detection)
   const getOtherRolesForEmployee = (employeeName, currentRoleSlug) => {
@@ -482,16 +623,164 @@ export default function RoleManagement() {
           <h1>Roles & Authority Management</h1>
         </div>
 
+        {/* Top-Right User Search Bar */}
         <div className="role-header-actions">
-          <button
-            className="role-btn-primary"
-            onClick={() => setShowCreateRoleModal(true)}
-            title="Create a new role with custom authorities"
-          >
-            <Plus size={16} /> Create New Role
-          </button>
+          <div className="user-role-search-wrapper" ref={searchContainerRef}>
+            <div className="user-role-search-input-box">
+              <Search size={15} className="user-role-search-icon" />
+              <input
+                type="text"
+                placeholder="Search user by name (e.g. Karan, Divyanshi)..."
+                value={userSearchQuery}
+                onChange={(e) => {
+                  setUserSearchQuery(e.target.value);
+                  setShowSearchResults(true);
+                }}
+                onFocus={() => {
+                  if (userSearchQuery.trim()) setShowSearchResults(true);
+                }}
+                onKeyDown={handleSearchKeyDown}
+              />
+              {userSearchQuery && (
+                <button
+                  type="button"
+                  className="user-role-search-clear"
+                  onClick={() => {
+                    setUserSearchQuery("");
+                    setShowSearchResults(false);
+                    setSelectedUserRoleResult(null);
+                  }}
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Live Dropdown Results */}
+            {showSearchResults && userSearchQuery.trim().length > 0 && (
+              <div className="user-role-search-dropdown">
+                <div className="user-role-search-dropdown-header">
+                  <span>Results for "{userSearchQuery.trim()}" ({userSearchResults.length})</span>
+                  <span>Press Esc to close</span>
+                </div>
+
+                <div className="user-role-search-dropdown-list">
+                  {userSearchResults.length === 0 ? (
+                    <div className="user-role-search-empty">
+                      No user found matching "{userSearchQuery}"
+                    </div>
+                  ) : (
+                    userSearchResults.map(({ user, roles: userAssignedRoles }) => (
+                      <div
+                        key={user.id || user.name}
+                        className="user-role-search-item"
+                        onClick={() =>
+                          handleSelectUserRoleResult(
+                            user,
+                            userAssignedRoles.length > 0 ? userAssignedRoles[0] : null
+                          )
+                        }
+                      >
+                        <div className="user-role-search-item-header">
+                          <div
+                            className="user-role-search-avatar"
+                            style={{ background: user.avatarBg || "#2563eb" }}
+                          >
+                            {user.initials || getInitials(user.name)}
+                          </div>
+                          <div>
+                            <div className="user-role-search-name">{user.name}</div>
+                          </div>
+                          {user.email && (
+                            <span className="user-role-search-email">{user.email}</span>
+                          )}
+                        </div>
+
+                        <div className="user-role-search-status-line">
+                          {userAssignedRoles.length > 0 ? (
+                            <>
+                              <span className="yes-badge">
+                                <Check size={12} /> Yes, under:
+                              </span>
+                              {userAssignedRoles.map((r) => (
+                                <span
+                                  key={r.slug || r._id}
+                                  className="user-role-pill-badge"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSelectUserRoleResult(user, r);
+                                  }}
+                                  title={`Click to view ${r.name}`}
+                                >
+                                  <span
+                                    className="user-role-pill-dot"
+                                    style={{ background: r.color || "#2563eb" }}
+                                  />
+                                  {r.name}
+                                </span>
+                              ))}
+                            </>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontStyle: "italic" }}>
+                              Not assigned to any role yet
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* User Search Confirmation Banner */}
+      {selectedUserRoleResult && (
+        <div className="user-role-result-banner">
+          <div className="user-role-result-content">
+            <UserCheck size={18} className="user-role-result-check" />
+            <span>
+              {selectedUserRoleResult.role ? (
+                <>
+                  Yes, <strong>{selectedUserRoleResult.user.name}</strong> is under the{" "}
+                  <strong style={{ color: selectedUserRoleResult.role.color || "#2563eb" }}>
+                    {selectedUserRoleResult.role.name}
+                  </strong>{" "}
+                  role.
+                </>
+              ) : (
+                <>
+                  <strong>{selectedUserRoleResult.user.name}</strong> is currently not assigned to any role.
+                </>
+              )}
+            </span>
+            {selectedUserRoleResult.role && (
+              <button
+                type="button"
+                className="user-role-result-jump-btn"
+                onClick={() => {
+                  setActiveSlug(selectedUserRoleResult.role.slug || selectedUserRoleResult.role._id);
+                  setActiveTab("members");
+                  setMemberSearchTerm(selectedUserRoleResult.user.name);
+                }}
+              >
+                View in {selectedUserRoleResult.role.name} <ArrowRight size={13} />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            className="user-role-result-close"
+            onClick={() => setSelectedUserRoleResult(null)}
+            title="Dismiss"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       {/* Alert Banner */}
       {alert && (

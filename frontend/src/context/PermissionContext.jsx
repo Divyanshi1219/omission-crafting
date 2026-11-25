@@ -107,7 +107,7 @@ export const INITIAL_DEFAULT_ROLES = [
       canManageStock: false,
       canAssignBackup: false,
     },
-    assignedEmployees: ["Marcus Vance", "production"],
+    assignedEmployees: ["Marcus Shell", "Production Lead Manager", "Marcus Vance", "production"],
   },
   {
     _id: "coordinator",
@@ -292,15 +292,28 @@ export function PermissionProvider({ children }) {
         }
         if (role.slug === "production_lead_manager") {
           return (
-            (uId === "production" || uRole.includes("production") || uDept.includes("production")) &&
-            !uRole.includes("lead manager")
+            uId === "production" ||
+            uRole.includes("production") ||
+            uDept.includes("production") ||
+            uName.includes("production") ||
+            uName.includes("marcus") ||
+            uName.includes("shell")
           );
         }
         if (role.slug === "coordinator") {
           return uId === "coordinator" || uRole.includes("coordinator") || uDept.includes("coordinator");
         }
         if (role.slug === "lead_manager") {
-          return uId === "lead_manager" || uRole.includes("lead manager") || uDept.includes("lead manager");
+          return (
+            uId === "lead_manager" ||
+            ((uRole.includes("lead manager") || uDept.includes("lead manager")) &&
+              !uRole.includes("production") &&
+              !uDept.includes("production") &&
+              !uName.includes("production") &&
+              !uName.includes("marcus") &&
+              !uName.includes("shell") &&
+              uId !== "production")
+          );
         }
 
         // Custom role match by name or role_slug

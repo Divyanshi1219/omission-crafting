@@ -380,7 +380,7 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
           ((itemSub === 'staging-room' || itemSub === 'staging-ground') &&
             (normTargetSub === 'staging-room' || normTargetSub === 'staging-ground')) ||
           ((normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup') &&
-            (itemSub === 'ready-to-pick' || itemSub === 'ready-to-pickup' || (item.stockTaskStage === 'ready_to_pick' && itemSub === 'stock'))));
+            (itemSub === 'ready-to-pick' || itemSub === 'ready-to-pickup' || (item.stockTaskStage === 'ready_to_pick' && itemSub === 'stock') || (item.stockTaskStage === 'completed' && item.productionTaskStage === 'completed' && !item.stockHandoverComplete && itemSub !== 'printing'))));
 
   if (!stageMatches || !subStageMatches) {
     return { matches: false, status: 'none', isCompleted: false };
@@ -400,9 +400,11 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
       isApprovedAtThisStage = item.productionApproval?.status === 'Approved';
     } else if (normTargetSub === 'stock') {
       isApprovedAtThisStage = item.stockApproval?.status === 'Approved';
+    } else if (normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup') {
+      isApprovedAtThisStage = Boolean(item.stockHandoverComplete || item.sampleReadyToPickData?.stockHandoverComplete || ['printing', 'ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'].includes(itemSub));
     } else if (normTargetSub === 'printing') {
       isApprovedAtThisStage = item.printingStageData?.printingStatus === 'Complete';
-    } else if (normTargetSub === 'ready-to-pick-up' || normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup') {
+    } else if (normTargetSub === 'ready-to-pick-up') {
       isApprovedAtThisStage = Boolean(item.sampleReadyToPickUpData?.verifiedPickupCount || item.sampleReadyToPickUpData?.readyToPickupCount);
     } else if (normTargetSub === 'staging-ground' || normTargetSub === 'staging-room') {
       isApprovedAtThisStage = Boolean(item.sampleStagingGroundData?.orderRequirementMatch);
@@ -1191,6 +1193,23 @@ function OrderManagement() {
         return;
       }
 
+      const hasLogoDesign =
+        (Array.isArray(formData.logoDesignFiles) && formData.logoDesignFiles.length > 0) ||
+        Boolean(formData.logoDesign) ||
+        Boolean(formData.attachment);
+      if (!hasLogoDesign) {
+        alert('Please upload Logo Design attachment (mandatory).');
+        return;
+      }
+
+      const hasDigitalDesign =
+        (Array.isArray(formData.digitalDesignFiles) && formData.digitalDesignFiles.length > 0) ||
+        Boolean(formData.digitalDesign);
+      if (!hasDigitalDesign) {
+        alert('Please upload Digital Design attachment (mandatory).');
+        return;
+      }
+
       if (items.length === 0) {
         alert('Please add at least one item using "Add Item".');
         return;
@@ -1199,8 +1218,15 @@ function OrderManagement() {
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         const itemVal = (it.item || it.enterItem || '').trim();
-        if (!itemVal || !(it.fabric || '').trim() || !it.quantity || Number(it.quantity) <= 0 || !(it.size || '').trim() || !(it.color || '').trim()) {
-          alert(`Please fill in all mandatory fields for Item #${i + 1} (Item, Fabric, Quantity, Size, and Color).`);
+        const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
+        const isTee = isTshirt(it);
+        const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
+        const hasSize = !isTee || (it.size || '').trim().length > 0;
+        if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
+          const reqFields = isTee
+            ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
+            : 'Item, Quantity, Price Per Piece, and Color';
+          alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
           return;
         }
       }
@@ -2252,6 +2278,23 @@ function OrderManagement() {
     } else if (action === 'submit') {
       const isLeadQuery = (query || 'lead').toLowerCase().trim() === 'lead';
       if (isLeadQuery) {
+        if (items.length > 0) {
+          for (let i = 0; i < items.length; i++) {
+            const it = items[i];
+            const itemVal = (it.item || it.enterItem || '').trim();
+            const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
+            const isTee = isTshirt(it);
+            const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
+            const hasSize = !isTee || (it.size || '').trim().length > 0;
+            if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
+              const reqFields = isTee
+                ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
+                : 'Item, Quantity, Price Per Piece, and Color';
+              alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
+              return;
+            }
+          }
+        }
         try {
           const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
           const payload = {
@@ -2366,6 +2409,23 @@ function OrderManagement() {
       return;
     }
 
+    const hasLogoDesign =
+      (Array.isArray(formData.logoDesignFiles) && formData.logoDesignFiles.length > 0) ||
+      Boolean(formData.logoDesign) ||
+      Boolean(formData.attachment);
+    if (!hasLogoDesign) {
+      alert('Please upload Logo Design attachment (mandatory).');
+      return;
+    }
+
+    const hasDigitalDesign =
+      (Array.isArray(formData.digitalDesignFiles) && formData.digitalDesignFiles.length > 0) ||
+      Boolean(formData.digitalDesign);
+    if (!hasDigitalDesign) {
+      alert('Please upload Digital Design attachment (mandatory).');
+      return;
+    }
+
     if (items.length === 0) {
       alert('Please add at least one item using "Add Item".');
       return;
@@ -2374,8 +2434,15 @@ function OrderManagement() {
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       const itemVal = (it.item || it.enterItem || '').trim();
-      if (!itemVal || !(it.fabric || '').trim() || !it.quantity || Number(it.quantity) <= 0 || !(it.size || '').trim() || !(it.color || '').trim()) {
-        alert(`Please fill in all mandatory fields for Item #${i + 1} (Item, Fabric, Quantity, Size, and Color).`);
+      const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
+      const isTee = isTshirt(it);
+      const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
+      const hasSize = !isTee || (it.size || '').trim().length > 0;
+      if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
+        const reqFields = isTee
+          ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
+          : 'Item, Quantity, Price Per Piece, and Color';
+        alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
         return;
       }
     }
@@ -2487,7 +2554,7 @@ function OrderManagement() {
   };
 
   const handleAddItem = () => {
-    setItems([...items, { id: Date.now(), itemType: '', item: '', enterItem: '', fabric: '', quantity: '', size: '', color: '', printingType: '', sublimationOption: '' }]);
+    setItems([...items, { id: Date.now(), itemType: '', item: '', enterItem: '', neckType: '', pricePerPiece: '', fabric: '', quantity: '', size: '', color: '', printingType: '', sublimationOption: '' }]);
   };
 
   const handleItemChange = (id, fieldOrUpdates, value) => {
@@ -2529,8 +2596,15 @@ function OrderManagement() {
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       const itemVal = (it.item || it.enterItem || '').trim();
-      if (!itemVal || !(it.fabric || '').trim() || !it.quantity || Number(it.quantity) <= 0 || !(it.size || '').trim() || !(it.color || '').trim()) {
-        alert(`Please fill in all mandatory fields for Item #${i + 1} (Item, Fabric, Quantity, Size, and Color).`);
+      const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
+      const isTee = isTshirt(it);
+      const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
+      const hasSize = !isTee || (it.size || '').trim().length > 0;
+      if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
+        const reqFields = isTee
+          ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
+          : 'Item, Quantity, Price Per Piece, and Color';
+        alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
         return;
       }
     }
@@ -2560,6 +2634,7 @@ function OrderManagement() {
           sublimationOption: it.sublimationOption || '',
           collarType: it.collarType || '',
           neckType: it.neckType || '',
+          pricePerPiece: it.pricePerPiece !== undefined && it.pricePerPiece !== '' ? Number(it.pricePerPiece) : 0,
           fabric: it.fabric || '',
           quantity: Number(it.quantity) || 0,
           size: it.size || '',
@@ -2606,18 +2681,6 @@ function OrderManagement() {
 
   const handleOpenWorkflowModal = (lead, e) => {
     if (e) e.stopPropagation();
-    if (isCoordinator) {
-      let routeVal = "verification-to-staging";
-      if (currentSubStage === "staging-room" || currentSubStage === "staging-ground") {
-        routeVal = "staging-to-printing";
-      } else if (currentSubStage === "ready-to-pick-production") {
-        routeVal = "logo-cutting-to-printing";
-      } else if (currentSubStage === "ready-to-pick-up" || currentSubStage === "ready-to-pick-printing") {
-        routeVal = "printing-to-staging";
-      }
-      navigate(`/tasks/ready-to-pick?id=${lead._id}&route=${routeVal}&from=${encodeURIComponent(location.pathname)}`);
-      return;
-    }
     navigate(`/order/create-lead?id=${lead._id}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(lead.orderStage || 'sample')}`);
   };
 
@@ -2729,6 +2792,12 @@ function OrderManagement() {
             stageData = { dtfVerified: true, note: stageForm.note };
           } else if (currentSub === 'stock') {
             stageData = { stockVerified: true, note: stageForm.note };
+          } else if (currentSub === 'ready-to-pick' || currentSub === 'ready-to-pickup') {
+            stageData = {
+              stockSampleReceived: stageForm.stockSampleReceived,
+              stockSampleNotReceivedCount: Number(stageForm.stockSampleNotReceivedCount) || 0,
+              note: stageForm.note,
+            };
           } else if (currentSub === 'printing') {
             stageData = {
               printingStatus: stageForm.stageStatus,
@@ -2785,6 +2854,12 @@ function OrderManagement() {
             stageData = { dtfVerified: true, note: stageForm.note };
           } else if (currentSub === 'stock') {
             stageData = { stockVerified: true, note: stageForm.note };
+          } else if (currentSub === 'ready-to-pick' || currentSub === 'ready-to-pickup') {
+            stageData = {
+              stockSampleReceived: stageForm.stockSampleReceived,
+              stockSampleNotReceivedCount: Number(stageForm.stockSampleNotReceivedCount) || 0,
+              note: stageForm.note,
+            };
           } else if (currentSub === 'printing') {
             stageData = {
               printingStatus: stageForm.partialPrintingStatus,
@@ -2829,6 +2904,12 @@ function OrderManagement() {
             stageData = { dtfVerified: true, note: stageForm.note };
           } else if (currentSub === 'stock') {
             stageData = { stockVerified: true, note: stageForm.note };
+          } else if (currentSub === 'ready-to-pick' || currentSub === 'ready-to-pickup') {
+            stageData = {
+              stockSampleReceived: stageForm.stockSampleReceived,
+              stockSampleNotReceivedCount: Number(stageForm.stockSampleNotReceivedCount) || 0,
+              note: stageForm.note,
+            };
           } else if (currentSub === 'printing') {
             const completeAllocQty = Math.max(0, (Number(lead.totalQuantity) || 100) - (Number(lead.customerApprovalData?.partialQuantity) || (lead.partialPrintingData ? 50 : 0))) || lead.totalQuantity || 100;
             stageData = {
@@ -2889,10 +2970,38 @@ function OrderManagement() {
           }
         } else if (currentSub === 'stock') {
           if (action === 'submit') {
-            toSubStage = 'printing';
+            toSubStage = 'ready-to-pick';
             stageData = { stockVerified: true, note: stageForm.note };
           } else {
             toSubStage = 'dtf-pending';
+          }
+        } else if (currentSub === 'ready-to-pick' || currentSub === 'ready-to-pickup') {
+          if (action === 'submit') {
+            if (stageForm.stockSampleReceived === 'no') {
+              alert('Cannot deliver to printing: stock sample was marked as not received. Order is On Hold.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            if (stageForm.stockSampleReceived !== 'yes') {
+              alert('Please select whether stock sample was received before delivering to printing.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            toSubStage = 'printing';
+            stageData = {
+              stockSampleReceived: 'yes',
+              stockHandoverComplete: true,
+              stockHandoverAt: new Date(),
+              stockHandoverBy: currentUser?.name || 'Alex Rivera (Coordinator)',
+              performedBy: currentUser?.name || 'Alex Rivera',
+              performedByRole: 'Coordinator',
+              performedById: 'coordinator',
+              logAction: 'Delivered From Stock to Printing by Coordinator',
+              logDetails: `Stock garments collected from Stock Room and delivered to Printing Floor by ${currentUser?.name || 'Alex Rivera'} (Coordinator). Advanced to Sample → Printing.`,
+              note: stageForm.note,
+            };
+          } else {
+            toSubStage = 'stock';
           }
         } else if (currentSub === 'printing') {
           if (action === 'submit') {
@@ -3090,10 +3199,38 @@ function OrderManagement() {
           }
         } else if (currentSub === 'stock') {
           if (action === 'submit') {
-            toSubStage = 'printing';
+            toSubStage = 'ready-to-pick';
             stageData = { stockVerified: true, note: stageForm.note };
           } else {
             toSubStage = 'dtf-pending';
+          }
+        } else if (currentSub === 'ready-to-pick' || currentSub === 'ready-to-pickup') {
+          if (action === 'submit') {
+            if (stageForm.stockSampleReceived === 'no') {
+              alert('Cannot deliver to printing: stock sample was marked as not received. Order is On Hold.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            if (stageForm.stockSampleReceived !== 'yes') {
+              alert('Please select whether stock sample was received before delivering to printing.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            toSubStage = 'printing';
+            stageData = {
+              stockSampleReceived: 'yes',
+              stockHandoverComplete: true,
+              stockHandoverAt: new Date(),
+              stockHandoverBy: currentUser?.name || 'Alex Rivera (Coordinator)',
+              performedBy: currentUser?.name || 'Alex Rivera',
+              performedByRole: 'Coordinator',
+              performedById: 'coordinator',
+              logAction: 'Delivered From Stock to Printing by Coordinator',
+              logDetails: `Stock garments collected from Stock Room and delivered to Printing Floor by ${currentUser?.name || 'Alex Rivera'} (Coordinator). Advanced to Sample → Printing.`,
+              note: stageForm.note,
+            };
+          } else {
+            toSubStage = 'stock';
           }
         } else if (currentSub === 'printing') {
           if (action === 'submit') {
@@ -3174,10 +3311,38 @@ function OrderManagement() {
           }
         } else if (currentSub === 'stock') {
           if (action === 'submit') {
-            toSubStage = 'printing';
+            toSubStage = 'ready-to-pick';
             stageData = { stockVerified: true, note: stageForm.note };
           } else {
             toSubStage = 'dtf-pending';
+          }
+        } else if (currentSub === 'ready-to-pick' || currentSub === 'ready-to-pickup') {
+          if (action === 'submit') {
+            if (stageForm.stockSampleReceived === 'no') {
+              alert('Cannot deliver to printing: stock sample was marked as not received. Order is On Hold.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            if (stageForm.stockSampleReceived !== 'yes') {
+              alert('Please select whether stock sample was received before delivering to printing.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            toSubStage = 'printing';
+            stageData = {
+              stockSampleReceived: 'yes',
+              stockHandoverComplete: true,
+              stockHandoverAt: new Date(),
+              stockHandoverBy: currentUser?.name || 'Alex Rivera (Coordinator)',
+              performedBy: currentUser?.name || 'Alex Rivera',
+              performedByRole: 'Coordinator',
+              performedById: 'coordinator',
+              logAction: 'Delivered From Stock to Printing by Coordinator',
+              logDetails: `Stock garments collected from Stock Room and delivered to Printing Floor by ${currentUser?.name || 'Alex Rivera'} (Coordinator). Advanced to Sample → Printing.`,
+              note: stageForm.note,
+            };
+          } else {
+            toSubStage = 'stock';
           }
         } else if (currentSub === 'printing') {
           if (action === 'submit') {
@@ -3294,6 +3459,8 @@ function OrderManagement() {
         let msg = `Order #${lead.orderId || 'Order'} `;
         if (action === 'refer_back') {
           msg += `referred back to ${toSubStage.replace(/-/g, ' ')}.`;
+        } else if (currentSub === 'ready-to-pick' || currentSub === 'ready-to-pickup') {
+          msg += `delivered from stock to printing! Advanced to ${toStage.toUpperCase()} -> PRINTING.`;
         } else if (currentSub === 'customer-approval-awaiting' && currentOrderStage === 'sample') {
           if (stageForm.customerApproved === 'no' || action === 'refer_back') {
             msg += `sample not approved. Order returned to Sample -> Order.`;
@@ -3481,6 +3648,7 @@ function OrderManagement() {
     // Sample sub-stages
     const isSampleDtfPending = currentOrderStage === 'sample' && activeSub === 'dtf-pending';
     const isSampleStock = currentOrderStage === 'sample' && activeSub === 'stock';
+    const isSampleReadyToPick = currentOrderStage === 'sample' && (activeSub === 'ready-to-pick' || activeSub === 'ready-to-pickup');
     const isSamplePrinting = currentOrderStage === 'sample' && activeSub === 'printing';
     const isSampleReadyToPickup = currentOrderStage === 'sample' && activeSub === 'ready-to-pick-up';
     const isSampleStagingGround = currentOrderStage === 'sample' && (activeSub === 'staging-ground' || activeSub === 'staging-room');
@@ -3512,7 +3680,7 @@ function OrderManagement() {
 
     const isRecognizedWorkflowStage = Boolean(
       isPickProduction ||
-      isSampleDtfPending || isSampleStock || isSamplePrinting || isSampleReadyToPickup || isSampleStagingGround || isSampleCustomerApproval ||
+      isSampleDtfPending || isSampleStock || isSampleReadyToPick || isSamplePrinting || isSampleReadyToPickup || isSampleStagingGround || isSampleCustomerApproval ||
       isPartialDtfPending || isPartialStock || isPartialPrinting || isPartialQualityCheck || isPartialPackaging || isPartialStagingRoom || isPartialPaymentConfirmation ||
       isCompleteDtfPending || isCompleteStock || isCompletePrinting || isCompleteQualityCheck || isCompletePackaging || isCompleteDeliveryPending || isCompleteDelivered || isCompleteCustomerSupport ||
       isAwaitingTaskClearance
@@ -3530,8 +3698,9 @@ function OrderManagement() {
 
     const isCurrentStageApproved = Boolean(
       // Sample
-      (activeSub === 'dtf-pending' && currentOrderStage === 'sample' && (['stock', 'printing', 'ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
-      (activeSub === 'stock' && currentOrderStage === 'sample' && (['printing', 'ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
+      (activeSub === 'dtf-pending' && currentOrderStage === 'sample' && (['stock', 'ready-to-pick', 'printing', 'ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
+      (activeSub === 'stock' && currentOrderStage === 'sample' && (['ready-to-pick', 'printing', 'ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
+      ((activeSub === 'ready-to-pick' || activeSub === 'ready-to-pickup') && currentOrderStage === 'sample' && (orderApprovalData.stockHandoverComplete || ['printing', 'ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
       (activeSub === 'printing' && currentOrderStage === 'sample' && (orderApprovalData.printingStageData?.printingStatus === 'Complete' || ['ready-to-pick-up', 'staging-ground', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
       (activeSub === 'ready-to-pick-up' && (['staging-ground', 'staging-room', 'customer-approval-awaiting'].includes(currentSub) || currentOrderStage !== 'sample')) ||
       ((activeSub === 'staging-ground' || activeSub === 'staging-room') && currentOrderStage === 'sample' && (orderApprovalData.sampleStagingGroundData?.orderRequirementMatch || currentSub === 'customer-approval-awaiting' || currentOrderStage !== 'sample')) ||
@@ -3637,8 +3806,8 @@ function OrderManagement() {
       pickFromLabel = 'Production Room (Logo Dept)';
       deliverToLabel = currentOrderStage === 'sample' ? 'Sample Printing Line' : 'Bulk Printing Line';
     } else if (activeSub === 'ready-to-pick' || activeSub === 'ready-to-pickup') {
-      pickFromLabel = 'Stock Room';
-      deliverToLabel = currentOrderStage === 'sample' ? 'Sample Printing Line' : 'Bulk Printing Line';
+      pickFromLabel = 'Stock Room (Verified)';
+      deliverToLabel = 'Production Printing Floor (Sample Printing Line)';
     } else if (activeSub === 'ready-to-pick-up') {
       if (currentOrderStage === 'sample') {
         pickFromLabel = 'Printing Department';
@@ -4385,6 +4554,137 @@ function OrderManagement() {
                       boxSizing: 'border-box',
                     }}
                   />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SAMPLE -> FROM STOCK (COORDINATOR HANDOVER) */}
+          {isSampleReadyToPick && (
+            <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Package size={17} />
+                  From Stock — Coordinator Task Handover
+                </h4>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac' }}>
+                    ✓ Department Clearances Approved
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', background: '#f3e8ff', color: '#7e22ce', border: '1px solid #d8b4fe' }}>
+                    Coordinator Action
+                  </span>
+                </div>
+              </div>
+
+              {/* Form Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                {/* Q1: Stock Sample Received? */}
+                <div className="form-field">
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                    Stock Sample Received? ({stockSampleCount} pcs)
+                  </label>
+                  <select
+                    id="select-stock-sample-received-coord"
+                    value={stageForm.stockSampleReceived || ''}
+                    onChange={(e) => setStageForm({ ...stageForm, stockSampleReceived: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      fontSize: '13.5px',
+                      fontWeight: 500,
+                      color: '#0f172a',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <option value="">Select...</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                  {stageForm.stockSampleReceived === 'no' && (
+                    <div style={{ marginTop: '8px' }}>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
+                        Deficit (pcs)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="Enter deficit..."
+                        value={stageForm.stockSampleNotReceivedCount || ''}
+                        onChange={(e) => setStageForm({ ...stageForm, stockSampleNotReceivedCount: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          background: '#ffffff',
+                          fontSize: '13.5px',
+                          color: '#0f172a',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Q2: Handover Destination */}
+                <div className="form-field">
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                    Deliver To Destination
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value="Production Printing Floor (Sample Printing Line)"
+                    className="read-only-input"
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #bbf7d0',
+                      background: '#f0fdf4',
+                      fontSize: '13.5px',
+                      fontWeight: 700,
+                      color: '#15803d',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Department Clearances Summary Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', marginTop: '12px' }}>
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 14px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#047857', marginBottom: '4px' }}>
+                    ✓ TASK 1 — STOCK ROOM MANAGER
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#1e293b' }}>
+                    Elena Rostova: <strong>Approved</strong> ({stockSampleCount} pcs allocated)
+                  </div>
+                  {orderApprovalData.stockApproval?.note && (
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                      &ldquo;{orderApprovalData.stockApproval.note}&rdquo;
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 14px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#047857', marginBottom: '4px' }}>
+                    ✓ TASK 2 — PRODUCTION ROOM MANAGER
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#1e293b' }}>
+                    Marcus Vance: <strong>Approved</strong> ({prodSampleCount} logos cut &amp; ready)
+                  </div>
+                  {orderApprovalData.productionApproval?.note && (
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                      &ldquo;{orderApprovalData.productionApproval.note}&rdquo;
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -5973,21 +6273,9 @@ function OrderManagement() {
 
   useEffect(() => {
     if (editId && location.pathname !== '/order/create-lead') {
-      if (isCoordinator) {
-        let routeVal = "verification-to-staging";
-        if (currentSubStage === "staging-room" || currentSubStage === "staging-ground") {
-          routeVal = "staging-to-printing";
-        } else if (currentSubStage === "ready-to-pick-production") {
-          routeVal = "logo-cutting-to-printing";
-        } else if (currentSubStage === "ready-to-pick-up" || currentSubStage === "ready-to-pick-printing") {
-          routeVal = "printing-to-staging";
-        }
-        navigate(`/tasks/ready-to-pick?id=${editId}&route=${routeVal}&from=${encodeURIComponent(location.pathname)}`);
-        return;
-      }
       navigate(`/order/create-lead?id=${editId}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(currentStage || 'sample')}`);
     }
-  }, [editId, location.pathname, currentStage, currentSubStage, isCoordinator]);
+  }, [editId, location.pathname, currentStage, currentSubStage]);
 
   const isFormActive = Boolean(editId || showCreateForm || searchParams.get('mode') === 'new');
 
@@ -6057,7 +6345,8 @@ function OrderManagement() {
     const getStageTabLabel = (sub) => {
       const s = (sub || '').toLowerCase().trim();
       if (s === 'printing') return 'Printing';
-      if (s === 'ready-to-pick-up' || s === 'ready-to-pick' || s === 'ready-to-pickup') return 'Ready to Pick Up';
+      if (s === 'ready-to-pick' || s === 'ready-to-pickup') return 'From Stock';
+      if (s === 'ready-to-pick-up') return 'From Printing';
       if (s === 'staging-ground' || s === 'staging-room') return 'Staging Room';
       if (s === 'customer-approval-awaiting' || s === 'customer-approval') return 'Customer Approval Awaiting';
       if (s === 'quality-check') return 'Quality Check';
@@ -6069,6 +6358,7 @@ function OrderManagement() {
       return s ? s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Stage Form';
     };
 
+    const isSampleReadyToPick = resolvedOrderStage === 'sample' && (activeSub === 'ready-to-pick' || activeSub === 'ready-to-pickup');
     const isSamplePrinting = resolvedOrderStage === 'sample' && activeSub === 'printing';
     const isSampleReadyToPickup = resolvedOrderStage === 'sample' && activeSub === 'ready-to-pick-up';
     const isSampleStagingGround = resolvedOrderStage === 'sample' && (activeSub === 'staging-ground' || activeSub === 'staging-room');
@@ -6080,7 +6370,9 @@ function OrderManagement() {
     const isCompleteQualityCheck = resolvedOrderStage === 'complete' && activeSub === 'quality-check';
     let isTopSubmitDisabled = false;
     if (editId) {
-      if (isSamplePrinting) {
+      if (isSampleReadyToPick) {
+        isTopSubmitDisabled = stageForm.stockSampleReceived !== 'yes';
+      } else if (isSamplePrinting) {
         isTopSubmitDisabled =
           stageForm.stockSampleReceived === 'no' ||
           stageForm.prodSampleReceived === 'no' ||
@@ -6205,7 +6497,9 @@ function OrderManagement() {
                   disabled={submittingStageAction || isTopSubmitDisabled}
                   title={
                     isTopSubmitDisabled
-                      ? (isSampleReadyToPickup && (stageForm.sampleRequirementMatch === false || stageForm.sampleRequirementMatch === 'no')
+                      ? (isSampleReadyToPick && stageForm.stockSampleReceived !== 'yes'
+                        ? "Please select 'Yes' for Stock Sample Received before delivering to printing."
+                        : isSampleReadyToPickup && (stageForm.sampleRequirementMatch === false || stageForm.sampleRequirementMatch === 'no')
                         ? "Garments do not match specifications ('No' selected). Submit is disabled; only Save and Refer Back are available."
                         : isSampleReadyToPickup && stageForm.printingSampleReceived === 'no'
                           ? "Sample marked as not received from printing. Submit is disabled; only Save and Refer Back are available."
@@ -6261,7 +6555,11 @@ function OrderManagement() {
                 >
                   <CheckCircle size={15} />
                   <span>
-                    {submittingStageAction ? 'Processing...' : 'Submit'}
+                    {submittingStageAction
+                      ? 'Processing...'
+                      : isSampleReadyToPick
+                      ? 'Deliver to Printing'
+                      : 'Submit'}
                   </span>
                 </button>
               </div>
@@ -7016,7 +7314,7 @@ function OrderManagement() {
                       <div className="form-group">
                         <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <Paperclip size={15} style={{ color: '#2563eb' }} />
-                          <span>Logo Design (Max 5)</span>
+                          <span>Logo Design (Max 5) *</span>
                         </label>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -7111,7 +7409,7 @@ function OrderManagement() {
                       <div className="form-group">
                         <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <Paperclip size={15} style={{ color: '#2563eb' }} />
-                          <span>Digital Design (Max 5)</span>
+                          <span>Digital Design (Max 5) *</span>
                         </label>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -7213,169 +7511,7 @@ function OrderManagement() {
                         />
                       </div>
 
-                      <div className="form-group">
-                        <label>Total Quantity (pcs) *</label>
-                        <div>
-                          <input
-                            type="number"
-                            required
-                            disabled={isReadOnly}
-                            value={formData.totalQuantity}
-                            onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value })}
-                            style={{
-                              width: '100%',
-                              borderColor:
-                                items.length > 0 && orderTotalQty > 0
-                                  ? itemsTotalQty === orderTotalQty
-                                    ? '#22c55e'
-                                    : itemsTotalQty > orderTotalQty
-                                      ? '#ef4444'
-                                      : '#f59e0b'
-                                  : undefined,
-                            }}
-                          />
-                          {items.length > 0 && orderTotalQty > 0 && (
-                            <div style={{ marginTop: '5px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              {itemsTotalQty === orderTotalQty ? (
-                                <span style={{ color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <CheckCircle2 size={13} /> Matches Add Item total ({itemsTotalQty}/{orderTotalQty} pcs)
-                                </span>
-                              ) : itemsTotalQty > orderTotalQty ? (
-                                <span style={{ color: '#dc2626', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <AlertCircle size={13} /> Items total ({itemsTotalQty} pcs) exceeds Total Quantity ({orderTotalQty} pcs). Must equal ({orderTotalQty} === {orderTotalQty}).
-                                </span>
-                              ) : (
-                                <span style={{ color: '#d97706', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <AlertCircle size={13} /> Items total: {itemsTotalQty} / {orderTotalQty} pcs ({orderTotalQty - itemsTotalQty} pcs remaining to match)
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Price Per Piece *</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          required
-                          disabled={isReadOnly}
-                          value={formData.pricePerPiece}
-                          onChange={(e) => setFormData({ ...formData, pricePerPiece: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>Total Amount *</label>
-                        <input
-                          type="number"
-                          required
-                          disabled={isReadOnly}
-                          value={formData.totalAmount}
-                          onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>GST (in percentage)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          disabled={isReadOnly}
-                          value={formData.gst}
-                          onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>Net Amount *</label>
-                        <input
-                          type="number"
-                          required
-                          disabled={isReadOnly}
-                          value={formData.netAmount}
-                          onChange={(e) => setFormData({ ...formData, netAmount: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>Advance Amount *</label>
-                        <input
-                          type="number"
-                          required
-                          disabled={isReadOnly}
-                          value={formData.advanceAmount}
-                          onChange={(e) => setFormData({ ...formData, advanceAmount: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>Pending Amount *</label>
-                        <input
-                          type="number"
-                          required
-                          disabled={isReadOnly}
-                          value={formData.pendingAmount}
-                          onChange={(e) => setFormData({ ...formData, pendingAmount: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>Urgency *</label>
-                        <select
-                          required
-                          disabled={isReadOnly}
-                          value={formData.urgency}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setFormData((prev) => ({
-                              ...prev,
-                              urgency: val,
-                              ...(val.toLowerCase() !== 'yes' ? { deliveryDate: getDefaultDeliveryDate() } : {})
-                            }));
-                          }}
-                        >
-                          <option value="">Select urgency...</option>
-                          <option value="yes">Yes</option>
-                          <option value="no">No</option>
-                        </select>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Delivery Date *</label>
-                        <input
-                          type="date"
-                          required
-                          value={formData.deliveryDate}
-                          onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })}
-                          disabled={isReadOnly || formData.urgency?.toLowerCase() !== 'yes'}
-                          style={
-                            isReadOnly || formData.urgency?.toLowerCase() !== 'yes'
-                              ? { background: 'rgba(0,0,0,0.03)', cursor: isReadOnly ? 'default' : 'not-allowed', color: '#64748b' }
-                              : {}
-                          }
-                          title={formData.urgency?.toLowerCase() !== 'yes' ? "Only editable when Urgency is 'Yes'" : ""}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>Mode of Delivery</label>
-                        <select
-                          disabled={isReadOnly}
-                          value={formData.modeOfDelivery}
-                          onChange={(e) => setFormData({ ...formData, modeOfDelivery: e.target.value })}
-                        >
-                          <option value="">Select mode...</option>
-                          <option value="cash on delivery">Cash on Delivery</option>
-                          <option value="transportation">Transportation</option>
-                          <option value="courier">Courier</option>
-                          <option value="self pick up">Self Pick up</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div style={{ marginTop: '32px' }}>
+                    <div style={{ gridColumn: '1 / -1', margin: '20px 0' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                           {!isItemsReadOnly && (
@@ -7588,11 +7724,36 @@ function OrderManagement() {
                                 </div>
                               )}
 
+                              {isTshirt(item) && (
+                                <div style={{ flex: '1.1 1 115px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>NECKTYPE</label>
+                                  <select
+                                    disabled={isItemsReadOnly}
+                                    value={
+                                      item.neckType
+                                        ? (item.neckType.toUpperCase() === 'ROUND NECK' ? 'ROUND NECK' : item.neckType.toUpperCase() === 'COLLAR NECK' ? 'COLLAR NECK' : item.neckType)
+                                        : ''
+                                    }
+                                    onChange={(e) => handleItemChange(item.id, 'neckType', e.target.value)}
+                                    style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                                  >
+                                    <option value="">Select...</option>
+                                    <option value="ROUND NECK">ROUND NECK</option>
+                                    <option value="COLLAR NECK">COLLAR NECK</option>
+                                    {item.neckType && !['ROUND NECK', 'COLLAR NECK'].includes(item.neckType.toUpperCase()) && (
+                                      <option value={item.neckType}>{item.neckType}</option>
+                                    )}
+                                  </select>
+                                </div>
+                              )}
+
                               <div style={{ flex: '1 1 95px', minWidth: '85px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Fabric *</label>
+                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>
+                                  Fabric {isTshirt(item) ? '*' : ''}
+                                </label>
                                 <input
                                   type="text"
-                                  required
+                                  required={isTshirt(item)}
                                   disabled={isItemsReadOnly}
                                   value={item.fabric || ''}
                                   onChange={(e) => handleItemChange(item.id, 'fabric', e.target.value)}
@@ -7610,10 +7771,25 @@ function OrderManagement() {
                                   style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </div>
-                              <div style={{ flex: '0.8 1 75px', minWidth: '65px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Size *</label>
-                                <select
+                              <div style={{ flex: '0.9 1 85px', minWidth: '75px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Price Per Piece *</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
                                   required
+                                  disabled={isItemsReadOnly}
+                                  placeholder="0.00"
+                                  value={item.pricePerPiece ?? ''}
+                                  onChange={(e) => handleItemChange(item.id, 'pricePerPiece', e.target.value)}
+                                  style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                                />
+                              </div>
+                              <div style={{ flex: '0.8 1 75px', minWidth: '65px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>
+                                  Size {isTshirt(item) ? '*' : ''}
+                                </label>
+                                <select
+                                  required={isTshirt(item)}
                                   disabled={isItemsReadOnly}
                                   value={item.size || ''}
                                   onChange={(e) => handleItemChange(item.id, 'size', e.target.value)}
@@ -7669,6 +7845,168 @@ function OrderManagement() {
                           ))}
                         </div>
                       )}
+                    </div>
+
+                      <div className="form-group">
+                        <label>Total Quantity (pcs) *</label>
+                        <div>
+                          <input
+                            type="number"
+                            required
+                            disabled={isReadOnly}
+                            value={formData.totalQuantity}
+                            onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value })}
+                            style={{
+                              width: '100%',
+                              borderColor:
+                                items.length > 0 && orderTotalQty > 0
+                                  ? itemsTotalQty === orderTotalQty
+                                    ? '#22c55e'
+                                    : itemsTotalQty > orderTotalQty
+                                      ? '#ef4444'
+                                      : '#f59e0b'
+                                  : undefined,
+                            }}
+                          />
+                          {items.length > 0 && orderTotalQty > 0 && (
+                            <div style={{ marginTop: '5px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              {itemsTotalQty === orderTotalQty ? (
+                                <span style={{ color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <CheckCircle2 size={13} /> Matches Add Item total ({itemsTotalQty}/{orderTotalQty} pcs)
+                                </span>
+                              ) : itemsTotalQty > orderTotalQty ? (
+                                <span style={{ color: '#dc2626', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <AlertCircle size={13} /> Items total ({itemsTotalQty} pcs) exceeds Total Quantity ({orderTotalQty} pcs). Must equal ({orderTotalQty} === {orderTotalQty}).
+                                </span>
+                              ) : (
+                                <span style={{ color: '#d97706', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <AlertCircle size={13} /> Items total: {itemsTotalQty} / {orderTotalQty} pcs ({orderTotalQty - itemsTotalQty} pcs remaining to match)
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Price Per Piece *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          disabled={isReadOnly}
+                          value={formData.pricePerPiece}
+                          onChange={(e) => setFormData({ ...formData, pricePerPiece: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Total Amount *</label>
+                        <input
+                          type="number"
+                          required
+                          disabled={isReadOnly}
+                          value={formData.totalAmount}
+                          onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>GST (in percentage)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          disabled={isReadOnly}
+                          value={formData.gst}
+                          onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Net Amount *</label>
+                        <input
+                          type="number"
+                          required
+                          disabled={isReadOnly}
+                          value={formData.netAmount}
+                          onChange={(e) => setFormData({ ...formData, netAmount: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Advance Amount *</label>
+                        <input
+                          type="number"
+                          required
+                          disabled={isReadOnly}
+                          value={formData.advanceAmount}
+                          onChange={(e) => setFormData({ ...formData, advanceAmount: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Pending Amount *</label>
+                        <input
+                          type="number"
+                          required
+                          disabled={isReadOnly}
+                          value={formData.pendingAmount}
+                          onChange={(e) => setFormData({ ...formData, pendingAmount: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Urgency *</label>
+                        <select
+                          required
+                          disabled={isReadOnly}
+                          value={formData.urgency}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData((prev) => ({
+                              ...prev,
+                              urgency: val,
+                              ...(val.toLowerCase() !== 'yes' ? { deliveryDate: getDefaultDeliveryDate() } : {})
+                            }));
+                          }}
+                        >
+                          <option value="">Select urgency...</option>
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Delivery Date *</label>
+                        <input
+                          type="date"
+                          required
+                          value={formData.deliveryDate}
+                          onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })}
+                          disabled={isReadOnly || formData.urgency?.toLowerCase() !== 'yes'}
+                          style={
+                            isReadOnly || formData.urgency?.toLowerCase() !== 'yes'
+                              ? { background: 'rgba(0,0,0,0.03)', cursor: isReadOnly ? 'default' : 'not-allowed', color: '#64748b' }
+                              : {}
+                          }
+                          title={formData.urgency?.toLowerCase() !== 'yes' ? "Only editable when Urgency is 'Yes'" : ""}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Mode of Delivery</label>
+                        <select
+                          disabled={isReadOnly}
+                          value={formData.modeOfDelivery}
+                          onChange={(e) => setFormData({ ...formData, modeOfDelivery: e.target.value })}
+                        >
+                          <option value="">Select mode...</option>
+                          <option value="cash on delivery">Cash on Delivery</option>
+                          <option value="transportation">Transportation</option>
+                          <option value="courier">Courier</option>
+                          <option value="self pick up">Self Pick up</option>
+                        </select>
+                      </div>
                     </div>
 
                     {!isExecutionStageView && !isLeadManager && !isApprovalReview && (
@@ -9177,18 +9515,6 @@ function OrderManagement() {
                       key={item._id || item.orderId || `order-row-${itemIdx}`}
                       id={`order-row-${item.orderId || item._id}`}
                       onClick={() => {
-                        if (isCoordinator) {
-                          let routeVal = "verification-to-staging";
-                          if (currentSubStage === "staging-room" || currentSubStage === "staging-ground") {
-                            routeVal = "staging-to-printing";
-                          } else if (currentSubStage === "ready-to-pick-production") {
-                            routeVal = "logo-cutting-to-printing";
-                          } else if (currentSubStage === "ready-to-pick-up" || currentSubStage === "ready-to-pick-printing") {
-                            routeVal = "printing-to-staging";
-                          }
-                          navigate(`/tasks/ready-to-pick?id=${item._id}&route=${routeVal}&from=${encodeURIComponent(location.pathname)}`);
-                          return;
-                        }
                         const editParam = isLeadManager ? 'false' : 'true';
                         navigate(`/order/create-lead?id=${item._id}&edit=${editParam}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(item.orderStage || 'sample')}`);
                       }}

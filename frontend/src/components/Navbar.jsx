@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Search,
   Sun,
   Moon,
   Settings,
@@ -124,12 +123,7 @@ function Navbar({ darkMode, setDarkMode }) {
       </div>
 
       {/* Center Side */}
-      <div className="navbar-center">
-        <div className="navbar-search">
-          <Search size={18} className="search-icon" />
-          <input type="text" placeholder="Search anything..." />
-        </div>
-      </div>
+
 
       {/* Right Side */}
       <div className="navbar-right">

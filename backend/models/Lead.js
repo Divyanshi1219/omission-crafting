@@ -8,6 +8,7 @@ const itemSchema = new mongoose.Schema({
   sublimationOption: { type: String, default: "" },
   collarType: { type: String, default: "" },
   neckType: { type: String, default: "" },
+  pricePerPiece: { type: Number, default: 0 },
   fabric: { type: String, default: "" },
   quantity: { type: Number, default: 0 },
   size: { type: String, default: "" },
