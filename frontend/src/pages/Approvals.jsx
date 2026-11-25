@@ -1747,9 +1747,15 @@ export default function Approvals({ defaultTab = "all" }) {
 
   // Visible orders for current role (Stock Room and Production only see leads approved by Lead Manager)
   const visibleOrders = useMemo(() => {
+    const nonDraftOrders = orders.filter((o) => {
+      const appStatus = (o.approvalStatus || "").toLowerCase().trim();
+      const leadStatus = (o.leadApproval?.status || "").toLowerCase().trim();
+      return appStatus !== "draft" && leadStatus !== "draft" && o.isDraft !== true;
+    });
+
     if (isProdProfile) {
       // Production Lead only handles DTF tasks - NO Embroidery tasks!
-      return orders.filter(
+      return nonDraftOrders.filter(
         (o) =>
           !isOrderEmbroidery(o) &&
           (o.orderStage === "partial" ||
@@ -1762,7 +1768,7 @@ export default function Approvals({ defaultTab = "all" }) {
       );
     }
     if (isStockProfile) {
-      return orders.filter(
+      return nonDraftOrders.filter(
         (o) =>
           o.orderStage === "partial" ||
           o.orderStage === "complete" ||
@@ -1774,7 +1780,7 @@ export default function Approvals({ defaultTab = "all" }) {
           o.approvalComments?.some((c) => c.role === "Lead Manager" && c.status === "Approved")
       );
     }
-    return orders;
+    return nonDraftOrders;
   }, [orders, isStockProfile, isProdProfile]);
 
   // Filtered orders for the active task tab
@@ -5998,6 +6004,9 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
 
                   // 12. Append all recorded activityLogs
                   rawLogs.forEach((l) => combinedLogs.push(l));
+
+                  // Always display latest activity log first (reverse chronological order)
+                  combinedLogs.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
 
                   return (
                     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>

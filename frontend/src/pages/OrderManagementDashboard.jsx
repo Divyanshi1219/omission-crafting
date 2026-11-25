@@ -102,7 +102,7 @@ const normalizeRecord = (lead) => {
   return { ...lead, normStage: stage, normSub: sub };
 };
 
-export default function OrderManagementDashboard() {
+export default function OrderManagementDashboard({ selectedEmployee = "all" }) {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const isSales = currentUser?.role === "Sales Executive" || currentUser?.id?.startsWith("sales");
@@ -188,20 +188,30 @@ export default function OrderManagementDashboard() {
     });
   }, [leads, isSales, currentUser]);
 
+  const effectiveLeads = useMemo(() => {
+    if (isSales) return salesAllLeads;
+    if (isAdmin && selectedEmployee && selectedEmployee !== "all") {
+      const target = selectedEmployee.toLowerCase().trim();
+      return leads.filter(l => {
+        const leadEmp = (l.employeeName || '').toLowerCase().trim();
+        return leadEmp && (leadEmp === target || leadEmp.includes(target) || target.includes(leadEmp));
+      });
+    }
+    return leads;
+  }, [isSales, salesAllLeads, isAdmin, selectedEmployee, leads]);
+
   // Orders (DTF orders, excluding pure leads and embroidery)
   const orders = useMemo(() => {
-    const list = isSales ? salesAllLeads : leads;
-    const valid = list
+    const valid = effectiveLeads
       .filter(l => (l.query || '').toLowerCase().trim() !== 'lead')
       .filter(l => !isOrderEmbroidery(l));
     return valid.map(normalizeRecord);
-  }, [leads, salesAllLeads, isSales]);
+  }, [effectiveLeads]);
 
   // Open inquiries (leads not yet converted into orders)
   const inquiries = useMemo(() => {
-    const list = isSales ? salesAllLeads : leads;
-    return list.filter(l => (l.query || '').toLowerCase() !== 'order' && !l.orderStage && !l.totalQuantity);
-  }, [leads, salesAllLeads, isSales]);
+    return effectiveLeads.filter(l => (l.query || '').toLowerCase() !== 'order' && !l.orderStage && !l.totalQuantity);
+  }, [effectiveLeads]);
 
   // Commercial financial metrics for sales executive
   const salesFinancials = useMemo(() => {
@@ -231,7 +241,7 @@ export default function OrderManagementDashboard() {
       pendingPayment += pend;
     });
 
-    const totalLeadsCount = salesAllLeads.length || orders.length;
+    const totalLeadsCount = effectiveLeads.length || orders.length;
     const conversionRate = totalLeadsCount > 0 ? Math.round((orders.length / totalLeadsCount) * 100) : 0;
 
     return {
@@ -241,7 +251,7 @@ export default function OrderManagementDashboard() {
       conversionRate,
       inquiriesCount: inquiries.length,
     };
-  }, [orders, salesAllLeads, inquiries]);
+  }, [orders, effectiveLeads, inquiries]);
 
   // Urgent Orders & Upcoming Deliveries
   const urgentOrders = useMemo(() => {
@@ -298,19 +308,16 @@ export default function OrderManagementDashboard() {
 
   // Side menu exact matching: sample -> all, partial -> all, complete -> all
   const sampleStageAllItems = useMemo(() => {
-    const list = isSales ? salesAllLeads : leads;
-    return list.filter(item => isStageAllItem(item, 'sample'));
-  }, [isSales, salesAllLeads, leads]);
+    return effectiveLeads.filter(item => isStageAllItem(item, 'sample'));
+  }, [effectiveLeads]);
 
   const partialStageAllItems = useMemo(() => {
-    const list = isSales ? salesAllLeads : leads;
-    return list.filter(item => isStageAllItem(item, 'partial'));
-  }, [isSales, salesAllLeads, leads]);
+    return effectiveLeads.filter(item => isStageAllItem(item, 'partial'));
+  }, [effectiveLeads]);
 
   const completeStageAllItems = useMemo(() => {
-    const list = isSales ? salesAllLeads : leads;
-    return list.filter(item => isStageAllItem(item, 'complete'));
-  }, [isSales, salesAllLeads, leads]);
+    return effectiveLeads.filter(item => isStageAllItem(item, 'complete'));
+  }, [effectiveLeads]);
 
   // Time-filtered orders for the 3 visual stage charts
   const timeFilteredOrders = useMemo(() => {

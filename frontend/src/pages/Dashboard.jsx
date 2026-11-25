@@ -1702,7 +1702,7 @@ function Dashboard() {
           </h1>
         </div>
 
-        {activeTab === "overview" && (
+        {(activeTab === "overview" || (activeTab === "case" && isAdmin)) && (
           <div
             className="overview-user-filter-wrap"
             ref={overviewDropdownRef}
@@ -3313,7 +3313,7 @@ function Dashboard() {
 
       {activeTab === "case" && (
         <div className="dashboard-content">
-          <OrderManagementDashboard />
+          <OrderManagementDashboard selectedEmployee={isAdmin ? selectedOverviewEmployee : "all"} />
         </div>
       )}
 

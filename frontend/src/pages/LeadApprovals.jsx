@@ -83,11 +83,14 @@ export default function LeadApprovals() {
       setLoading(true);
       const res = await api.get('/api/leads?query=order');
       if (res.data?.data) {
-        // Only orders (query === 'order') go to Lead Manager for approval. Leads (query === 'lead') are strictly excluded.
+        // Only submitted orders go to Lead Manager for approval. Leads and saved Drafts are strictly excluded.
         const list = res.data.data
           .filter(item => {
             const q = (item.query || '').toLowerCase().trim();
             if (q === 'lead' || q === 'leads') return false;
+            const appStatus = (item.approvalStatus || '').toLowerCase().trim();
+            const leadStatus = (item.leadApproval?.status || '').toLowerCase().trim();
+            if (appStatus === 'draft' || leadStatus === 'draft' || item.isDraft === true) return false;
             return q === 'order' || (!q && (item.orderStage || item.totalQuantity || item.orderId));
           })
           .map(normalizeRecord)

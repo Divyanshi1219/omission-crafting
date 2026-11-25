@@ -766,6 +766,12 @@ router.post("/", async (req, res) => {
         const wasLead = (existing.query || "lead").toLowerCase().trim() !== "order";
         const isNowOrder = (leadData.query || existing.query || "lead").toLowerCase().trim() === "order";
         const isConvertedToOrder = wasLead && isNowOrder;
+        const isDraftSave = isNowOrder && (
+          req.body.action === "save" ||
+          req.body.isDraft === true ||
+          leadData.approvalStatus === "Draft" ||
+          (existing.approvalStatus === "Draft" && req.body.action !== "submit")
+        );
 
         if (!isNowOrder) {
           leadData.approvalStatus = "Lead";
@@ -775,33 +781,67 @@ router.post("/", async (req, res) => {
           leadData.orderStage = "";
           leadData.subStage = "leads";
         } else if (isConvertedToOrder) {
-          leadData.approvalStatus = "Pending";
-          leadData.leadApproval = {
-            status: "Pending",
-            note: "",
-            author: "",
-            resubmittedAt: new Date(),
-          };
+          if (isDraftSave) {
+            leadData.approvalStatus = "Draft";
+            leadData.leadApproval = { status: "Draft", note: "", author: "" };
+            leadData.isDraft = true;
+          } else {
+            leadData.approvalStatus = "Pending";
+            leadData.leadApproval = {
+              status: "Pending",
+              note: "",
+              author: "",
+              resubmittedAt: new Date(),
+            };
+            leadData.isDraft = false;
+          }
+        } else if (isDraftSave) {
+          leadData.approvalStatus = "Draft";
+          leadData.leadApproval = { status: "Draft", note: "", author: "" };
+          leadData.isDraft = true;
         }
 
         const currentStageStr = isNowOrder
           ? `${formatStageLabel(leadData.orderStage || existing.orderStage || "sample")} → ${formatSubStageLabel(leadData.subStage || existing.subStage || "order")}`
           : "Leads";
 
-        let actionTitle = logAction || (isConvertedToOrder ? "Lead Converted to Order & Submitted" : isNowOrder ? "Order Edited" : "Lead Edited");
-        if (isReferredBack && !isConvertedToOrder) {
-          actionTitle = "Order Edited & Resubmitted for Clearance";
+        const wasDraft = (existing.approvalStatus === "Draft" || existing.isDraft === true || existing.leadApproval?.status === "Draft");
+        const isSubmittingOrder = isNowOrder && (req.body.action === "submit" || (typeof logAction === "string" && logAction.toLowerCase().includes("submitted")));
+
+        let actionTitle = logAction;
+        if (!actionTitle) {
+          if (isConvertedToOrder) {
+            actionTitle = isDraftSave ? "Lead Converted to Order & Saved (Draft)" : "Order Submitted for Clearance";
+          } else if (isDraftSave) {
+            actionTitle = "Order Edited & Saved (Draft)";
+          } else if (isSubmittingOrder) {
+            actionTitle = "Order Submitted for Clearance";
+          } else if (isReferredBack) {
+            actionTitle = "Order Edited & Resubmitted for Clearance";
+          } else if (isNowOrder) {
+            actionTitle = "Order Edited";
+          } else {
+            actionTitle = "Lead Edited";
+          }
         }
 
-        let detailsText = "";
-        if (isConvertedToOrder) {
-          detailsText = `Lead converted to Order and submitted by ${actorName} (${actorRole}). Moved to ${currentStageStr}.`;
-        } else if (isReferredBack) {
-          detailsText = `Order edited and resubmitted for approval by ${actorName} (${actorRole}).`;
-        } else if (isNowOrder) {
-          detailsText = `Edit Order performed by ${actorName} (${actorRole}) at stage ${currentStageStr}.`;
-        } else {
-          detailsText = `Lead details updated and saved to Leads by ${actorName} (${actorRole}).`;
+        let detailsText = req.body.logDetails || "";
+        if (!detailsText) {
+          if (isConvertedToOrder) {
+            detailsText = isDraftSave
+              ? `Lead converted to Order and saved as Draft by ${actorName} (${actorRole}). Pending submission by Sales Executive.`
+              : `Order submitted by ${actorName} (${actorRole}). Sent to Lead Manager for clearance.`;
+          } else if (isDraftSave) {
+            detailsText = `Order details updated and saved as Draft by ${actorName} (${actorRole}). Pending submission by Sales Executive.`;
+          } else if (isSubmittingOrder) {
+            detailsText = `Order submitted by ${actorName} (${actorRole}). Sent to Lead Manager for clearance.`;
+          } else if (isReferredBack) {
+            detailsText = `Order edited and resubmitted for clearance by ${actorName} (${actorRole}). Sent to Lead Manager for clearance.`;
+          } else if (isNowOrder) {
+            detailsText = `Order details updated by ${actorName} (${actorRole}) at stage ${currentStageStr}.`;
+          } else {
+            detailsText = `Lead details updated and saved to Leads by ${actorName} (${actorRole}).`;
+          }
         }
 
         const existingLogs = Array.isArray(existing.activityLogs) ? [...existing.activityLogs] : [];
@@ -848,10 +888,42 @@ router.post("/", async (req, res) => {
     const initialStageStr = isOrder
       ? `${formatStageLabel(leadData.orderStage || "sample")} → ${formatSubStageLabel(leadData.subStage || "order")}`
       : "Leads";
-    const createActionTitle = logAction || (isOrder ? "Order Created & Submitted" : "Lead Created & Saved");
-    const createDetails = isOrder
-      ? `New Order application (${leadData.orderId || ""}) created and submitted by ${actorName} (${actorRole}, Employee: ${leadData.employeeName || actorName}). Sent to ${initialStageStr} (Lead Manager Clearance).`
-      : `New Lead application (${leadData.orderId || ""}) created and saved to Leads by ${actorName} (${actorRole}, Employee: ${leadData.employeeName || actorName}).`;
+
+    const isDraftOrder = isOrder && (
+      req.body.action === "save" ||
+      req.body.isDraft === true ||
+      leadData.approvalStatus === "Draft" ||
+      leadData.leadApproval?.status === "Draft" ||
+      (typeof logAction === "string" && logAction.toLowerCase().includes("saved"))
+    );
+
+    let createActionTitle = logAction;
+    let createDetails = "";
+
+    if (!isOrder) {
+      createActionTitle = logAction || "Lead Created & Saved";
+      createDetails = `New Lead application (${leadData.orderId || ""}) created and saved to Leads by ${actorName} (${actorRole}, Employee: ${leadData.employeeName || actorName}).`;
+      leadData.approvalStatus = "Lead";
+      leadData.leadApproval = { status: "Not Applicable", note: "", author: "" };
+      leadData.stockApproval = { status: "Not Applicable", note: "", author: "" };
+      leadData.productionApproval = { status: "Not Applicable", note: "", author: "" };
+      leadData.orderStage = "";
+      leadData.subStage = "leads";
+    } else if (isDraftOrder) {
+      createActionTitle = logAction || "Order Created & Saved (Draft)";
+      createDetails = `New Order application (${leadData.orderId || ""}) created and saved as Draft by ${actorName} (${actorRole}, Employee: ${leadData.employeeName || actorName}). Pending submission by Sales Executive.`;
+      leadData.approvalStatus = "Draft";
+      leadData.leadApproval = { status: "Draft", note: "", author: "", updatedAt: null };
+      leadData.stockApproval = { status: "Draft", note: "", author: "", updatedAt: null };
+      leadData.productionApproval = { status: "Draft", note: "", author: "", updatedAt: null };
+      leadData.isDraft = true;
+    } else {
+      createActionTitle = logAction || "Order Created & Submitted";
+      createDetails = `New Order application (${leadData.orderId || ""}) created and submitted by ${actorName} (${actorRole}, Employee: ${leadData.employeeName || actorName}). Sent to Lead Manager for clearance.`;
+      leadData.approvalStatus = "Pending";
+      leadData.leadApproval = { status: "Pending", note: "", author: "", updatedAt: null };
+      leadData.isDraft = false;
+    }
 
     leadData.activityLogs = [
       ...(Array.isArray(leadData.activityLogs) ? leadData.activityLogs : []),
@@ -866,15 +938,6 @@ router.post("/", async (req, res) => {
         timestamp: new Date(),
       },
     ];
-
-    if (!isOrder) {
-      leadData.approvalStatus = "Lead";
-      leadData.leadApproval = { status: "Not Applicable", note: "", author: "" };
-      leadData.stockApproval = { status: "Not Applicable", note: "", author: "" };
-      leadData.productionApproval = { status: "Not Applicable", note: "", author: "" };
-      leadData.orderStage = "";
-      leadData.subStage = "leads";
-    }
 
     deduplicateAndSanitizeAttachments(leadData);
     const newLead = new Lead(leadData);

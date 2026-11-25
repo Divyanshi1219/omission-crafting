@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Plus, Trash2, ArrowLeft, ArrowRight, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles, ChevronDown } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2, ArrowLeft, ArrowRight, RotateCcw, AlertCircle, CheckCircle2, Paperclip, Upload, FileText, Check, ShieldCheck, CheckCircle, Clock, Edit2, X, Eye, Package, Printer, Search, Settings, Save, Sparkles, ChevronDown, Users } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { getAllEmployeeNames, getStaticEmployeeNames } from '../utils/employeeList';
@@ -590,6 +590,46 @@ function OrderManagement() {
   }, [profiles]);
   const isAdmin = currentUser?.id === 'admin' || currentUser?.role === 'CEO' || (currentUser?.name || '').toLowerCase().startsWith('adam');
   const isCEO = currentUser?.role === 'CEO' || currentUser?.id === 'admin' || (currentUser?.name || '').toLowerCase().startsWith('adam');
+
+  const [selectedOverviewEmployee, setSelectedOverviewEmployee] = useState(() => {
+    try {
+      return sessionStorage.getItem('selected_overview_employee') || 'all';
+    } catch (_) {
+      return 'all';
+    }
+  });
+  const [isOverviewDropdownOpen, setIsOverviewDropdownOpen] = useState(false);
+  const [overviewDropdownSearch, setOverviewDropdownSearch] = useState('');
+  const overviewDropdownRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      if (selectedOverviewEmployee) {
+        sessionStorage.setItem('selected_overview_employee', selectedOverviewEmployee);
+      }
+    } catch (_) {}
+  }, [selectedOverviewEmployee]);
+
+  useEffect(() => {
+    const handleClickOutsideOverview = (e) => {
+      if (overviewDropdownRef.current && !overviewDropdownRef.current.contains(e.target)) {
+        setIsOverviewDropdownOpen(false);
+      }
+    };
+    if (isOverviewDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutsideOverview);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideOverview);
+    };
+  }, [isOverviewDropdownOpen]);
+
+  const filteredOverviewEmployees = useMemo(() => {
+    const q = overviewDropdownSearch.toLowerCase().trim();
+    const list = Array.isArray(employeeList) ? employeeList : [];
+    if (!q) return list;
+    return list.filter((name) => String(name || '').toLowerCase().includes(q));
+  }, [employeeList, overviewDropdownSearch]);
   const isSales = currentUser?.role === 'Sales Executive' || currentUser?.id?.startsWith('sales');
   const isCoordinator =
     currentUser?.id === 'coordinator' ||
@@ -1104,7 +1144,7 @@ function OrderManagement() {
     }
   };
 
-  const handleSaveExistingOrder = async () => {
+  const handleSaveExistingOrder = async (explicitAction) => {
     if (isLeadManager) {
       alert('Lead Manager cannot edit order forms.');
       return;
@@ -1117,7 +1157,10 @@ function OrderManagement() {
     }
 
     const isLeadQuery = (query || '').toLowerCase().trim() === 'lead';
-    if (!isLeadQuery) {
+    const isExplicitSave = explicitAction === 'save';
+    const isExplicitSubmit = explicitAction === 'submit';
+
+    if (!isLeadQuery && !isExplicitSave) {
       if (
         !(formData.companyName || '').trim() ||
         !(formData.clientName || '').trim() ||
@@ -1181,6 +1224,10 @@ function OrderManagement() {
       const targetSubStage = isLeadQuery ? 'leads' : ((!subStage || subStage === 'new' || subStage === 'leads') ? 'order' : subStage.toLowerCase().replace(/\s+/g, '-'));
       const stageChangedByCEO = isCEO && !isLeadQuery && (targetOrderStage !== prevStage || targetSubStage !== prevSub);
 
+      const isDraftBefore = !isLeadQuery && (orderApprovalData?.approvalStatus === 'Draft' || orderApprovalData?.leadApproval?.status === 'Draft' || orderApprovalData?.isDraft);
+      const isSubmittingDraftOrLead = isExplicitSubmit || (!isExplicitSave && ((wasLeadBefore && !isLeadQuery) || isDraftBefore));
+      const isDraftSaving = !isLeadQuery && (isExplicitSave || (!isSubmittingDraftOrLead && isDraftBefore));
+
       const payload = {
         _id: editId,
         employeeName: currentEmpName,
@@ -1190,9 +1237,13 @@ function OrderManagement() {
         performedById: currentUser?.id || (isCEO ? 'admin' : 'sales'),
         logAction: stageChangedByCEO
           ? `Stage override to ${targetOrderStage.toUpperCase()} → ${targetSubStage} by CEO`
-          : ((wasLeadBefore && !isLeadQuery)
-            ? 'Lead Converted to Order & Submitted'
-            : (isLeadQuery ? 'Lead Edited' : 'Order Edited')),
+          : (isSubmittingDraftOrLead
+            ? (wasLeadBefore ? 'Lead Converted to Order & Submitted' : 'Order Submitted for Clearance')
+            : (isDraftSaving
+              ? (wasLeadBefore ? 'Lead Converted to Order & Saved (Draft)' : 'Order Edited & Saved (Draft)')
+              : (isLeadQuery ? 'Lead Edited' : 'Order Edited'))),
+        action: isSubmittingDraftOrLead ? 'submit' : 'save',
+        isDraft: isSubmittingDraftOrLead ? false : (isDraftSaving || isDraftBefore || false),
         query: isLeadQuery ? 'lead' : 'order',
         queryStatus,
         orderStage: targetOrderStage,
@@ -1205,7 +1256,7 @@ function OrderManagement() {
           ? 'Lead'
           : (isCEO
             ? 'Approved'
-            : ((wasLeadBefore && !isLeadQuery) ? 'Pending' : (orderApprovalData?.approvalStatus || 'Pending'))),
+            : (isSubmittingDraftOrLead ? 'Pending' : (isDraftSaving ? 'Draft' : (orderApprovalData?.approvalStatus || 'Pending')))),
         leadApproval: isLeadQuery ? {
           status: 'Not Applicable',
           note: '',
@@ -1215,12 +1266,16 @@ function OrderManagement() {
           note: stageChangedByCEO ? `Approved & stage moved to ${targetOrderStage} → ${targetSubStage} by CEO` : (orderApprovalData?.leadApproval?.note || 'Approved by CEO'),
           author: currentUser?.name ? `${currentUser.name} (CEO)` : 'Adam (CEO)',
           updatedAt: new Date(),
-        } : ((wasLeadBefore && !isLeadQuery) ? {
+        } : (isSubmittingDraftOrLead ? {
           status: 'Pending',
           note: '',
           author: '',
           resubmittedAt: new Date(),
-        } : (orderApprovalData?.leadApproval || { status: 'Pending', note: '', author: '' }))),
+        } : (isDraftSaving ? {
+          status: 'Draft',
+          note: '',
+          author: '',
+        } : (orderApprovalData?.leadApproval || { status: 'Pending', note: '', author: '' })))),
       };
 
       if (isCEO && !isLeadQuery) {
@@ -1247,7 +1302,13 @@ function OrderManagement() {
       }
 
       const res = await api.post('/api/leads', payload);
-      alert(isLeadQuery ? 'Lead updated successfully!' : ((wasLeadBefore && !isLeadQuery) ? 'Order submitted successfully!\nSent to Lead Manager for approval.' : (stageChangedByCEO ? `Order stage moved to ${targetOrderStage.toUpperCase()} → ${targetSubStage} successfully!` : 'Order updated successfully!')));
+      alert(isLeadQuery
+        ? 'Lead updated successfully!'
+        : (isSubmittingDraftOrLead
+          ? ((wasLeadBefore && !isLeadQuery) ? 'Order submitted successfully!\nSent to Lead Manager for approval.' : 'Order submitted for Lead Manager approval successfully!')
+          : (isDraftSaving
+            ? 'Order saved as draft successfully!'
+            : (stageChangedByCEO ? `Order stage moved to ${targetOrderStage.toUpperCase()} → ${targetSubStage} successfully!` : 'Order updated successfully!'))));
       if (res.data?.data) {
         setOrderApprovalData(res.data.data);
       }
@@ -2156,19 +2217,21 @@ function OrderManagement() {
           performedBy: currentUser?.name || currentEmpName,
           performedByRole: currentUser?.role || 'Sales Executive',
           performedById: currentUser?.id || 'sales',
-          logAction: editId ? 'Lead Edited & Saved' : 'Lead Created & Saved',
+          logAction: editId ? (isLeadQuery ? 'Lead Edited & Saved' : 'Order Edited & Saved (Draft)') : (isLeadQuery ? 'Lead Created & Saved' : 'Order Created & Saved (Draft)'),
+          action: 'save',
+          isDraft: !isLeadQuery,
           query: query || 'lead',
           queryStatus,
-          orderStage: isLeadQuery ? '' : orderStage,
-          subStage: isLeadQuery ? 'leads' : subStage,
-          approvalStatus: isLeadQuery ? 'Lead' : 'Pending',
-          leadApproval: isLeadQuery ? { status: 'Not Applicable', note: '', author: '' } : { status: 'Pending', note: '', author: '' },
+          orderStage: isLeadQuery ? '' : (orderStage || 'sample'),
+          subStage: isLeadQuery ? 'leads' : (subStage || 'order'),
+          approvalStatus: isLeadQuery ? 'Lead' : 'Draft',
+          leadApproval: isLeadQuery ? { status: 'Not Applicable', note: '', author: '' } : { status: 'Draft', note: '', author: '' },
           ...formData,
           items,
         };
         if (editId) payload._id = editId;
         await api.post('/api/leads', payload);
-        alert(isLeadQuery ? 'Lead saved successfully!' : 'Order saved successfully!');
+        alert(isLeadQuery ? 'Lead saved successfully!' : 'Order saved as draft successfully!');
         const from = searchParams.get('from');
         if (from) {
           navigate(from);
@@ -2263,7 +2326,7 @@ function OrderManagement() {
 
   const handleOrderSubmit = async () => {
     if (editId) {
-      await handleSaveExistingOrder();
+      await handleSaveExistingOrder('submit');
       return;
     }
     const phone = (formData.phoneNumber || '').trim();
@@ -2341,6 +2404,8 @@ function OrderManagement() {
         performedByRole: currentUser?.role || 'Sales Executive',
         performedById: currentUser?.id || 'sales',
         logAction: 'Order Created & Submitted',
+        action: 'submit',
+        isDraft: false,
         query: 'order',
         queryStatus,
         orderStage: orderStage || 'sample',
@@ -5829,6 +5894,13 @@ function OrderManagement() {
       return false;
     }
 
+    if ((isCEO || isAdmin) && selectedOverviewEmployee && selectedOverviewEmployee !== 'all') {
+      const targetEmp = selectedOverviewEmployee.toLowerCase().trim();
+      if (!itemEmp || !(itemEmp === targetEmp || itemEmp.includes(targetEmp) || targetEmp.includes(itemEmp))) {
+        return false;
+      }
+    }
+
     if (isStagingView && statusParam && statusParam !== 'all') {
       const stage = (item.orderStage || '').toLowerCase().trim();
       const sub = (item.subStage || '').toLowerCase().trim().replace(/_/g, '-');
@@ -6319,7 +6391,7 @@ function OrderManagement() {
                       </button>
                       <button
                         type="button"
-                        onClick={handleSaveExistingOrder}
+                        onClick={() => handleSaveExistingOrder('save')}
                         className="btn-primary"
                         style={{
                           display: 'inline-flex',
@@ -7624,12 +7696,18 @@ function OrderManagement() {
                             </button>
                             <button
                               type="button"
-                              onClick={handleSaveExistingOrder}
+                              onClick={() => {
+                                const isLeadToOrder = (orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order' && (query || '').toLowerCase().trim() === 'order';
+                                const isDraft = orderApprovalData?.approvalStatus === 'Draft' || orderApprovalData?.leadApproval?.status === 'Draft' || orderApprovalData?.isDraft;
+                                handleSaveExistingOrder((isLeadToOrder || isDraft) ? 'submit' : 'save');
+                              }}
                               className="btn-primary"
                               style={{ padding: '10px 32px' }}
                             >
                               {(orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order' && (query || '').toLowerCase().trim() === 'order'
                                 ? 'Submit'
+                                : (orderApprovalData?.approvalStatus === 'Draft' || orderApprovalData?.leadApproval?.status === 'Draft' || orderApprovalData?.isDraft)
+                                ? 'Submit Order'
                                 : 'Save Changes'}
                             </button>
                           </>
@@ -8415,6 +8493,9 @@ function OrderManagement() {
                 // 12. Append all recorded activityLogs (Order Edited, Lead Edited, stage transitions, etc.)
                 rawLogs.forEach((l) => combinedLogs.push(l));
 
+                // Always display latest activity log first (reverse chronological order)
+                combinedLogs.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {combinedLogs.length === 0 ? (
@@ -8775,6 +8856,144 @@ function OrderManagement() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative' }} ref={columnSettingsRef}>
+            {(isCEO || isAdmin) && (
+              <div ref={overviewDropdownRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsOverviewDropdownOpen((prev) => !prev)}
+                  title="CEO View: Filter Order Management by employee"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: selectedOverviewEmployee !== 'all' ? '1px solid #86efac' : '1px solid #cbd5e1',
+                    background: selectedOverviewEmployee !== 'all' ? '#f0fdf4' : '#ffffff',
+                    color: selectedOverviewEmployee !== 'all' ? '#166534' : '#1e293b',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    minWidth: '185px',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', overflow: 'hidden' }}>
+                    <Users size={14} color={selectedOverviewEmployee !== 'all' ? '#15803d' : '#4338ca'} />
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '145px' }}>
+                      {selectedOverviewEmployee === 'all' ? 'Company Overview (All Staff)' : selectedOverviewEmployee}
+                    </span>
+                  </span>
+                  <ChevronDown size={14} style={{ transform: isOverviewDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }} />
+                </button>
+
+                {selectedOverviewEmployee !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedOverviewEmployee('all');
+                      setIsOverviewDropdownOpen(false);
+                      setOverviewDropdownSearch('');
+                    }}
+                    title="Reset to All Staff"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '6px 8px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#64748b',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+
+                {isOverviewDropdownOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 6px)',
+                      right: 0,
+                      width: '270px',
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '12px',
+                      boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15)',
+                      zIndex: 100,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                      <Search size={13} color="#94a3b8" />
+                      <input
+                        type="text"
+                        placeholder="Search employee..."
+                        value={overviewDropdownSearch}
+                        onChange={(e) => setOverviewDropdownSearch(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '12.5px', color: '#1e293b' }}
+                      />
+                    </div>
+                    <div style={{ maxHeight: '230px', overflowY: 'auto', padding: '5px' }}>
+                      <div
+                        onClick={() => {
+                          setSelectedOverviewEmployee('all');
+                          setIsOverviewDropdownOpen(false);
+                          setOverviewDropdownSearch('');
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          background: selectedOverviewEmployee === 'all' ? '#eff6ff' : 'transparent',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          color: selectedOverviewEmployee === 'all' ? '#1d4ed8' : '#1e293b',
+                        }}
+                      >
+                        <span>Company Overview (All Staff)</span>
+                        {selectedOverviewEmployee === 'all' && <Check size={14} color="#2563eb" />}
+                      </div>
+                      {filteredOverviewEmployees.map((empName) => {
+                        const isSel = selectedOverviewEmployee.toLowerCase() === String(empName).toLowerCase();
+                        return (
+                          <div
+                            key={empName}
+                            onClick={() => {
+                              setSelectedOverviewEmployee(empName);
+                              setIsOverviewDropdownOpen(false);
+                              setOverviewDropdownSearch('');
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              background: isSel ? '#f0fdf4' : 'transparent',
+                              fontSize: '13px',
+                              fontWeight: isSel ? 600 : 500,
+                              color: isSel ? '#15803d' : '#334155',
+                            }}
+                          >
+                            <span>{empName}</span>
+                            {isSel && <Check size={14} color="#16a34a" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {(location.pathname === '/order/create-lead' || location.pathname === '/order/leads') && (
               <button
                 type="button"
