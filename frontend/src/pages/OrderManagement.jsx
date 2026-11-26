@@ -95,6 +95,7 @@ const COMPLETE_STAGES = [
   'Printing',
   'Quality Check',
   'Packaging',
+  'Staging Room',
   'Delivery Pending',
   'Delivered',
   'Customer Support'
@@ -133,6 +134,7 @@ const SUB_STAGES_BY_ORDER_STAGE = {
     'Printing',
     'Quality Check',
     'Packaging',
+    'Staging Room',
     'Delivery Pending',
     'Delivered',
     'Customer Support'
@@ -166,6 +168,7 @@ const SUB_STAGE_OPTIONS_BY_ORDER_STAGE = {
     { label: 'Printing', slug: 'printing' },
     { label: 'Quality Check', slug: 'quality-check' },
     { label: 'Packaging', slug: 'packaging' },
+    { label: 'Staging Room', slug: 'staging-room' },
     { label: 'Delivery Pending', slug: 'delivery-pending' },
     { label: 'Delivered', slug: 'delivered' },
     { label: 'Customer Support', slug: 'customer-support' },
@@ -358,6 +361,7 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
 
   // 2. Strict Stage & Sub-Stage matching: only show order in its exact current stage and sub-stage
   const stageMatches = itemStage === normTargetStage;
+  const isCoordTotal = (normTargetStage === 'sample' || normTargetStage === 'partial' || normTargetStage === 'complete') && normTargetSub === 'coord-total';
   const isProductionPick = normTargetSub === 'ready-to-pick-production' || normTargetSub === 'ready-to-pick-prod';
   const isPrintingPick = normTargetSub === 'ready-to-pick-printing';
   const isProdReady =
@@ -371,16 +375,37 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
           item.completePrintingStatus === 'Complete'))
     );
 
+  const isSampleOrPartialAlreadyPastPrePrinting =
+    (itemStage === 'sample' && ['printing', 'ready-to-pick-up', 'staging-room', 'staging-ground', 'customer-approval-awaiting'].includes(itemSub)) ||
+    (itemStage === 'partial' && ['printing', 'quality-check', 'packaging', 'ready-to-pick-up', 'staging-room', 'staging-ground', 'payment-confirmation'].includes(itemSub)) ||
+    (itemStage === 'complete' && ['printing', 'quality-check', 'packaging', 'ready-to-pick-up', 'staging-room', 'staging-ground', 'delivery-pending', 'delivered', 'customer-support'].includes(itemSub));
+
+  if (isCoordTotal) {
+    if (!stageMatches || isEmb) return { matches: false, status: 'none', isCompleted: false };
+    const stTask = (item.stockTaskStage || '').toLowerCase().trim();
+    const prTask = (item.productionTaskStage || '').toLowerCase().trim();
+    const hasPendingCoordHandover =
+      stTask === 'ready_to_pick' ||
+      (!isSampleOrPartialAlreadyPastPrePrinting && stTask === 'completed' && item.stockApproval?.status === 'Approved' && !item.stockHandoverComplete) ||
+      (normTargetStage !== 'complete' && !isSampleOrPartialAlreadyPastPrePrinting && (prTask === 'completed' || item.productionApproval?.status === 'Approved') && !item.productionHandoverComplete) ||
+      (itemSub === 'ready-to-pick-up' && !item.printingHandoverComplete);
+    return { matches: hasPendingCoordHandover, status: 'in_progress', isCompleted: false };
+  }
+
   const subStageMatches =
     isProductionPick
-      ? (isProdReady && !item.productionHandoverComplete)
+      ? (normTargetStage === 'complete'
+        ? false
+        : ((normTargetStage === 'sample' || normTargetStage === 'partial') ? (!isEmb && !isSampleOrPartialAlreadyPastPrePrinting && isProdReady && !item.productionHandoverComplete) : (isProdReady && !item.productionHandoverComplete)))
       : isPrintingPick
         ? (isPrintingReady && !item.printingHandoverComplete)
-        : (itemSub === normTargetSub ||
-          ((itemSub === 'staging-room' || itemSub === 'staging-ground') &&
-            (normTargetSub === 'staging-room' || normTargetSub === 'staging-ground')) ||
-          ((normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup') &&
-            (itemSub === 'ready-to-pick' || itemSub === 'ready-to-pickup' || (item.stockTaskStage === 'ready_to_pick' && itemSub === 'stock') || (item.stockTaskStage === 'completed' && item.productionTaskStage === 'completed' && !item.stockHandoverComplete && itemSub !== 'printing'))));
+        : ((normTargetStage === 'sample' || normTargetStage === 'partial' || normTargetStage === 'complete') && normTargetSub === 'ready-to-pick-up')
+          ? (itemSub === 'ready-to-pick-up' && !item.printingHandoverComplete)
+          : (itemSub === normTargetSub ||
+            ((itemSub === 'staging-room' || itemSub === 'staging-ground') &&
+              (normTargetSub === 'staging-room' || normTargetSub === 'staging-ground')) ||
+            ((normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup') &&
+              (itemSub === 'ready-to-pick' || itemSub === 'ready-to-pickup' || (item.stockTaskStage === 'ready_to_pick' && itemSub === 'stock') || (item.stockTaskStage === 'completed' && item.productionTaskStage === 'completed' && !item.stockHandoverComplete && itemSub !== 'printing'))));
 
   if (!stageMatches || !subStageMatches) {
     return { matches: false, status: 'none', isCompleted: false };
@@ -439,13 +464,15 @@ const getLeadStageInfo = (item, targetStage, targetSubStage, targetWorkflow = 'd
     } else if (normTargetSub === 'stock') {
       isApprovedAtThisStage = item.stockApproval?.status === 'Approved';
     } else if (normTargetSub === 'ready-to-pick-up' || normTargetSub === 'ready-to-pick' || normTargetSub === 'ready-to-pickup') {
-      isApprovedAtThisStage = Boolean(item.completeReadyToPickUpData?.verifiedPickupCount || item.completeReadyToPickUpData?.readyToPickupCount);
+      isApprovedAtThisStage = Boolean(item.printingHandoverComplete || item.completeReadyToPickUpData?.verifiedPickupCount || item.completeReadyToPickUpData?.readyToPickupCount);
     } else if (normTargetSub === 'printing') {
       isApprovedAtThisStage = item.completePrintingData?.printingStatus === 'Complete';
     } else if (normTargetSub === 'quality-check') {
       isApprovedAtThisStage = Boolean(item.completeQualityCheckData?.passedCount);
     } else if (normTargetSub === 'packaging') {
       isApprovedAtThisStage = Boolean(item.completePackagingData?.totalUnitsPacked);
+    } else if (normTargetSub === 'staging-room' || normTargetSub === 'staging-ground') {
+      isApprovedAtThisStage = Boolean(item.completeStagingRoomData?.dispatchReady || item.completeStagingRoomData?.stagedRackNumber);
     } else if (normTargetSub === 'delivery-pending') {
       isApprovedAtThisStage = Boolean(item.completeDeliveryPendingData?.trackingNumber);
     } else if (normTargetSub === 'delivered') {
@@ -485,7 +512,8 @@ const STAGE_ROUTE_MAP = {
   '/order/sample/stock': 'Stock',
   '/order/sample/ready-to-pick': 'From Stock',
   '/order/sample/ready-to-pickup': 'From Stock',
-  '/order/sample/ready-to-pick-production': 'From Production',
+  '/order/sample/ready-to-pick-production': 'From Logo Cutting to Printing',
+  '/order/sample/coord-total': 'Total Pick Ups (Sample)',
   '/order/sample/printing': 'Printing',
   '/order/sample/ready-to-pick-up': 'From Printing',
   '/order/sample/staging-room': 'Staging Room',
@@ -501,12 +529,13 @@ const STAGE_ROUTE_MAP = {
   '/order/partial/stock': 'Stock',
   '/order/partial/ready-to-pick': 'From Stock',
   '/order/partial/ready-to-pickup': 'From Stock',
-  '/order/partial/ready-to-pick-production': 'From Production',
+  '/order/partial/ready-to-pick-production': 'From Logo Cutting to Printing',
+  '/order/partial/coord-total': 'Total Pick Ups (Partial)',
   '/order/partial/printing': 'Printing',
   '/order/partial/ready-to-pick-printing': 'From Printing',
   '/order/partial/quality-check': 'Quality Check',
   '/order/partial/packaging': 'Packaging',
-  '/order/partial/ready-to-pick-up': 'From Packaging',
+  '/order/partial/ready-to-pick-up': 'From Packaging to Staging Room',
   '/order/partial/staging-room': 'Staging Room',
   '/order/partial/payment-confirmation': 'Payment Confirmation',
 
@@ -519,12 +548,14 @@ const STAGE_ROUTE_MAP = {
   '/order/complete/stock': 'Stock',
   '/order/complete/ready-to-pick': 'From Stock',
   '/order/complete/ready-to-pickup': 'From Stock',
-  '/order/complete/ready-to-pick-production': 'From Production',
+  '/order/complete/ready-to-pick-production': 'From Logo Cutting to Printing',
+  '/order/complete/coord-total': 'Total Pick Ups (Complete)',
   '/order/complete/printing': 'Printing',
   '/order/complete/ready-to-pick-printing': 'From Printing',
   '/order/complete/quality-check': 'Quality Check',
   '/order/complete/packaging': 'Packaging',
-  '/order/complete/ready-to-pick-up': 'From Packaging',
+  '/order/complete/ready-to-pick-up': 'From Packaging to Ready to Deliver',
+  '/order/complete/staging-room': 'Staging Room',
   '/order/complete/delivery-pending': 'Ready to Deliver',
   '/order/complete/delivered': 'Delivered',
   '/order/complete/customer-support': 'Customer Support',
@@ -764,7 +795,6 @@ function OrderManagement() {
     attachmentName: '',
     logoName: '',
     totalQuantity: '',
-    pricePerPiece: '',
     totalAmount: '',
     gst: '',
     netAmount: '',
@@ -843,7 +873,6 @@ function OrderManagement() {
     repeatedOrder: false,
     additionalNote: false,
     logoName: false,
-    pricePerPiece: false,
     totalAmount: false,
     gst: false,
     netAmount: false,
@@ -874,6 +903,8 @@ function OrderManagement() {
     stockSampleNotReceivedCount: '',
     prodSampleReceived: '',
     prodSampleNotReceivedCount: '',
+    logoReceived: '',
+    logoNotReceivedCount: '',
     itemPrinted: 'yes',
     printedCount: 1,
     receivedCount: 1,
@@ -923,6 +954,9 @@ function OrderManagement() {
     completeQcRejectedCount: 0,
     completeMasterCartonsCount: 4,
     completeUnitsPacked: 100,
+    completeStagingBayStaged: true,
+    completeStagingCartonCountMatched: true,
+    completeStagingRack: '',
     completeCourierName: 'Blue Dart Express',
     completeTrackingNumber: 'AWB-BD-882319',
     completeDispatchDate: new Date().toISOString().split('T')[0],
@@ -1094,7 +1128,6 @@ function OrderManagement() {
         attachmentName: d.attachmentName || d.logoDesignName || '',
         logoName: d.logoName || '',
         totalQuantity: d.totalQuantity || '',
-        pricePerPiece: d.pricePerPiece || '',
         totalAmount: d.totalAmount || '',
         gst: d.gst || '',
         netAmount: d.netAmount || '',
@@ -1181,7 +1214,6 @@ function OrderManagement() {
       }
 
       if (
-        formData.pricePerPiece === '' ||
         formData.totalAmount === '' ||
         formData.netAmount === '' ||
         formData.advanceAmount === '' ||
@@ -1189,7 +1221,7 @@ function OrderManagement() {
         !(formData.urgency || '').trim() ||
         !(formData.deliveryDate || '').trim()
       ) {
-        alert('Please fill in all mandatory Order Information fields (Price Per Piece, Total Amount, Net Amount, Advance Amount, Pending Amount, Urgency, and Delivery Date).');
+        alert('Please fill in all mandatory Order Information fields (Total Amount, Net Amount, Advance Amount, Pending Amount, Urgency, and Delivery Date).');
         return;
       }
 
@@ -1210,33 +1242,7 @@ function OrderManagement() {
         return;
       }
 
-      if (items.length === 0) {
-        alert('Please add at least one item using "Add Item".');
-        return;
-      }
-
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        const itemVal = (it.item || it.enterItem || '').trim();
-        const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
-        const isTee = isTshirt(it);
-        const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
-        const hasSize = !isTee || (it.size || '').trim().length > 0;
-        if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
-          const reqFields = isTee
-            ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
-            : 'Item, Quantity, Price Per Piece, and Color';
-          alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
-          return;
-        }
-      }
-
-      if (itemsTotalQty > totalQty) {
-        alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) cannot be greater than Total Quantity (${totalQty} pcs). Sum of items must equal Total Quantity (${totalQty} === ${totalQty}).`);
-        return;
-      }
-      if (itemsTotalQty !== totalQty) {
-        alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) must equal Total Quantity (${totalQty} pcs). (${totalQty} === ${itemsTotalQty})`);
+      if (!validateOrderItems(items)) {
         return;
       }
     }
@@ -1355,10 +1361,6 @@ function OrderManagement() {
       alert('Failed to update: ' + (err.response?.data?.message || err.message));
     }
   };
-
-  // Quantities for validation
-  const itemsTotalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-  const orderTotalQty = Number(formData.totalQuantity) || 0;
 
   const getLeadApproval = () => {
     if (orderApprovalData?.leadApproval?.status) {
@@ -1550,8 +1552,12 @@ function OrderManagement() {
                 stageNote = d.customerApprovalData?.note || d.sampleStagingGroundData?.note || '';
               } else if (fromUrl.includes('/sample/staging-room') || fromUrl.includes('/staging-ground')) {
                 stageNote = d.sampleStagingGroundData?.note || d.sampleReadyToPickUpData?.note || '';
+              } else if (fromUrl.includes('/ready-to-pick-production')) {
+                stageNote = d.productionHandoverData?.note || '';
               } else if (fromUrl.includes('/ready-to-pick-up')) {
-                stageNote = d.sampleReadyToPickUpData?.note || d.printingStageData?.note || '';
+                stageNote = (d.orderStage || '').toLowerCase() === 'partial'
+                  ? (d.partialReadyToPickUpData?.note || d.partialPackagingData?.note || '')
+                  : (d.sampleReadyToPickUpData?.note || d.printingStageData?.note || '');
               } else if (fromUrl.includes('/partial/payment-confirmation') || fromUrl.includes('/payment-confirmation')) {
                 stageNote = d.partialPaymentConfirmationData?.note || d.partialStagingRoomData?.note || '';
               } else if (fromUrl.includes('/partial/staging-room') || fromUrl.includes('/staging-room')) {
@@ -1567,7 +1573,11 @@ function OrderManagement() {
               } else if (fromUrl.includes('/complete/delivered')) {
                 stageNote = d.completeDeliveredData?.note || d.completeDeliveryPendingData?.note || '';
               } else if (fromUrl.includes('/complete/delivery-pending')) {
-                stageNote = d.completeDeliveryPendingData?.note || d.completePackagingData?.note || '';
+                stageNote = d.completeDeliveryPendingData?.note || d.completeStagingRoomData?.note || d.completePackagingData?.note || '';
+              } else if (fromUrl.includes('/complete/staging-room')) {
+                stageNote = d.completeStagingRoomData?.note || d.completeReadyToPickUpData?.note || d.completePackagingData?.note || '';
+              } else if (fromUrl.includes('/complete/ready-to-pick-up')) {
+                stageNote = d.completeReadyToPickUpData?.note || d.completePackagingData?.note || '';
               } else if (fromUrl.includes('/complete/packaging')) {
                 stageNote = d.completePackagingData?.note || d.completeQualityCheckData?.note || '';
               } else if (fromUrl.includes('/complete/quality-check')) {
@@ -1578,13 +1588,19 @@ function OrderManagement() {
                 stageNote = d.printingStageData?.note || '';
               }
 
+              const isPartialStageLoad = (d.orderStage || '').toLowerCase() === 'partial';
+              const isCompleteStageLoad = (d.orderStage || '').toLowerCase() === 'complete';
               const printingData = d.printingStageData || {};
-              const readyPickupData = d.sampleReadyToPickUpData || {};
+              const readyPickupData = isPartialStageLoad
+                ? (d.partialReadyToPickUpData || {})
+                : isCompleteStageLoad
+                ? (d.completeReadyToPickUpData || {})
+                : (d.sampleReadyToPickUpData || {});
               const stagingGroundData = d.sampleStagingGroundData || {};
               const customerData = d.customerApprovalData || {};
               const partialDefaultQty = Number(customerData.partialQuantity) ||
-                Number(d.productionTaskData?.batchQuantity) ||
                 Number(d.stockTaskData?.batchQuantity) ||
+                Number(d.productionTaskData?.batchQuantity) ||
                 totalQty || 18;
               const orderTotalQty = Number(d.totalQuantity) || totalQty || 100;
               const hasPartialRun = Boolean(
@@ -1617,7 +1633,11 @@ function OrderManagement() {
                 initialBalanceRemaining = Math.max(0, totalOrderAmount - Number(initialAmountReceived));
               }
 
-              const printingPickupCount = printingData.readyToPickupCount || printingData.printedCount || sampleCount || 1;
+              const printingPickupCount = isPartialStageLoad
+                ? (d.partialPackagingData?.packedCount || d.partialPrintingData?.printedCount || partialDefaultQty)
+                : isCompleteStageLoad
+                ? (d.completePackagingData?.totalUnitsPacked || d.completePrintingData?.printedCount || completeDefaultQty)
+                : (printingData.readyToPickupCount || printingData.printedCount || sampleCount || 1);
 
               let initialStageStatus = printingData.printingStatus;
               if (fromUrl.includes('/customer-approval-awaiting')) {
@@ -1638,6 +1658,17 @@ function OrderManagement() {
                 }
               } else if (fromUrl.includes('/partial/staging-room')) {
                 initialStageStatus = d.partialStagingRoomData?.dispatchReady ? 'Complete' : (d.partialStagingRoomData?.stagingStatus || 'Work in Progress');
+              } else if (fromUrl.includes('/complete/staging-room')) {
+                initialStageStatus = d.completeStagingRoomData?.dispatchReady ? 'Complete' : (d.completeStagingRoomData?.stagingStatus || 'Work in Progress');
+              } else if (fromUrl.includes('/ready-to-pick-production')) {
+                const prodHandover = d.productionHandoverData || {};
+                if (prodHandover.logoReceived === 'no') {
+                  initialStageStatus = 'On Hold';
+                } else if (prodHandover.logoReceived === 'yes') {
+                  initialStageStatus = 'Complete';
+                } else {
+                  initialStageStatus = 'Work in Progress';
+                }
               } else if (fromUrl.includes('/ready-to-pick-up')) {
                 if (initialPrintingReceived === 'no' || readyPickupData.sampleRequirementMatch === false) {
                   initialStageStatus = 'On Hold';
@@ -1673,7 +1704,8 @@ function OrderManagement() {
                 if (isPartial) {
                   if (fromUrl.includes('/quality-check')) initialAssignedTo = d.partialQualityCheckData?.assignedTo || d.partialPrintingData?.assignedTo || '';
                   else if (fromUrl.includes('/packaging')) initialAssignedTo = d.partialPackagingData?.assignedTo || d.partialQualityCheckData?.assignedTo || d.partialPrintingData?.assignedTo || '';
-                  else if (fromUrl.includes('/staging-room')) initialAssignedTo = d.partialStagingRoomData?.assignedTo || d.partialPackagingData?.assignedTo || d.partialQualityCheckData?.assignedTo || d.partialPrintingData?.assignedTo || '';
+                  else if (fromUrl.includes('/ready-to-pick-up')) initialAssignedTo = d.partialReadyToPickUpData?.assignedTo || d.partialPackagingData?.assignedTo || d.partialQualityCheckData?.assignedTo || d.partialPrintingData?.assignedTo || '';
+                  else if (fromUrl.includes('/staging-room')) initialAssignedTo = d.partialStagingRoomData?.assignedTo || d.partialReadyToPickUpData?.assignedTo || d.partialPackagingData?.assignedTo || d.partialQualityCheckData?.assignedTo || d.partialPrintingData?.assignedTo || '';
                   else if (fromUrl.includes('/payment-confirmation')) initialAssignedTo = d.partialPaymentConfirmationData?.assignedTo || d.partialStagingRoomData?.assignedTo || d.partialPackagingData?.assignedTo || d.partialQualityCheckData?.assignedTo || d.partialPrintingData?.assignedTo || '';
                   else initialAssignedTo = d.partialData?.assignedTo || d.partialPrintingData?.assignedTo || '';
                 } else if (isComplete) {
@@ -1702,6 +1734,8 @@ function OrderManagement() {
                 stockSampleNotReceivedCount: printingData.stockSampleNotReceivedCount || '',
                 prodSampleReceived: initialProdReceived,
                 prodSampleNotReceivedCount: printingData.prodSampleNotReceivedCount || '',
+                logoReceived: d.productionHandoverData?.logoReceived || '',
+                logoNotReceivedCount: d.productionHandoverData?.logoNotReceivedCount || '',
                 itemPrinted: printingData.itemPrinted || 'yes',
                 printedCount: printingData.printedCount !== undefined ? printingData.printedCount : (printingData.receivedCount || sampleCount),
                 receivedCount: printingData.receivedCount || sampleCount,
@@ -1754,6 +1788,9 @@ function OrderManagement() {
                 completeQcRejectedCount: d.completeQualityCheckData?.rejectedCount || 0,
                 completeMasterCartonsCount: d.completePackagingData?.masterCartonsCount || 4,
                 completeUnitsPacked: d.completePackagingData?.totalUnitsPacked !== undefined ? d.completePackagingData.totalUnitsPacked : completeDefaultQty,
+                completeStagingBayStaged: d.completeStagingRoomData?.bayStaged !== undefined ? d.completeStagingRoomData.bayStaged : true,
+                completeStagingCartonCountMatched: d.completeStagingRoomData?.cartonCountMatched !== undefined ? d.completeStagingRoomData.cartonCountMatched : true,
+                completeStagingRack: d.completeStagingRoomData?.stagedRackNumber || '',
                 completeCourierName: d.completeDeliveryPendingData?.courierName || 'Blue Dart Express',
                 completeTrackingNumber: d.completeDeliveryPendingData?.trackingNumber || (d.orderId ? `AWB-BD-${d.orderId}` : 'AWB-BD-882319'),
                 completeDispatchDate: d.completeDeliveryPendingData?.dispatchDate || new Date().toISOString().split('T')[0],
@@ -1805,7 +1842,6 @@ function OrderManagement() {
                 attachmentName: d.attachmentName || d.logoDesignName || '',
                 logoName: d.logoName || '',
                 totalQuantity: d.totalQuantity || '',
-                pricePerPiece: d.pricePerPiece || '',
                 totalAmount: d.totalAmount || '',
                 gst: d.gst || '',
                 netAmount: d.netAmount || '',
@@ -1867,7 +1903,6 @@ function OrderManagement() {
           attachmentName: '',
           logoName: '',
           totalQuantity: '',
-          pricePerPiece: '',
           totalAmount: '',
           gst: '',
           netAmount: '',
@@ -1913,20 +1948,47 @@ function OrderManagement() {
     }
   }, [location.pathname, searchParams, editId]);
 
-  // Auto-calculate Total Amount = Total Quantity * Price Per Piece
+  // Auto-calculate Total Quantity and Total Amount from Add Item rows
   useEffect(() => {
-    if (formData.totalQuantity !== '' && formData.pricePerPiece !== '') {
-      const qty = parseFloat(formData.totalQuantity);
-      const price = parseFloat(formData.pricePerPiece);
-      if (!isNaN(qty) && !isNaN(price)) {
-        const calculated = Math.round(qty * price * 100) / 100;
-        setFormData((prev) => {
-          if (Number(prev.totalAmount) === calculated && prev.totalAmount !== '') return prev;
-          return { ...prev, totalAmount: calculated };
-        });
-      }
+    const isOrder = (query || '').toLowerCase().trim() === 'order';
+    if (!isOrder && items.length === 0) return;
+
+    const hasAnyItemPrice = items.some(
+      (it) => it.pricePerPiece !== undefined && it.pricePerPiece !== '' && Number(it.pricePerPiece) > 0
+    );
+    if (editId && !isEditing && !isEditingItems && !hasAnyItemPrice) {
+      return;
     }
-  }, [formData.totalQuantity, formData.pricePerPiece]);
+
+    if (items.length === 0) {
+      setFormData((prev) => {
+        if (prev.totalQuantity === '' && prev.totalAmount === '') return prev;
+        return { ...prev, totalQuantity: '', totalAmount: '' };
+      });
+      return;
+    }
+
+    const calculatedQty = items.reduce((sum, it) => sum + (parseFloat(it.quantity) || 0), 0);
+    const calculatedTotal = Math.round(
+      items.reduce((sum, it) => sum + ((parseFloat(it.quantity) || 0) * (parseFloat(it.pricePerPiece) || 0)), 0) * 100
+    ) / 100;
+
+    setFormData((prev) => {
+      if (
+        Number(prev.totalQuantity) === calculatedQty &&
+        prev.totalQuantity !== '' &&
+        Number(prev.totalAmount) === calculatedTotal &&
+        prev.totalAmount !== ''
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        totalQuantity: calculatedQty,
+        totalAmount: calculatedTotal,
+      };
+    });
+  }, [items, query, editId, isEditing, isEditingItems]);
 
   // Auto-calculate Net Amount = Total Amount + (Total Amount * (GST / 100))
   useEffect(() => {
@@ -1940,6 +2002,8 @@ function OrderManagement() {
           return { ...prev, netAmount: calculatedNet };
         });
       }
+    } else {
+      setFormData((prev) => (prev.netAmount === '' ? prev : { ...prev, netAmount: '' }));
     }
   }, [formData.totalAmount, formData.gst]);
 
@@ -1969,6 +2033,8 @@ function OrderManagement() {
         if (Number(prev.pendingAmount) === calculatedPending && prev.pendingAmount !== '') return prev;
         return { ...prev, pendingAmount: calculatedPending };
       });
+    } else {
+      setFormData((prev) => (prev.pendingAmount === '' ? prev : { ...prev, pendingAmount: '' }));
     }
   }, [formData.totalAmount, formData.netAmount, formData.gst, formData.advanceAmount]);
 
@@ -2153,7 +2219,6 @@ function OrderManagement() {
       attachment: '',
       attachmentName: '',
       logoName: '',
-      pricePerPiece: '',
       totalAmount: '',
       gst: '',
       netAmount: '',
@@ -2208,9 +2273,26 @@ function OrderManagement() {
   };
 
   const handlePreviousPage = () => {
+    const returnTo = searchParams.get('returnTo');
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
     const from = searchParams.get('from');
     if (from) {
       navigate(from);
+      return;
+    }
+    if (
+      isCoordinator &&
+      (location.pathname === '/order/sample/coord-total' ||
+        location.pathname === '/order/sample/ready-to-pick-production' ||
+        location.pathname === '/order/sample/ready-to-pick-up' ||
+        location.pathname === '/order/partial/coord-total' ||
+        location.pathname === '/order/partial/ready-to-pick-production' ||
+        location.pathname === '/order/partial/ready-to-pick-up')
+    ) {
+      navigate('/');
       return;
     }
     if (window.history.state && window.history.state.idx > 0) {
@@ -2278,23 +2360,6 @@ function OrderManagement() {
     } else if (action === 'submit') {
       const isLeadQuery = (query || 'lead').toLowerCase().trim() === 'lead';
       if (isLeadQuery) {
-        if (items.length > 0) {
-          for (let i = 0; i < items.length; i++) {
-            const it = items[i];
-            const itemVal = (it.item || it.enterItem || '').trim();
-            const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
-            const isTee = isTshirt(it);
-            const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
-            const hasSize = !isTee || (it.size || '').trim().length > 0;
-            if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
-              const reqFields = isTee
-                ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
-                : 'Item, Quantity, Price Per Piece, and Color';
-              alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
-              return;
-            }
-          }
-        }
         try {
           const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
           const payload = {
@@ -2397,7 +2462,6 @@ function OrderManagement() {
     }
 
     if (
-      formData.pricePerPiece === '' ||
       formData.totalAmount === '' ||
       formData.netAmount === '' ||
       formData.advanceAmount === '' ||
@@ -2405,7 +2469,7 @@ function OrderManagement() {
       !(formData.urgency || '').trim() ||
       !(formData.deliveryDate || '').trim()
     ) {
-      alert('Please fill in all mandatory Order Information fields (Price Per Piece, Total Amount, Net Amount, Advance Amount, Pending Amount, Urgency, and Delivery Date).');
+      alert('Please fill in all mandatory Order Information fields (Total Amount, Net Amount, Advance Amount, Pending Amount, Urgency, and Delivery Date).');
       return;
     }
 
@@ -2426,33 +2490,7 @@ function OrderManagement() {
       return;
     }
 
-    if (items.length === 0) {
-      alert('Please add at least one item using "Add Item".');
-      return;
-    }
-
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      const itemVal = (it.item || it.enterItem || '').trim();
-      const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
-      const isTee = isTshirt(it);
-      const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
-      const hasSize = !isTee || (it.size || '').trim().length > 0;
-      if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
-        const reqFields = isTee
-          ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
-          : 'Item, Quantity, Price Per Piece, and Color';
-        alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
-        return;
-      }
-    }
-
-    if (itemsTotalQty > totalQty) {
-      alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) cannot be greater than Total Quantity (${totalQty} pcs). Sum of items must equal Total Quantity (${totalQty} === ${totalQty}).`);
-      return;
-    }
-    if (itemsTotalQty !== totalQty) {
-      alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) must equal Total Quantity (${totalQty} pcs). (${totalQty} === ${itemsTotalQty})`);
+    if (!validateOrderItems(items)) {
       return;
     }
     try {
@@ -2553,13 +2591,51 @@ function OrderManagement() {
     return s;
   };
 
+  const validateOrderItems = (itemsList) => {
+    if (!itemsList || itemsList.length === 0) {
+      alert('Please add at least one item using "Add Item".');
+      return false;
+    }
+
+    for (let i = 0; i < itemsList.length; i++) {
+      const it = itemsList[i];
+      const itemVal = (it.item || it.enterItem || '').trim();
+      const hasQty = it.quantity !== undefined && it.quantity !== '' && !isNaN(Number(it.quantity)) && Number(it.quantity) > 0;
+      const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
+      const hasColor = (it.color || '').trim().length > 0;
+
+      if (isTshirt(it)) {
+        const hasPrintingType = (it.printingType || '').trim().length > 0;
+        const needsSubOption = (it.printingType || '').trim() === 'Sublimation';
+        const hasSubOption = !needsSubOption || (it.sublimationOption || '').trim().length > 0;
+        const hasNeckType = (it.neckType || '').trim().length > 0;
+        const hasFabric = (it.fabric || '').trim().length > 0;
+        const hasSize = (it.size || '').trim().length > 0;
+
+        if (!itemVal || !hasPrintingType || !hasSubOption || !hasNeckType || !hasFabric || !hasQty || !hasPrice || !hasSize || !hasColor) {
+          const reqFields = needsSubOption
+            ? 'Item, Printing Type, Option, Necktype, Fabric, Quantity, Price Per Piece, Size, and Color'
+            : 'Item, Printing Type, Necktype, Fabric, Quantity, Price Per Piece, Size, and Color';
+          alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
+          return false;
+        }
+      } else {
+        if (!itemVal || !hasQty || !hasPrice || !hasColor) {
+          alert(`Please fill in all mandatory fields for Item #${i + 1} (Item, Quantity, Price Per Piece, and Color).`);
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
   const handleAddItem = () => {
     setItems([...items, { id: Date.now(), itemType: '', item: '', enterItem: '', neckType: '', pricePerPiece: '', fabric: '', quantity: '', size: '', color: '', printingType: '', sublimationOption: '' }]);
   };
 
   const handleItemChange = (id, fieldOrUpdates, value) => {
     setItems(items.map(item => {
-      if (item.id === id) {
+      if ((item.id ?? item._id) === id) {
         if (typeof fieldOrUpdates === 'object') {
           return { ...item, ...fieldOrUpdates };
         }
@@ -2570,7 +2646,7 @@ function OrderManagement() {
   };
 
   const handleRemoveItem = (id) => {
-    setItems(items.filter(item => item.id !== id));
+    setItems(items.filter(item => (item.id ?? item._id) !== id));
   };
 
   const handleStartEditItems = () => {
@@ -2582,38 +2658,22 @@ function OrderManagement() {
     if (itemsBackup && Array.isArray(itemsBackup)) {
       setItems(itemsBackup);
     }
+    if (orderApprovalData) {
+      setFormData((prev) => ({
+        ...prev,
+        totalQuantity: orderApprovalData.totalQuantity || '',
+        totalAmount: orderApprovalData.totalAmount || '',
+        netAmount: orderApprovalData.netAmount || '',
+        pendingAmount: orderApprovalData.pendingAmount || '',
+      }));
+    }
     setIsEditingItems(false);
   };
 
   const handleSaveItems = async () => {
     if (!editId || isSavingItems) return;
 
-    if (!items || items.length === 0) {
-      alert('Please add at least one item using "Add Item".');
-      return;
-    }
-
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      const itemVal = (it.item || it.enterItem || '').trim();
-      const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
-      const isTee = isTshirt(it);
-      const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
-      const hasSize = !isTee || (it.size || '').trim().length > 0;
-      if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
-        const reqFields = isTee
-          ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
-          : 'Item, Quantity, Price Per Piece, and Color';
-        alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
-        return;
-      }
-    }
-
-    const currentItemsTotalQty = items.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0);
-    const targetOrderTotalQty = Number(formData.totalQuantity || orderApprovalData?.totalQuantity || 0);
-
-    if (targetOrderTotalQty > 0 && currentItemsTotalQty !== targetOrderTotalQty) {
-      alert(`Validation Error: Total quantity in "Add Item" (${currentItemsTotalQty} pcs) must equal Total Quantity (${targetOrderTotalQty} pcs).`);
+    if (!validateOrderItems(items)) {
       return;
     }
 
@@ -2646,8 +2706,21 @@ function OrderManagement() {
         return itemObj;
       });
 
+      const newTotalQuantity = cleanItems.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+      const newTotalAmount = Math.round(
+        cleanItems.reduce((sum, it) => sum + ((Number(it.quantity) || 0) * (Number(it.pricePerPiece) || 0)), 0) * 100
+      ) / 100;
+      const gstPercent = parseFloat(formData.gst !== '' ? formData.gst : orderApprovalData?.gst) || 0;
+      const newNetAmount = Math.round((newTotalAmount + (newTotalAmount * (gstPercent / 100))) * 100) / 100;
+      const advance = parseFloat(formData.advanceAmount !== '' ? formData.advanceAmount : orderApprovalData?.advanceAmount) || 0;
+      const newPendingAmount = Math.round((newNetAmount - advance) * 100) / 100;
+
       const payload = {
         items: cleanItems,
+        totalQuantity: newTotalQuantity,
+        totalAmount: newTotalAmount,
+        netAmount: newNetAmount,
+        pendingAmount: newPendingAmount,
         performedBy: actorName,
         performedByRole: actorRole,
         performedById: actorId,
@@ -2661,6 +2734,13 @@ function OrderManagement() {
         if (Array.isArray(res.data.data?.items)) {
           setItems(res.data.data.items);
         }
+        setFormData((prev) => ({
+          ...prev,
+          totalQuantity: res.data.data?.totalQuantity ?? newTotalQuantity,
+          totalAmount: res.data.data?.totalAmount ?? newTotalAmount,
+          netAmount: res.data.data?.netAmount ?? newNetAmount,
+          pendingAmount: res.data.data?.pendingAmount ?? newPendingAmount,
+        }));
         setIsEditingItems(false);
         setActiveActivityTab('application');
         const successNotice = 'Items updated successfully! Changes saved and recorded in Activity Log.';
@@ -2719,6 +2799,54 @@ function OrderManagement() {
     setSubmittingStageAction(true);
     try {
       if (currentSub === 'ready-to-pick-production') {
+        if (currentOrderStage === 'sample' || currentOrderStage === 'partial') {
+          const stageDisplay = currentOrderStage === 'partial' ? 'Partial' : 'Sample';
+          if (action === 'submit') {
+            if (stageForm.logoReceived === 'no') {
+              alert('Cannot deliver to printing: logo was marked as not received. Only Save and Refer Back are available.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            if (stageForm.logoReceived !== 'yes') {
+              alert('Please select whether Logo Received? (Yes/No) before delivering to printing.');
+              setSubmittingStageAction(false);
+              return;
+            }
+          }
+
+          const res = await api.patch(`/api/leads/${lead._id}/coordinator-handover`, {
+            route: 'logo-cutting-to-printing',
+            action,
+            comment: stageForm.note.trim(),
+            author: currentUser?.name || 'Alex Rivera (Coordinator)',
+            handoverData: {
+              logoReceived: stageForm.logoReceived,
+              logoNotReceivedCount: stageForm.logoReceived === 'no' ? (Number(stageForm.logoNotReceivedCount) || 0) : 0,
+              note: stageForm.note.trim(),
+            },
+          });
+
+          if (res.data?.success) {
+            if (action === 'save') {
+              if (res.data?.data) setOrderApprovalData(res.data.data);
+              alert(`Stage details for Order #${lead.orderId || 'Order'} saved successfully!`);
+              return;
+            }
+            if (action === 'submit') {
+              alert(
+                res.data.movedToPrinting
+                  ? `Order #${lead.orderId || 'Order'} logos delivered to Printing! Both Stock & Production handovers complete — moved to ${stageDisplay} → Printing.`
+                  : `Order #${lead.orderId || 'Order'} logos delivered to Printing! Waiting for Stock Staging handover before moving to ${stageDisplay} → Printing.`
+              );
+            } else {
+              alert(`Order #${lead.orderId || 'Order'} referred back to Production → Logo Cutting.`);
+            }
+            const returnTarget = searchParams.get('returnTo') || searchParams.get('from') || `/order/${currentOrderStage}/ready-to-pick-production`;
+            navigate(returnTarget);
+          }
+          return;
+        }
+
         if (action === 'submit') {
           const payload = {
             productionHandoverComplete: true,
@@ -2880,6 +3008,18 @@ function OrderManagement() {
               packagingComplete: true,
               note: stageForm.note,
             };
+          } else if (currentSub === 'ready-to-pick-up') {
+            const finalStagingPcs = Number(stageForm.stagingCount !== undefined ? stageForm.stagingCount : stageForm.readyToPickupCount) || 1;
+            stageData = {
+              printingSampleReceived: stageForm.printingSampleReceived,
+              printingSampleNotReceivedCount: stageForm.printingSampleReceived === 'no' ? Number(stageForm.printingSampleNotReceivedCount) || 0 : 0,
+              sampleRequirementMatch: stageForm.sampleRequirementMatch !== false && stageForm.sampleRequirementMatch !== 'no',
+              readyToPickupCount: finalStagingPcs,
+              verifiedPickupCount: finalStagingPcs,
+              stagingCount: finalStagingPcs,
+              pickupStatus: stageForm.stageStatus || 'Complete',
+              note: stageForm.note,
+            };
           } else if (currentSub === 'staging-room') {
             stageData = {
               stagedRackNumber: stageForm.partialStagingRack || '',
@@ -2931,6 +3071,26 @@ function OrderManagement() {
               masterCartonsCount: Number(stageForm.completeMasterCartonsCount) || 4,
               totalUnitsPacked: Number(stageForm.completeUnitsPacked) || completeAllocQty,
               packagingComplete: true,
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'ready-to-pick-up') {
+            const finalStagingPcs = Number(stageForm.stagingCount !== undefined ? stageForm.stagingCount : stageForm.readyToPickupCount) || 1;
+            stageData = {
+              printingSampleReceived: stageForm.printingSampleReceived,
+              printingSampleNotReceivedCount: stageForm.printingSampleReceived === 'no' ? Number(stageForm.printingSampleNotReceivedCount) || 0 : 0,
+              sampleRequirementMatch: stageForm.sampleRequirementMatch !== false && stageForm.sampleRequirementMatch !== 'no',
+              readyToPickupCount: finalStagingPcs,
+              verifiedPickupCount: finalStagingPcs,
+              stagingCount: finalStagingPcs,
+              pickupStatus: stageForm.stageStatus || 'Complete',
+              note: stageForm.note,
+            };
+          } else if (currentSub === 'staging-room' || currentSub === 'staging-ground') {
+            stageData = {
+              bayStaged: stageForm.completeStagingBayStaged !== false,
+              cartonCountMatched: stageForm.completeStagingCartonCountMatched !== false,
+              stagedRackNumber: stageForm.completeStagingRack || '',
+              dispatchReady: true,
               note: stageForm.note,
             };
           } else if (currentSub === 'delivery-pending') {
@@ -3261,7 +3421,7 @@ function OrderManagement() {
           }
         } else if (currentSub === 'packaging') {
           if (action === 'submit') {
-            toSubStage = 'staging-room';
+            toSubStage = 'ready-to-pick-up';
             stageData = {
               packedCount: Number(stageForm.partialPackedCount) || 80,
               cartonCount: Number(stageForm.partialCartonCount) || 2,
@@ -3270,6 +3430,49 @@ function OrderManagement() {
             };
           } else {
             toSubStage = 'quality-check';
+          }
+        } else if (currentSub === 'ready-to-pick-up') {
+          if (action === 'submit') {
+            if (stageForm.printingSampleReceived === 'no') {
+              alert('Cannot submit order: packaged batch was not received. Order is On Hold. Only Save and Refer Back are available.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            if (stageForm.printingSampleReceived !== 'yes') {
+              alert('Please select whether batch was received from packaging.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            if (stageForm.sampleRequirementMatch === false || stageForm.sampleRequirementMatch === 'no') {
+              alert('Cannot submit order: garments/items do not match client order specifications. Only Save and Refer Back are available.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            toSubStage = 'staging-room';
+            const finalStagingPcs = Number(stageForm.stagingCount !== undefined ? stageForm.stagingCount : stageForm.readyToPickupCount) || 1;
+            stageData = {
+              printingSampleReceived: stageForm.printingSampleReceived,
+              printingSampleNotReceivedCount: 0,
+              sampleRequirementMatch: true,
+              readyToPickupCount: finalStagingPcs,
+              verifiedPickupCount: finalStagingPcs,
+              stagingCount: finalStagingPcs,
+              pickupStatus: stageForm.stageStatus || 'Complete',
+              note: stageForm.note,
+            };
+          } else {
+            toSubStage = 'packaging';
+            const finalStagingPcs = Number(stageForm.stagingCount !== undefined ? stageForm.stagingCount : stageForm.readyToPickupCount) || 1;
+            stageData = {
+              printingSampleReceived: stageForm.printingSampleReceived,
+              printingSampleNotReceivedCount: stageForm.printingSampleReceived === 'no' ? Number(stageForm.printingSampleNotReceivedCount) || 0 : 0,
+              sampleRequirementMatch: stageForm.sampleRequirementMatch !== false && stageForm.sampleRequirementMatch !== 'no',
+              readyToPickupCount: finalStagingPcs,
+              verifiedPickupCount: finalStagingPcs,
+              stagingCount: finalStagingPcs,
+              pickupStatus: 'Referred Back',
+              note: stageForm.note,
+            };
           }
         } else if (currentSub === 'staging-room') {
           if (action === 'submit') {
@@ -3280,7 +3483,7 @@ function OrderManagement() {
               note: stageForm.note,
             };
           } else {
-            toSubStage = 'packaging';
+            toSubStage = 'ready-to-pick-up';
           }
         } else if (currentSub === 'payment-confirmation') {
           if (action === 'submit') {
@@ -3375,7 +3578,7 @@ function OrderManagement() {
           }
         } else if (currentSub === 'packaging') {
           if (action === 'submit') {
-            toSubStage = 'delivery-pending';
+            toSubStage = 'ready-to-pick-up';
             const completeAllocQty = Math.max(0, (Number(lead.totalQuantity) || 100) - (Number(lead.customerApprovalData?.partialQuantity) || (lead.partialPrintingData ? 50 : 0))) || lead.totalQuantity || 100;
             stageData = {
               masterCartonsCount: Number(stageForm.completeMasterCartonsCount) || 4,
@@ -3385,6 +3588,72 @@ function OrderManagement() {
             };
           } else {
             toSubStage = 'quality-check';
+          }
+        } else if (currentSub === 'ready-to-pick-up') {
+          if (action === 'submit') {
+            if (stageForm.printingSampleReceived === 'no') {
+              alert('Cannot submit order: packaged batch was not received. Order is On Hold. Only Save and Refer Back are available.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            if (stageForm.printingSampleReceived !== 'yes') {
+              alert('Please select whether batch was received from packaging.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            if (stageForm.sampleRequirementMatch === false || stageForm.sampleRequirementMatch === 'no') {
+              alert('Cannot submit order: garments/items do not match client order specifications. Only Save and Refer Back are available.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            toSubStage = 'staging-room';
+            const finalStagingPcs = Number(stageForm.stagingCount !== undefined ? stageForm.stagingCount : stageForm.readyToPickupCount) || 1;
+            stageData = {
+              printingSampleReceived: stageForm.printingSampleReceived,
+              printingSampleNotReceivedCount: 0,
+              sampleRequirementMatch: true,
+              readyToPickupCount: finalStagingPcs,
+              verifiedPickupCount: finalStagingPcs,
+              stagingCount: finalStagingPcs,
+              pickupStatus: stageForm.stageStatus || 'Complete',
+              note: stageForm.note,
+            };
+          } else {
+            toSubStage = 'packaging';
+            const finalStagingPcs = Number(stageForm.stagingCount !== undefined ? stageForm.stagingCount : stageForm.readyToPickupCount) || 1;
+            stageData = {
+              printingSampleReceived: stageForm.printingSampleReceived,
+              printingSampleNotReceivedCount: stageForm.printingSampleReceived === 'no' ? Number(stageForm.printingSampleNotReceivedCount) || 0 : 0,
+              sampleRequirementMatch: stageForm.sampleRequirementMatch !== false && stageForm.sampleRequirementMatch !== 'no',
+              readyToPickupCount: finalStagingPcs,
+              verifiedPickupCount: finalStagingPcs,
+              stagingCount: finalStagingPcs,
+              pickupStatus: 'Referred Back',
+              note: stageForm.note,
+            };
+          }
+        } else if (currentSub === 'staging-room' || currentSub === 'staging-ground') {
+          if (action === 'submit') {
+            if (stageForm.completeStagingBayStaged === false || stageForm.completeStagingCartonCountMatched === false) {
+              alert('Cannot submit order: please verify all staging room checks before moving to Ready to Deliver.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            if (!stageForm.completeStagingRack || !String(stageForm.completeStagingRack).trim()) {
+              alert('Please enter the staging rack / bay identifier.');
+              setSubmittingStageAction(false);
+              return;
+            }
+            toSubStage = 'delivery-pending';
+            stageData = {
+              bayStaged: stageForm.completeStagingBayStaged !== false,
+              cartonCountMatched: stageForm.completeStagingCartonCountMatched !== false,
+              stagedRackNumber: String(stageForm.completeStagingRack).trim(),
+              dispatchReady: true,
+              note: stageForm.note,
+            };
+          } else {
+            toSubStage = 'ready-to-pick-up';
           }
         } else if (currentSub === 'delivery-pending') {
           if (action === 'submit') {
@@ -3398,7 +3667,7 @@ function OrderManagement() {
               note: stageForm.note,
             };
           } else {
-            toSubStage = 'packaging';
+            toSubStage = 'staging-room';
           }
         } else if (currentSub === 'delivered') {
           if (action === 'submit') {
@@ -3468,14 +3737,17 @@ function OrderManagement() {
             msg += `sample approved! Order advanced to Partial Stage (Stock & Production tasks assigned).`;
           }
         } else if (currentSub === 'payment-confirmation' && currentOrderStage === 'partial') {
-          msg += `partial payment verified! Order advanced to Complete Stage (Stock & Production tasks assigned).`;
+          msg += `partial payment verified! Order advanced to Complete Stage (Stock Room task assigned — Production Room skipped).`;
         } else if (currentSub === 'customer-support' && currentOrderStage === 'complete') {
           msg += `order successfully completed and archived!`;
         } else {
           msg += `advanced to ${toStage.toUpperCase()} -> ${toSubStage.replace(/-/g, ' ').toUpperCase()}!`;
         }
         alert(msg);
-        if (toSubStage === 'customer-support') {
+        if (isCoordinator && (currentOrderStage === 'sample' || currentOrderStage === 'partial' || currentOrderStage === 'complete') && currentSub === 'ready-to-pick-up') {
+          const returnTarget = searchParams.get('returnTo') || searchParams.get('from') || `/order/${currentOrderStage}/ready-to-pick-up`;
+          navigate(returnTarget);
+        } else if (toSubStage === 'customer-support') {
           navigate('/order/customer-support');
         } else {
           navigate(`/order/${toStage}/${toSubStage}`);
@@ -3660,6 +3932,7 @@ function OrderManagement() {
     const isPartialPrinting = currentOrderStage === 'partial' && activeSub === 'printing';
     const isPartialQualityCheck = currentOrderStage === 'partial' && activeSub === 'quality-check';
     const isPartialPackaging = currentOrderStage === 'partial' && activeSub === 'packaging';
+    const isPartialReadyToPickup = currentOrderStage === 'partial' && activeSub === 'ready-to-pick-up';
     const isPartialStagingRoom = currentOrderStage === 'partial' && activeSub === 'staging-room';
     const isPartialPaymentConfirmation = currentOrderStage === 'partial' && activeSub === 'payment-confirmation';
 
@@ -3669,6 +3942,8 @@ function OrderManagement() {
     const isCompletePrinting = currentOrderStage === 'complete' && activeSub === 'printing';
     const isCompleteQualityCheck = currentOrderStage === 'complete' && activeSub === 'quality-check';
     const isCompletePackaging = currentOrderStage === 'complete' && activeSub === 'packaging';
+    const isCompleteReadyToPickup = currentOrderStage === 'complete' && activeSub === 'ready-to-pick-up';
+    const isCompleteStagingRoom = currentOrderStage === 'complete' && (activeSub === 'staging-room' || activeSub === 'staging-ground');
     const isCompleteDeliveryPending = currentOrderStage === 'complete' && activeSub === 'delivery-pending';
     const isCompleteDelivered = currentOrderStage === 'complete' && activeSub === 'delivered';
     const isCompleteCustomerSupport = currentOrderStage === 'complete' && activeSub === 'customer-support';
@@ -3681,15 +3956,15 @@ function OrderManagement() {
     const isRecognizedWorkflowStage = Boolean(
       isPickProduction ||
       isSampleDtfPending || isSampleStock || isSampleReadyToPick || isSamplePrinting || isSampleReadyToPickup || isSampleStagingGround || isSampleCustomerApproval ||
-      isPartialDtfPending || isPartialStock || isPartialPrinting || isPartialQualityCheck || isPartialPackaging || isPartialStagingRoom || isPartialPaymentConfirmation ||
-      isCompleteDtfPending || isCompleteStock || isCompletePrinting || isCompleteQualityCheck || isCompletePackaging || isCompleteDeliveryPending || isCompleteDelivered || isCompleteCustomerSupport ||
+      isPartialDtfPending || isPartialStock || isPartialPrinting || isPartialQualityCheck || isPartialPackaging || isPartialReadyToPickup || isPartialStagingRoom || isPartialPaymentConfirmation ||
+      isCompleteDtfPending || isCompleteStock || isCompletePrinting || isCompleteQualityCheck || isCompletePackaging || isCompleteReadyToPickup || isCompleteStagingRoom || isCompleteDeliveryPending || isCompleteDelivered || isCompleteCustomerSupport ||
       isAwaitingTaskClearance
     );
 
     const isFromPrintingOnwards = Boolean(
       isSamplePrinting || isSampleReadyToPickup || isSampleStagingGround || isSampleCustomerApproval ||
-      isPartialPrinting || isPartialQualityCheck || isPartialPackaging || isPartialStagingRoom || isPartialPaymentConfirmation ||
-      isCompletePrinting || isCompleteQualityCheck || isCompletePackaging || isCompleteDeliveryPending || isCompleteDelivered || isCompleteCustomerSupport
+      isPartialPrinting || isPartialQualityCheck || isPartialPackaging || isPartialReadyToPickup || isPartialStagingRoom || isPartialPaymentConfirmation ||
+      isCompletePrinting || isCompleteQualityCheck || isCompletePackaging || isCompleteReadyToPickup || isCompleteStagingRoom || isCompleteDeliveryPending || isCompleteDelivered || isCompleteCustomerSupport
     );
 
     if (!isRecognizedWorkflowStage) {
@@ -3710,15 +3985,18 @@ function OrderManagement() {
       (activeSub === 'stock' && currentOrderStage === 'partial' && (['printing', 'quality-check', 'packaging', 'staging-room', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
       (activeSub === 'printing' && currentOrderStage === 'partial' && (orderApprovalData.partialPrintingData?.printingStatus === 'Complete' || ['quality-check', 'packaging', 'staging-room', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
       (activeSub === 'quality-check' && currentOrderStage === 'partial' && (Boolean(orderApprovalData.partialQualityCheckData?.passedCount) || ['packaging', 'staging-room', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
-      (activeSub === 'packaging' && currentOrderStage === 'partial' && (Boolean(orderApprovalData.partialPackagingData?.packedCount) || ['staging-room', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
+      (activeSub === 'packaging' && currentOrderStage === 'partial' && (Boolean(orderApprovalData.partialPackagingData?.packedCount) || ['ready-to-pick-up', 'staging-room', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
+      (activeSub === 'ready-to-pick-up' && currentOrderStage === 'partial' && (Boolean(orderApprovalData.printingHandoverComplete) || ['staging-room', 'staging-ground', 'payment-confirmation'].includes(currentSub) || currentOrderStage === 'complete')) ||
       ((activeSub === 'staging-room' || activeSub === 'staging-ground') && currentOrderStage === 'partial' && (Boolean(orderApprovalData.partialStagingRoomData?.dispatchReady) || currentSub === 'payment-confirmation' || currentOrderStage === 'complete')) ||
       (activeSub === 'payment-confirmation' && currentOrderStage === 'partial' && (Boolean(orderApprovalData.partialPaymentConfirmationData?.paymentVerified) || currentOrderStage === 'complete')) ||
       // Complete
-      (activeSub === 'dtf-pending' && currentOrderStage === 'complete' && ['stock', 'printing', 'quality-check', 'packaging', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub)) ||
-      (activeSub === 'stock' && currentOrderStage === 'complete' && ['printing', 'quality-check', 'packaging', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub)) ||
-      (activeSub === 'printing' && currentOrderStage === 'complete' && (orderApprovalData.completePrintingData?.printingStatus === 'Complete' || ['quality-check', 'packaging', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
-      (activeSub === 'quality-check' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completeQualityCheckData?.passedCount) || ['packaging', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
-      (activeSub === 'packaging' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completePackagingData?.totalUnitsPacked) || ['delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
+      (activeSub === 'dtf-pending' && currentOrderStage === 'complete' && ['stock', 'printing', 'quality-check', 'packaging', 'ready-to-pick-up', 'staging-room', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub)) ||
+      (activeSub === 'stock' && currentOrderStage === 'complete' && ['printing', 'quality-check', 'packaging', 'ready-to-pick-up', 'staging-room', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub)) ||
+      (activeSub === 'printing' && currentOrderStage === 'complete' && (orderApprovalData.completePrintingData?.printingStatus === 'Complete' || ['quality-check', 'packaging', 'ready-to-pick-up', 'staging-room', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
+      (activeSub === 'quality-check' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completeQualityCheckData?.passedCount) || ['packaging', 'ready-to-pick-up', 'staging-room', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
+      (activeSub === 'packaging' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completePackagingData?.totalUnitsPacked) || ['ready-to-pick-up', 'staging-room', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
+      (activeSub === 'ready-to-pick-up' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.printingHandoverComplete) || ['staging-room', 'staging-ground', 'delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
+      ((activeSub === 'staging-room' || activeSub === 'staging-ground') && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completeStagingRoomData?.dispatchReady) || ['delivery-pending', 'delivered', 'customer-support'].includes(currentSub))) ||
       (activeSub === 'delivery-pending' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completeDeliveryPendingData?.trackingNumber) || ['delivered', 'customer-support'].includes(currentSub))) ||
       (activeSub === 'delivered' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completeDeliveredData?.deliveredDate) || currentSub === 'customer-support')) ||
       (activeSub === 'customer-support' && currentOrderStage === 'complete' && (Boolean(orderApprovalData.completeCustomerSupportData?.clientRating || orderApprovalData.isCompleted || orderApprovalData.approvalStatus === 'Completed')))
@@ -3734,7 +4012,11 @@ function OrderManagement() {
     else if (activeSub === 'ready-to-pick' || activeSub === 'ready-to-pickup') stageTitle = isCoordinator ? 'From Stock' : 'Ready to Pick';
     else if (activeSub === 'ready-to-pick-up') {
       if (isCoordinator) {
-        stageTitle = currentOrderStage === 'sample' ? 'From Printing' : 'From Packaging';
+        stageTitle = currentOrderStage === 'sample'
+          ? 'From Printing'
+          : currentOrderStage === 'complete'
+          ? 'From Packaging to Ready to Deliver'
+          : 'From Packaging';
       } else {
         stageTitle = 'Ready to Pick Up';
       }
@@ -3783,13 +4065,24 @@ function OrderManagement() {
     const stockSampleLabel = `Stock Sample Received? (${stockSampleCount} pcs)`;
     const prodSampleLabel = `Production Logo Received? (${prodSampleCount} pcs)`;
 
-    const printingSampleCount = orderApprovalData.printingStageData?.readyToPickupCount !== undefined
-      ? Number(orderApprovalData.printingStageData.readyToPickupCount)
-      : (orderApprovalData.printingStageData?.printedCount !== undefined
-        ? Number(orderApprovalData.printingStageData.printedCount)
-        : (orderApprovalData.printingStageData?.receivedCount !== undefined
-          ? Number(orderApprovalData.printingStageData.receivedCount)
-          : stockSampleCount || 1));
+    const printingSampleCount = isPartialReadyToPickup
+      ? (Number(orderApprovalData.partialPackagingData?.packedCount) ||
+        Number(orderApprovalData.partialPrintingData?.printedCount) ||
+        Number(orderApprovalData.customerApprovalData?.partialQuantity) ||
+        1)
+      : isCompleteReadyToPickup
+      ? (Number(orderApprovalData.completePackagingData?.totalUnitsPacked) ||
+        Number(orderApprovalData.completePrintingData?.printedCount) ||
+        Number(orderApprovalData.stockTaskData?.batchQuantity) ||
+        Number(orderApprovalData.totalQuantity) ||
+        1)
+      : (orderApprovalData.printingStageData?.readyToPickupCount !== undefined
+        ? Number(orderApprovalData.printingStageData.readyToPickupCount)
+        : (orderApprovalData.printingStageData?.printedCount !== undefined
+          ? Number(orderApprovalData.printingStageData.printedCount)
+          : (orderApprovalData.printingStageData?.receivedCount !== undefined
+            ? Number(orderApprovalData.printingStageData.receivedCount)
+            : stockSampleCount || 1)));
 
     const readyToPickSampleCount = orderApprovalData.sampleReadyToPickUpData?.stagingCount !== undefined
       ? Number(orderApprovalData.sampleReadyToPickUpData.stagingCount)
@@ -3963,15 +4256,70 @@ function OrderManagement() {
                   <span>Production Room Clearance &amp; Logo Details</span>
                 </div>
                 <span style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '6px', padding: '4px 12px', fontSize: '12px', fontWeight: 700 }}>
-                  ✓ Task 2 Approved
+                  ✓ Logo Cutting Approved
                 </span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', fontSize: '13.5px', color: '#334155' }}>
+                <div>Logo Name: <strong>{orderApprovalData.logoName || 'Plain / No Logo'}</strong></div>
                 <div>Logos Printed: <strong>{orderApprovalData.productionTaskData?.logosPrinted || orderApprovalData.totalQuantity || 1} pcs</strong></div>
                 <div>Logos Cut &amp; Given: <strong>{orderApprovalData.productionTaskData?.logosCutGiven || orderApprovalData.productionTaskData?.sampleLogosCount || orderApprovalData.productionTaskData?.logosGivenForCutting || orderApprovalData.totalQuantity || 1} pcs</strong></div>
                 <div>Approved By: <strong>{orderApprovalData.productionApproval?.author || 'Marcus Vance (Production Lead)'}</strong></div>
                 <div>Approval Date: <strong>{orderApprovalData.productionApproval?.updatedAt ? new Date(orderApprovalData.productionApproval.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently Cleared'}</strong></div>
               </div>
+
+              {(orderApprovalData.logoDesign || orderApprovalData.attachment || orderApprovalData.digitalDesign || (Array.isArray(orderApprovalData.logoDesignFiles) && orderApprovalData.logoDesignFiles.length > 0) || (Array.isArray(orderApprovalData.digitalDesignFiles) && orderApprovalData.digitalDesignFiles.length > 0)) && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '12px' }}>
+                  {(orderApprovalData.logoDesignFiles?.[0]?.data || orderApprovalData.logoDesign || orderApprovalData.attachment) && (
+                    <a
+                      href={orderApprovalData.logoDesignFiles?.[0]?.data || orderApprovalData.logoDesign || orderApprovalData.attachment}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={orderApprovalData.logoDesignFiles?.[0]?.name || orderApprovalData.logoDesignName || orderApprovalData.attachmentName || 'Logo Design'}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        color: '#2563eb',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <Paperclip size={14} />
+                      <span>Logo Design: {orderApprovalData.logoDesignFiles?.[0]?.name || orderApprovalData.logoDesignName || orderApprovalData.attachmentName || 'View File'}</span>
+                    </a>
+                  )}
+                  {(orderApprovalData.digitalDesignFiles?.[0]?.data || orderApprovalData.digitalDesign) && (
+                    <a
+                      href={orderApprovalData.digitalDesignFiles?.[0]?.data || orderApprovalData.digitalDesign}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={orderApprovalData.digitalDesignFiles?.[0]?.name || orderApprovalData.digitalDesignName || 'Digital Design'}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        color: '#2563eb',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <Paperclip size={14} />
+                      <span>Digital Design: {orderApprovalData.digitalDesignFiles?.[0]?.name || orderApprovalData.digitalDesignName || 'View File'}</span>
+                    </a>
+                  )}
+                </div>
+              )}
+
               {orderApprovalData.productionApproval?.note && (
                 <div style={{ marginTop: '12px', fontSize: '13px', color: '#334155', background: '#ffffff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                   <strong>Production Remarks:</strong> &ldquo;{orderApprovalData.productionApproval.note}&rdquo;
@@ -4690,22 +5038,28 @@ function OrderManagement() {
             </div>
           )}
 
-          {/* SAMPLE -> READY TO PICK UP */}
-          {isSampleReadyToPickup && (
+          {/* SAMPLE / PARTIAL / COMPLETE -> READY TO PICK UP (FROM PRINTING / FROM PACKAGING) */}
+          {(isSampleReadyToPickup || isPartialReadyToPickup || isCompleteReadyToPickup) && (
             <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Package size={17} />
-                  Ready to Pick Up
+                  {isCompleteReadyToPickup && isCoordinator
+                    ? 'From Packaging to Ready to Deliver'
+                    : isPartialReadyToPickup && isCoordinator
+                    ? 'From Packaging to Staging Room'
+                    : 'Ready to Pick Up'}
                 </h4>
               </div>
 
               {/* Form Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '16px' }}>
-                {/* Q1: Sample Received from Printing? */}
+                {/* Q1: Sample / Batch Received from Printing / Packaging? */}
                 <div className="form-field">
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                    Sample Received from Printing? ({printingSampleCount} pcs)
+                    {(isPartialReadyToPickup || isCompleteReadyToPickup)
+                      ? `Batch Received from Packaging? (${printingSampleCount} pcs)`
+                      : `Sample Received from Printing? (${printingSampleCount} pcs)`}
                   </label>
                   <select
                     id="select-printing-sample-received"
@@ -4755,10 +5109,10 @@ function OrderManagement() {
                   )}
                 </div>
 
-                {/* Q2: How many final sample for staging room */}
+                {/* Q2: How many final sample / units for staging room */}
                 <div className="form-field">
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                    Final Samples for Staging Room (pcs)
+                    {(isPartialReadyToPickup || isCompleteReadyToPickup) ? 'Final Units for Staging Room (pcs)' : 'Final Samples for Staging Room (pcs)'}
                   </label>
                   <input
                     type="number"
@@ -5793,6 +6147,80 @@ function OrderManagement() {
             </div>
           )}
 
+          {/* COMPLETE -> STAGING ROOM */}
+          {isCompleteStagingRoom && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={16} color="#059669" /> Verified Data from Packaging &amp; Coordinator Pickup
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '13px', color: '#334155' }}>
+                  <div>Total Packed Units: <strong>{orderApprovalData.completePackagingData?.totalUnitsPacked || Math.max(0, (Number(orderApprovalData.totalQuantity) || 100) - (Number(orderApprovalData.customerApprovalData?.partialQuantity) || (orderApprovalData.partialPrintingData ? 50 : 0))) || 50} pcs</strong></div>
+                  <div>Master Cartons Packed: <strong>{orderApprovalData.completePackagingData?.masterCartonsCount || 4} cartons</strong></div>
+                  <div>QC Certification: <strong style={{ color: '#059669' }}>✓ Verified Passed</strong></div>
+                </div>
+                {orderApprovalData.completePackagingData?.note && (
+                  <div style={{ fontSize: '12.5px', color: '#334155', background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
+                    <strong>Packaging Remarks:</strong> &ldquo;{orderApprovalData.completePackagingData.note}&rdquo;
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>
+                  Complete Staging Room Verification
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input
+                      type="checkbox"
+                      checked={stageForm.completeStagingBayStaged !== false}
+                      onChange={(e) => setStageForm((prev) => ({ ...prev, completeStagingBayStaged: e.target.checked }))}
+                      style={{ accentColor: '#2563eb', transform: 'scale(1.2)', cursor: 'pointer' }}
+                    />
+                    <span>Master cartons staged in designated Complete Dispatch Bay</span>
+                  </label>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155' }}>
+                    <input
+                      type="checkbox"
+                      checked={stageForm.completeStagingCartonCountMatched !== false}
+                      onChange={(e) => setStageForm((prev) => ({ ...prev, completeStagingCartonCountMatched: e.target.checked }))}
+                      style={{ accentColor: '#2563eb', transform: 'scale(1.2)', cursor: 'pointer' }}
+                    />
+                    <span>Physical carton count matches packaging manifest for Ready to Deliver</span>
+                  </label>
+                </div>
+
+                <div style={{ marginTop: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Staging Rack / Bay Identifier <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Rack C-01 or Bay 2-B"
+                    value={stageForm.completeStagingRack}
+                    onChange={(e) => setStageForm({ ...stageForm, completeStagingRack: e.target.value })}
+                    style={{
+                      width: '100%',
+                      maxWidth: '320px',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: !stageForm.completeStagingRack?.trim() ? '1.5px solid #f87171' : '1px solid #cbd5e1',
+                      fontSize: '13.5px',
+                      boxSizing: 'border-box',
+                      background: !stageForm.completeStagingRack?.trim() ? '#fffaf0' : '#ffffff',
+                    }}
+                  />
+                  {!stageForm.completeStagingRack?.trim() && (
+                    <p style={{ margin: '5px 0 0', fontSize: '12px', color: '#dc2626' }}>
+                      * Please enter the staging rack or bay identifier to enable submit.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* COMPLETE -> DELIVERY PENDING */}
           {isCompleteDeliveryPending && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -5805,6 +6233,9 @@ function OrderManagement() {
                   <div>Phone: <strong>{orderApprovalData.phoneNumber || '-'}</strong></div>
                   <div>Address: <strong>{orderApprovalData.companyAddress || '-'}, {orderApprovalData.state || ''} {orderApprovalData.pincode || ''}</strong></div>
                   <div>Total Packed: <strong style={{ color: '#059669' }}>{orderApprovalData.completePackagingData?.totalUnitsPacked || Math.max(0, (Number(orderApprovalData.totalQuantity) || 100) - (Number(orderApprovalData.customerApprovalData?.partialQuantity) || (orderApprovalData.partialPrintingData ? 50 : 0))) || 50} pcs ({orderApprovalData.completePackagingData?.masterCartonsCount || 4} cartons)</strong></div>
+                  {orderApprovalData.completeStagingRoomData?.stagedRackNumber && (
+                    <div>Staged Rack / Bay: <strong>{orderApprovalData.completeStagingRoomData.stagedRackNumber}</strong></div>
+                  )}
                 </div>
               </div>
 
@@ -6019,6 +6450,96 @@ function OrderManagement() {
             </div>
           )}
 
+          {/* COORDINATOR -> FROM LOGO CUTTING TO PRINTING (SAMPLE & PARTIAL HANDOVER) */}
+          {isPickProduction && (currentOrderStage === 'sample' || currentOrderStage === 'partial') && (
+            <div style={{ marginTop: '20px', paddingTop: '18px', borderTop: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                <div className="form-field">
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                    Logo Received? ({prodSampleCount} pcs)
+                  </label>
+                  <select
+                    id="select-coord-logo-received"
+                    value={stageForm.logoReceived || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setStageForm((prev) => ({
+                        ...prev,
+                        logoReceived: val,
+                        stageStatus: val === 'no' ? 'On Hold' : val === 'yes' ? 'Complete' : 'Work in Progress',
+                        ...(val === 'yes' ? { logoNotReceivedCount: '' } : {}),
+                      }));
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      fontSize: '13.5px',
+                      fontWeight: 500,
+                      color: '#0f172a',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <option value="">Select...</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                  {stageForm.logoReceived === 'no' && (
+                    <div style={{ marginTop: '8px' }}>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
+                        Deficit (pcs)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="Enter deficit..."
+                        value={stageForm.logoNotReceivedCount || ''}
+                        onChange={(e) => setStageForm({ ...stageForm, logoNotReceivedCount: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          background: '#ffffff',
+                          fontSize: '13.5px',
+                          color: '#0f172a',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-field">
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                    Deliver To Destination
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${currentOrderStage === 'partial' ? 'Partial' : 'Sample'} Printing Line (Production Printing Floor)`}
+                    className="read-only-input"
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #bbf7d0',
+                      background: '#f0fdf4',
+                      fontSize: '13.5px',
+                      fontWeight: 700,
+                      color: '#15803d',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 4. REMARKS */}
           <div style={{ marginTop: '20px' }}>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
@@ -6044,8 +6565,8 @@ function OrderManagement() {
             />
           </div>
 
-          {/* PRODUCTION HANDOVER ACTION BUTTON */}
-          {isPickProduction && (
+          {/* PRODUCTION HANDOVER ACTION BUTTON (Complete only; Sample & Partial use top bar buttons) */}
+          {isPickProduction && currentOrderStage !== 'sample' && currentOrderStage !== 'partial' && (
             <div style={{ marginTop: '24px', paddingTop: '18px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <button
                 type="button"
@@ -6236,6 +6757,9 @@ function OrderManagement() {
     } else if (isStagingView) {
       const info = getLeadStageInfo(item, currentStage, currentSubStage, currentWorkflow);
       if (!info.matches) {
+        if ((currentStage === 'sample' || currentStage === 'partial') && (currentSubStage === 'staging-room' || currentSubStage === 'staging-ground')) {
+          return false;
+        }
         const stage = (item.orderStage || '').toLowerCase().trim();
         const sub = (item.subStage || '').toLowerCase().trim().replace(/_/g, '-');
         const stockStage = (item.stockTaskStage || '').toLowerCase().trim().replace(/_/g, '-');
@@ -6269,7 +6793,63 @@ function OrderManagement() {
     return true;
   });
 
-  const matchingLeads = allStageLeads;
+  const isCoordTotalListView = (currentStage === 'sample' || currentStage === 'partial') && currentSubStage === 'coord-total';
+
+  const matchingLeads = isCoordTotalListView
+    ? allStageLeads.flatMap((item) => {
+        const rows = [];
+        const stTask = (item.stockTaskStage || '').toLowerCase().trim();
+        const prTask = (item.productionTaskStage || '').toLowerCase().trim();
+        const itemSub = (item.subStage || '').toLowerCase().trim().replace(/\s+/g, '-');
+        const targetStageSlug = currentStage === 'partial' ? 'partial' : 'sample';
+        const totalReturnPath = `/order/${targetStageSlug}/coord-total`;
+
+        const isAlreadyPastPrePrinting = [
+          'printing',
+          'quality-check',
+          'packaging',
+          'ready-to-pick-up',
+          'staging-room',
+          'staging-ground',
+          'customer-approval-awaiting',
+          'payment-confirmation',
+        ].includes(itemSub);
+
+        if (stTask === 'ready_to_pick') {
+          rows.push({
+            ...item,
+            _coordQueueKey: 'verification-to-staging',
+            _coordQueueLabel: 'From Verification to Staging Room',
+            _coordUrl: `/tasks/ready-to-pick?id=${item._id}&stage=${targetStageSlug}&route=verification-to-staging&from=${encodeURIComponent(totalReturnPath)}`,
+          });
+        }
+        if (!isAlreadyPastPrePrinting && stTask === 'completed' && item.stockApproval?.status === 'Approved' && !item.stockHandoverComplete) {
+          rows.push({
+            ...item,
+            _coordQueueKey: 'staging-to-printing',
+            _coordQueueLabel: 'From Staging Room to Printing',
+            _coordUrl: `/tasks/ready-to-pick?id=${item._id}&stage=${targetStageSlug}&route=staging-to-printing&from=${encodeURIComponent(totalReturnPath)}`,
+          });
+        }
+        if (!isAlreadyPastPrePrinting && (prTask === 'completed' || item.productionApproval?.status === 'Approved') && !item.productionHandoverComplete) {
+          rows.push({
+            ...item,
+            _coordQueueKey: 'logo-cutting-to-printing',
+            _coordQueueLabel: 'From Logo Cutting to Printing',
+            _coordUrl: `/order/create-lead?id=${item._id}&edit=true&from=${encodeURIComponent(`/order/${targetStageSlug}/ready-to-pick-production`)}&returnTo=${encodeURIComponent(totalReturnPath)}&stage=${targetStageSlug}`,
+          });
+        }
+        if (itemSub === 'ready-to-pick-up' && !item.printingHandoverComplete) {
+          rows.push({
+            ...item,
+            _coordQueueKey: 'printing-to-staging',
+            _coordQueueLabel: targetStageSlug === 'partial' ? 'From Packaging to Staging Room' : 'From Printing to Staging Room',
+            _coordUrl: `/order/create-lead?id=${item._id}&edit=true&from=${encodeURIComponent(`/order/${targetStageSlug}/ready-to-pick-up`)}&returnTo=${encodeURIComponent(totalReturnPath)}&stage=${targetStageSlug}`,
+          });
+        }
+        return rows;
+      })
+    : allStageLeads;
 
   useEffect(() => {
     if (editId && location.pathname !== '/order/create-lead') {
@@ -6346,7 +6926,8 @@ function OrderManagement() {
       const s = (sub || '').toLowerCase().trim();
       if (s === 'printing') return 'Printing';
       if (s === 'ready-to-pick' || s === 'ready-to-pickup') return 'From Stock';
-      if (s === 'ready-to-pick-up') return 'From Printing';
+      if (s === 'ready-to-pick-production' || s === 'ready-to-pick-prod') return 'From Logo Cutting to Printing';
+      if (s === 'ready-to-pick-up') return isCoordinator ? (resolvedOrderStage === 'partial' ? 'From Packaging to Staging Room' : resolvedOrderStage === 'complete' ? 'From Packaging to Ready to Deliver' : 'From Printing to Staging Room') : (resolvedOrderStage === 'sample' ? 'From Printing' : 'From Packaging');
       if (s === 'staging-ground' || s === 'staging-room') return 'Staging Room';
       if (s === 'customer-approval-awaiting' || s === 'customer-approval') return 'Customer Approval Awaiting';
       if (s === 'quality-check') return 'Quality Check';
@@ -6358,9 +6939,10 @@ function OrderManagement() {
       return s ? s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Stage Form';
     };
 
+    const isSamplePickProduction = (resolvedOrderStage === 'sample' || resolvedOrderStage === 'partial') && (activeSub === 'ready-to-pick-production' || activeSub === 'ready-to-pick-prod');
     const isSampleReadyToPick = resolvedOrderStage === 'sample' && (activeSub === 'ready-to-pick' || activeSub === 'ready-to-pickup');
     const isSamplePrinting = resolvedOrderStage === 'sample' && activeSub === 'printing';
-    const isSampleReadyToPickup = resolvedOrderStage === 'sample' && activeSub === 'ready-to-pick-up';
+    const isSampleReadyToPickup = (resolvedOrderStage === 'sample' || resolvedOrderStage === 'partial' || resolvedOrderStage === 'complete') && activeSub === 'ready-to-pick-up';
     const isSampleStagingGround = resolvedOrderStage === 'sample' && (activeSub === 'staging-ground' || activeSub === 'staging-room');
     const isSampleCustomerApproval = resolvedOrderStage === 'sample' && activeSub === 'customer-approval-awaiting';
     const isPartialQualityCheck = resolvedOrderStage === 'partial' && activeSub === 'quality-check';
@@ -6368,9 +6950,12 @@ function OrderManagement() {
     const isPartialStagingRoom = resolvedOrderStage === 'partial' && (activeSub === 'staging-room' || activeSub === 'staging-ground');
     const isPartialPaymentConfirmation = resolvedOrderStage === 'partial' && activeSub === 'payment-confirmation';
     const isCompleteQualityCheck = resolvedOrderStage === 'complete' && activeSub === 'quality-check';
+    const isCompleteStagingRoom = resolvedOrderStage === 'complete' && (activeSub === 'staging-room' || activeSub === 'staging-ground');
     let isTopSubmitDisabled = false;
     if (editId) {
-      if (isSampleReadyToPick) {
+      if (isSamplePickProduction) {
+        isTopSubmitDisabled = stageForm.logoReceived !== 'yes';
+      } else if (isSampleReadyToPick) {
         isTopSubmitDisabled = stageForm.stockSampleReceived !== 'yes';
       } else if (isSamplePrinting) {
         isTopSubmitDisabled =
@@ -6425,6 +7010,12 @@ function OrderManagement() {
         isTopSubmitDisabled =
           stageForm.completeQcAuditCompleted === false ||
           stageForm.completeQcZeroDefectSignoff === false;
+      } else if (isCompleteStagingRoom) {
+        isTopSubmitDisabled =
+          stageForm.completeStagingBayStaged === false ||
+          stageForm.completeStagingCartonCountMatched === false ||
+          !stageForm.completeStagingRack ||
+          !String(stageForm.completeStagingRack).trim();
       }
     }
 
@@ -6497,7 +7088,9 @@ function OrderManagement() {
                   disabled={submittingStageAction || isTopSubmitDisabled}
                   title={
                     isTopSubmitDisabled
-                      ? (isSampleReadyToPick && stageForm.stockSampleReceived !== 'yes'
+                      ? (isSamplePickProduction && stageForm.logoReceived !== 'yes'
+                        ? "Please select 'Yes' for Logo Received? before delivering to printing."
+                        : isSampleReadyToPick && stageForm.stockSampleReceived !== 'yes'
                         ? "Please select 'Yes' for Stock Sample Received before delivering to printing."
                         : isSampleReadyToPickup && (stageForm.sampleRequirementMatch === false || stageForm.sampleRequirementMatch === 'no')
                         ? "Garments do not match specifications ('No' selected). Submit is disabled; only Save and Refer Back are available."
@@ -6533,7 +7126,11 @@ function OrderManagement() {
                                                       ? "Please enter staging rack/bay identifier to submit."
                                                       : isCompleteQualityCheck && (stageForm.completeQcAuditCompleted === false || stageForm.completeQcZeroDefectSignoff === false)
                                                         ? "Final bulk QC standards not verified (unchecked). Submit is disabled; only Save and Refer Back are available."
-                                                        : "Cannot submit while check or radio is 'No'. Only Save and Refer Back are available.")
+                                                        : isCompleteStagingRoom && (stageForm.completeStagingBayStaged === false || stageForm.completeStagingCartonCountMatched === false)
+                                                          ? "Staging bay verification standards not verified (unchecked). Submit is disabled; only Save and Refer Back are available."
+                                                          : isCompleteStagingRoom && (!stageForm.completeStagingRack || !String(stageForm.completeStagingRack).trim())
+                                                            ? "Please enter staging rack/bay identifier to submit."
+                                                            : "Cannot submit while check or radio is 'No'. Only Save and Refer Back are available.")
                       : ''
                   }
                   style={{
@@ -6557,7 +7154,7 @@ function OrderManagement() {
                   <span>
                     {submittingStageAction
                       ? 'Processing...'
-                      : isSampleReadyToPick
+                      : (isSampleReadyToPick || isSamplePickProduction)
                       ? 'Deliver to Printing'
                       : 'Submit'}
                   </span>
@@ -6730,9 +7327,9 @@ function OrderManagement() {
         )}
 
         <div className="dashboard-content">
-          {/* Definition Bar & Change Management Process Flow (shown only inside orders) */}
-          {editId && (query || '').toLowerCase().trim() === 'order' && renderDefinitionBar()}
-          {editId && (query || '').toLowerCase().trim() === 'order' && renderChangeManagementBar()}
+          {/* Definition Bar & Change Management Process Flow (shown only inside orders, hidden for Coordinator) */}
+          {!isCoordinator && editId && (query || '').toLowerCase().trim() === 'order' && renderDefinitionBar()}
+          {!isCoordinator && editId && (query || '').toLowerCase().trim() === 'order' && renderChangeManagementBar()}
 
           {/* Action Success Notification */}
           {actionSuccessMsg && (
@@ -7519,19 +8116,6 @@ function OrderManagement() {
                               <Plus size={16} /> Add Item *
                             </button>
                           )}
-                          {orderTotalQty > 0 && (
-                            <span style={{
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              background: itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#dcfce7' : itemsTotalQty > orderTotalQty ? '#fee2e2' : '#fef3c7',
-                              color: itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#15803d' : itemsTotalQty > orderTotalQty ? '#b91c1c' : '#b45309',
-                              border: `1px solid ${itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#86efac' : itemsTotalQty > orderTotalQty ? '#fca5a5' : '#fde68a'}`
-                            }}>
-                              Items Total: {itemsTotalQty} / {orderTotalQty} pcs {itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '✓' : ''}
-                            </span>
-                          )}
                         </div>
 
                         {/* Top Right Action Button: Lead Manager can edit Add Item section */}
@@ -7638,20 +8222,21 @@ function OrderManagement() {
                                   value={item.itemType || (isTshirt(item) ? 't-shirt' : (item.item ? 'others' : ''))}
                                   onChange={(e) => {
                                     const selected = e.target.value;
+                                    const rowKey = item.id ?? item._id;
                                     if (selected === 't-shirt') {
-                                      handleItemChange(item.id, {
+                                      handleItemChange(rowKey, {
                                         itemType: 't-shirt',
                                         item: 'T-Shirt',
                                       });
                                     } else if (selected === 'others') {
-                                      handleItemChange(item.id, {
+                                      handleItemChange(rowKey, {
                                         itemType: 'others',
                                         item: item.enterItem || '',
                                         printingType: '',
                                         sublimationOption: '',
                                       });
                                     } else {
-                                      handleItemChange(item.id, {
+                                      handleItemChange(rowKey, {
                                         itemType: '',
                                         item: '',
                                         printingType: '',
@@ -7676,7 +8261,7 @@ function OrderManagement() {
                                     disabled={isItemsReadOnly}
                                     placeholder="Enter item..."
                                     value={item.enterItem || (item.item !== 'T-Shirt' && item.item !== 'others' ? item.item : '')}
-                                    onChange={(e) => handleItemChange(item.id, {
+                                    onChange={(e) => handleItemChange(item.id ?? item._id, {
                                       enterItem: e.target.value,
                                       item: e.target.value,
                                     })}
@@ -7687,13 +8272,14 @@ function OrderManagement() {
 
                               {isTshirt(item) && (
                                 <div style={{ flex: '1.2 1 125px', minWidth: '115px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Printing Type</label>
+                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Printing Type *</label>
                                   <select
+                                    required={isTshirt(item)}
                                     disabled={isItemsReadOnly}
                                     value={item.printingType || ''}
                                     onChange={(e) => {
                                       const val = e.target.value;
-                                      handleItemChange(item.id, {
+                                      handleItemChange(item.id ?? item._id, {
                                         printingType: val,
                                         ...(val !== 'Sublimation' ? { sublimationOption: '', sublimation: '' } : {})
                                       });
@@ -7710,11 +8296,12 @@ function OrderManagement() {
 
                               {isTshirt(item) && (item.printingType || '') === 'Sublimation' && (
                                 <div style={{ flex: '0.8 1 80px', minWidth: '75px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Option</label>
+                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Option *</label>
                                   <select
+                                    required={isTshirt(item) && (item.printingType || '') === 'Sublimation'}
                                     disabled={isItemsReadOnly}
                                     value={item.sublimationOption || ''}
-                                    onChange={(e) => handleItemChange(item.id, 'sublimationOption', e.target.value)}
+                                    onChange={(e) => handleItemChange(item.id ?? item._id, 'sublimationOption', e.target.value)}
                                     style={{ padding: '8px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                   >
                                     <option value="">Select...</option>
@@ -7726,15 +8313,16 @@ function OrderManagement() {
 
                               {isTshirt(item) && (
                                 <div style={{ flex: '1.1 1 115px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>NECKTYPE</label>
+                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>NECKTYPE *</label>
                                   <select
+                                    required={isTshirt(item)}
                                     disabled={isItemsReadOnly}
                                     value={
                                       item.neckType
                                         ? (item.neckType.toUpperCase() === 'ROUND NECK' ? 'ROUND NECK' : item.neckType.toUpperCase() === 'COLLAR NECK' ? 'COLLAR NECK' : item.neckType)
                                         : ''
                                     }
-                                    onChange={(e) => handleItemChange(item.id, 'neckType', e.target.value)}
+                                    onChange={(e) => handleItemChange(item.id ?? item._id, 'neckType', e.target.value)}
                                     style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                   >
                                     <option value="">Select...</option>
@@ -7756,7 +8344,7 @@ function OrderManagement() {
                                   required={isTshirt(item)}
                                   disabled={isItemsReadOnly}
                                   value={item.fabric || ''}
-                                  onChange={(e) => handleItemChange(item.id, 'fabric', e.target.value)}
+                                  onChange={(e) => handleItemChange(item.id ?? item._id, 'fabric', e.target.value)}
                                   style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </div>
@@ -7767,7 +8355,7 @@ function OrderManagement() {
                                   required
                                   disabled={isItemsReadOnly}
                                   value={item.quantity || ''}
-                                  onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
+                                  onChange={(e) => handleItemChange(item.id ?? item._id, 'quantity', e.target.value)}
                                   style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </div>
@@ -7780,7 +8368,7 @@ function OrderManagement() {
                                   disabled={isItemsReadOnly}
                                   placeholder="0.00"
                                   value={item.pricePerPiece ?? ''}
-                                  onChange={(e) => handleItemChange(item.id, 'pricePerPiece', e.target.value)}
+                                  onChange={(e) => handleItemChange(item.id ?? item._id, 'pricePerPiece', e.target.value)}
                                   style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </div>
@@ -7792,7 +8380,7 @@ function OrderManagement() {
                                   required={isTshirt(item)}
                                   disabled={isItemsReadOnly}
                                   value={item.size || ''}
-                                  onChange={(e) => handleItemChange(item.id, 'size', e.target.value)}
+                                  onChange={(e) => handleItemChange(item.id ?? item._id, 'size', e.target.value)}
                                   style={{ padding: '8px 6px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 >
                                   <option value="">Select...</option>
@@ -7814,14 +8402,14 @@ function OrderManagement() {
                                   required
                                   disabled={isItemsReadOnly}
                                   value={item.color || ''}
-                                  onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
+                                  onChange={(e) => handleItemChange(item.id ?? item._id, 'color', e.target.value)}
                                   style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </div>
                               {!isItemsReadOnly && (
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoveItem(item.id)}
+                                  onClick={() => handleRemoveItem(item.id ?? item._id)}
                                   title="Remove item"
                                   style={{
                                     flex: '0 0 auto',
@@ -7849,54 +8437,19 @@ function OrderManagement() {
 
                       <div className="form-group">
                         <label>Total Quantity (pcs) *</label>
-                        <div>
-                          <input
-                            type="number"
-                            required
-                            disabled={isReadOnly}
-                            value={formData.totalQuantity}
-                            onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value })}
-                            style={{
-                              width: '100%',
-                              borderColor:
-                                items.length > 0 && orderTotalQty > 0
-                                  ? itemsTotalQty === orderTotalQty
-                                    ? '#22c55e'
-                                    : itemsTotalQty > orderTotalQty
-                                      ? '#ef4444'
-                                      : '#f59e0b'
-                                  : undefined,
-                            }}
-                          />
-                          {items.length > 0 && orderTotalQty > 0 && (
-                            <div style={{ marginTop: '5px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              {itemsTotalQty === orderTotalQty ? (
-                                <span style={{ color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <CheckCircle2 size={13} /> Matches Add Item total ({itemsTotalQty}/{orderTotalQty} pcs)
-                                </span>
-                              ) : itemsTotalQty > orderTotalQty ? (
-                                <span style={{ color: '#dc2626', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <AlertCircle size={13} /> Items total ({itemsTotalQty} pcs) exceeds Total Quantity ({orderTotalQty} pcs). Must equal ({orderTotalQty} === {orderTotalQty}).
-                                </span>
-                              ) : (
-                                <span style={{ color: '#d97706', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <AlertCircle size={13} /> Items total: {itemsTotalQty} / {orderTotalQty} pcs ({orderTotalQty - itemsTotalQty} pcs remaining to match)
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Price Per Piece *</label>
                         <input
                           type="number"
-                          step="0.01"
                           required
-                          disabled={isReadOnly}
-                          value={formData.pricePerPiece}
-                          onChange={(e) => setFormData({ ...formData, pricePerPiece: e.target.value })}
+                          readOnly
+                          disabled
+                          value={formData.totalQuantity}
+                          style={{
+                            width: '100%',
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            cursor: 'not-allowed',
+                          }}
                         />
                       </div>
 
@@ -7905,9 +8458,15 @@ function OrderManagement() {
                         <input
                           type="number"
                           required
-                          disabled={isReadOnly}
+                          readOnly
+                          disabled
                           value={formData.totalAmount}
-                          onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            cursor: 'not-allowed',
+                          }}
                         />
                       </div>
 
@@ -7927,9 +8486,15 @@ function OrderManagement() {
                         <input
                           type="number"
                           required
-                          disabled={isReadOnly}
+                          readOnly
+                          disabled
                           value={formData.netAmount}
-                          onChange={(e) => setFormData({ ...formData, netAmount: e.target.value })}
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            cursor: 'not-allowed',
+                          }}
                         />
                       </div>
 
@@ -7949,9 +8514,15 @@ function OrderManagement() {
                         <input
                           type="number"
                           required
-                          disabled={isReadOnly}
+                          readOnly
+                          disabled
                           value={formData.pendingAmount}
-                          onChange={(e) => setFormData({ ...formData, pendingAmount: e.target.value })}
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            cursor: 'not-allowed',
+                          }}
                         />
                       </div>
 
@@ -9051,7 +9622,6 @@ function OrderManagement() {
     { key: 'repeatedOrder', label: 'Repeated Order' },
     { key: 'additionalNote', label: 'Additional Note' },
     { key: 'logoName', label: 'Logo Name' },
-    { key: 'pricePerPiece', label: 'Price Per Piece' },
     { key: 'totalAmount', label: 'Total Amount' },
     { key: 'gst', label: 'GST (%)' },
     { key: 'netAmount', label: 'Net Amount' },
@@ -9476,6 +10046,7 @@ function OrderManagement() {
               <thead>
                 <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   {visibleColumns.orderId && <th style={{ padding: '10px 12px' }}>Order ID</th>}
+                  {isCoordTotalListView && <th style={{ padding: '10px 12px' }}>Handover Step</th>}
                   {visibleColumns.companyName && <th style={{ padding: '10px 12px' }}>Company</th>}
                   {visibleColumns.employeeName && <th style={{ padding: '10px 12px' }}>Employee</th>}
                   {visibleColumns.phoneNumber && <th style={{ padding: '10px 12px' }}>Phone</th>}
@@ -9495,7 +10066,6 @@ function OrderManagement() {
                   {visibleColumns.repeatedOrder && <th style={{ padding: '10px 12px' }}>Repeated Order</th>}
                   {visibleColumns.additionalNote && <th style={{ padding: '10px 12px' }}>Additional Note</th>}
                   {visibleColumns.logoName && <th style={{ padding: '10px 12px' }}>Logo Name</th>}
-                  {visibleColumns.pricePerPiece && <th style={{ padding: '10px 12px' }}>Price Per Piece</th>}
                   {visibleColumns.totalAmount && <th style={{ padding: '10px 12px' }}>Total Amount</th>}
                   {visibleColumns.gst && <th style={{ padding: '10px 12px' }}>GST (%)</th>}
                   {visibleColumns.netAmount && <th style={{ padding: '10px 12px' }}>Net Amount</th>}
@@ -9512,9 +10082,13 @@ function OrderManagement() {
                   const stageInfo = getLeadStageInfo(item, currentStage, currentSubStage);
                   return (
                     <tr
-                      key={item._id || item.orderId || `order-row-${itemIdx}`}
+                      key={item._coordQueueKey ? `${item._id}-${item._coordQueueKey}` : (item._id || item.orderId || `order-row-${itemIdx}`)}
                       id={`order-row-${item.orderId || item._id}`}
                       onClick={() => {
+                        if (isCoordTotalListView && item._coordUrl) {
+                          navigate(item._coordUrl);
+                          return;
+                        }
                         const editParam = isLeadManager ? 'false' : 'true';
                         navigate(`/order/create-lead?id=${item._id}&edit=${editParam}&from=${encodeURIComponent(location.pathname)}&stage=${encodeURIComponent(item.orderStage || 'sample')}`);
                       }}
@@ -9531,6 +10105,22 @@ function OrderManagement() {
                       {visibleColumns.orderId && (
                         <td style={{ padding: '12px', fontWeight: 600, color: '#1e293b' }}>
                           {item.orderId || (item._id ? `ORD-${String(item._id).slice(-5).toUpperCase()}` : '—')}
+                        </td>
+                      )}
+                      {isCoordTotalListView && (
+                        <td style={{ padding: '12px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '3px 9px',
+                            borderRadius: '6px',
+                            background: '#f3e8ff',
+                            color: '#7e22ce',
+                            border: '1px solid #d8b4fe',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                          }}>
+                            {item._coordQueueLabel}
+                          </span>
                         </td>
                       )}
                       {visibleColumns.companyName && (
@@ -9703,11 +10293,6 @@ function OrderManagement() {
                       {visibleColumns.logoName && (
                         <td style={{ padding: '12px', color: '#475569' }}>
                           {item.logoName || '—'}
-                        </td>
-                      )}
-                      {visibleColumns.pricePerPiece && (
-                        <td style={{ padding: '12px', color: '#475569' }}>
-                          {item.pricePerPiece ? `₹${item.pricePerPiece}` : '—'}
                         </td>
                       )}
                       {visibleColumns.totalAmount && (

@@ -45,6 +45,13 @@ export default function CoordinatorDashboard() {
     fetchLeads();
   }, []);
 
+  const isEmbroideryOrder = (o) => {
+    if (!o) return false;
+    if (String(o.printingType || "").toLowerCase().trim() === "embroidery") return true;
+    if (Array.isArray(o.items) && o.items.some((it) => String(it?.printingType || "").toLowerCase().trim() === "embroidery")) return true;
+    return false;
+  };
+
   // Stage Metrics calculation
   const stageMetrics = useMemo(() => {
     const calc = (stageKey) => {
@@ -55,6 +62,8 @@ export default function CoordinatorDashboard() {
 
       (Array.isArray(leads) ? leads : []).forEach((o) => {
         if (!o) return;
+        const isPureLead = (o.query || "").toLowerCase().trim() === "lead";
+        if (isPureLead) return;
         const isOrder = o.query === "order" || o.orderStage || o.orderId;
         if (!isOrder) return;
 
@@ -64,6 +73,55 @@ export default function CoordinatorDashboard() {
         const subStage = (o.subStage || "").toLowerCase().trim().replace(/\s+/g, "-");
         const stockTaskStage = (o.stockTaskStage || "").toLowerCase().trim();
         const prodTaskStage = (o.productionTaskStage || "").toLowerCase().trim();
+
+        if (stageKey === "sample" || stageKey === "partial" || stageKey === "complete") {
+          if (isEmbroideryOrder(o)) return;
+          const isAlreadyPastPrePrinting = [
+            "printing",
+            "quality-check",
+            "packaging",
+            "ready-to-pick-up",
+            "staging-room",
+            "staging-ground",
+            "customer-approval-awaiting",
+            "payment-confirmation",
+            "delivery-pending",
+            "delivered",
+            "customer-support",
+          ].includes(subStage);
+
+          // 1. Stock: From Verification to Staging Room
+          if (stockTaskStage === "ready_to_pick") {
+            verificationToStaging++;
+          }
+
+          // 2. Stock: From Staging Room to Printing
+          if (
+            !isAlreadyPastPrePrinting &&
+            stockTaskStage === "completed" &&
+            o.stockApproval?.status === "Approved" &&
+            !o.stockHandoverComplete
+          ) {
+            stagingToPrinting++;
+          }
+
+          // 3. Production: From Logo Cutting to Printing (Skipped in Complete stage)
+          if (
+            stageKey !== "complete" &&
+            !isAlreadyPastPrePrinting &&
+            (prodTaskStage === "completed" || o.productionApproval?.status === "Approved") &&
+            !o.productionHandoverComplete
+          ) {
+            logoCuttingToPrinting++;
+          }
+
+          // 4. Printing / Packaging: From Printing to Staging Room (Sample), From Packaging to Staging Room (Partial), From Packaging to Ready to Deliver (Complete)
+          if (subStage === "ready-to-pick-up" && !o.printingHandoverComplete) {
+            printingToStaging++;
+          }
+          return;
+        }
+
         const isProdReady =
           (prodTaskStage === "completed" || prodTaskStage === "logo_cutting" || o.productionApproval?.status === "Approved") &&
           !o.productionHandoverComplete;
@@ -138,31 +196,34 @@ export default function CoordinatorDashboard() {
       key: "sample",
       heading: "Sample Stage",
       metrics: stageMetrics.sample,
-      totalTargetUrl: "/order/sample/ready-to-pick",
-      stockVerificationTargetUrl: "/order/sample/ready-to-pick",
-      stockStagingTargetUrl: "/order/sample/staging-room",
+      totalTargetUrl: "/order/sample/coord-total",
+      stockVerificationTargetUrl: "/tasks/ready-to-pick?stage=sample&route=verification-to-staging",
+      stockStagingTargetUrl: "/tasks/ready-to-pick?stage=sample&route=staging-to-printing",
       logoCuttingTargetUrl: "/order/sample/ready-to-pick-production",
       printingToStagingTargetUrl: "/order/sample/ready-to-pick-up",
+      printingToStagingTitle: "From Printing to Staging Room",
     },
     {
       key: "partial",
       heading: "Partial Stage",
       metrics: stageMetrics.partial,
-      totalTargetUrl: "/order/partial/ready-to-pick",
-      stockVerificationTargetUrl: "/order/partial/ready-to-pick",
-      stockStagingTargetUrl: "/order/partial/staging-room",
+      totalTargetUrl: "/order/partial/coord-total",
+      stockVerificationTargetUrl: "/tasks/ready-to-pick?stage=partial&route=verification-to-staging",
+      stockStagingTargetUrl: "/tasks/ready-to-pick?stage=partial&route=staging-to-printing",
       logoCuttingTargetUrl: "/order/partial/ready-to-pick-production",
       printingToStagingTargetUrl: "/order/partial/ready-to-pick-up",
+      printingToStagingTitle: "From Packaging to Staging Room",
     },
     {
       key: "complete",
       heading: "Complete Stage",
       metrics: stageMetrics.complete,
-      totalTargetUrl: "/order/complete/ready-to-pick",
-      stockVerificationTargetUrl: "/order/complete/ready-to-pick",
-      stockStagingTargetUrl: "/order/complete/staging-room",
+      totalTargetUrl: "/order/complete/coord-total",
+      stockVerificationTargetUrl: "/tasks/ready-to-pick?stage=complete&route=verification-to-staging",
+      stockStagingTargetUrl: "/tasks/ready-to-pick?stage=complete&route=staging-to-printing",
       logoCuttingTargetUrl: "/order/complete/ready-to-pick-production",
       printingToStagingTargetUrl: "/order/complete/ready-to-pick-up",
+      printingToStagingTitle: "From Packaging to Ready to Deliver",
     },
   ];
 
@@ -183,7 +244,7 @@ export default function CoordinatorDashboard() {
           </div>
 
           {/* Section Tiles Grid */}
-          <div className="coordinator-tiles-grid">
+          <div className={`coordinator-tiles-grid${section.key === "complete" ? " no-logo-cutting" : ""}`}>
             {/* Tile 1: Total Pick Ups */}
             <div
               className="coordinator-tile tile-total"
@@ -255,33 +316,37 @@ export default function CoordinatorDashboard() {
               </div>
             </div>
 
-            {/* Tile 3: From Logo Cutting to Printing */}
-            <div
-              className="coordinator-tile tile-production"
-              onClick={() => navigate(section.logoCuttingTargetUrl)}
-              role="button"
-              tabIndex={0}
-              title="From Logo Cutting to Printing"
-            >
-              <div className="coordinator-tile-header">
-                <span className="coordinator-tile-label">From Logo Cutting to Printing</span>
-                <div className="coordinator-tile-icon-box">
-                  <Scissors size={16} />
+            {/* Tile 3: From Logo Cutting to Printing (Sample & Partial only) */}
+            {section.key !== "complete" && (
+              <div
+                className="coordinator-tile tile-production"
+                onClick={() => navigate(section.logoCuttingTargetUrl)}
+                role="button"
+                tabIndex={0}
+                title="From Logo Cutting to Printing"
+              >
+                <div className="coordinator-tile-header">
+                  <span className="coordinator-tile-label">From Logo Cutting to Printing</span>
+                  <div className="coordinator-tile-icon-box">
+                    <Scissors size={16} />
+                  </div>
                 </div>
+                <div className="coordinator-tile-count">{section.metrics.logoCuttingToPrinting}</div>
               </div>
-              <div className="coordinator-tile-count">{section.metrics.logoCuttingToPrinting}</div>
-            </div>
+            )}
 
-            {/* Tile 4: From Printing to Staging Room */}
+            {/* Tile 4: From Printing to Staging Room / From Packaging to Staging Room */}
             <div
               className="coordinator-tile tile-printing"
               onClick={() => navigate(section.printingToStagingTargetUrl)}
               role="button"
               tabIndex={0}
-              title="From Printing to Staging Room"
+              title={section.printingToStagingTitle || "From Printing to Staging Room"}
             >
               <div className="coordinator-tile-header">
-                <span className="coordinator-tile-label">From Printing to Staging Room</span>
+                <span className="coordinator-tile-label">
+                  {section.printingToStagingTitle || "From Printing to Staging Room"}
+                </span>
                 <div className="coordinator-tile-icon-box">
                   <Printer size={16} />
                 </div>

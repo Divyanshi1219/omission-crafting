@@ -235,6 +235,7 @@ function Sidebar() {
         { name: 'Quality Check', path: '/order/complete/quality-check' },
         { name: 'Packaging', path: '/order/complete/packaging' },
         { name: 'From Packaging', path: '/order/complete/ready-to-pick-up' },
+        { name: 'Staging Room', path: '/order/complete/staging-room' },
         { name: 'Ready to Deliver', path: '/order/complete/delivery-pending' },
         { name: 'Delivered', path: '/order/complete/delivered' },
       ]
@@ -247,6 +248,7 @@ function Sidebar() {
         { name: 'Quality Check', path: '/order/complete/quality-check' },
         { name: 'Packaging', path: '/order/complete/packaging' },
         { name: 'Ready to Pick Up', path: '/order/complete/ready-to-pick-up' },
+        { name: 'Staging Room', path: '/order/complete/staging-room' },
         { name: 'Ready to Deliver', path: '/order/complete/delivery-pending' },
         { name: 'Delivered', path: '/order/complete/delivered' },
       ];

@@ -1062,6 +1062,9 @@ router.patch("/:id/approval", async (req, res) => {
           }
           lead.stockTaskStage = "verification";
           lead.productionTaskStage = "logo_printing";
+          lead.stockHandoverComplete = false;
+          lead.productionHandoverComplete = false;
+          lead.printingHandoverComplete = false;
           lead.stockApproval = { status: "Pending", note: "", author: "Elena Rostova", updatedAt: null };
           lead.productionApproval = { status: "Pending", note: "", author: "Marcus Vance", updatedAt: null };
           lead.productionTaskData = {
@@ -1283,6 +1286,31 @@ router.patch("/:id/stock-task", async (req, res) => {
 
     if (action === "submit") {
       if (stage === "verification") {
+        const normOrderStage = (lead.orderStage || "").toLowerCase().trim();
+        const currStageId = String(lead.currentStageId || lead.stageId || "");
+        const isPartialStage = normOrderStage === "partial" || currStageId.startsWith("PRT");
+        const isCompleteStage = normOrderStage === "complete" || currStageId.startsWith("CMP");
+        if ((isPartialStage || isCompleteStage) && stockTaskData && Array.isArray(stockTaskData.itemsStockData)) {
+          const totalQty = lead.totalQuantity || lead.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
+          const partialQty = Number(lead.customerApprovalData?.partialQuantity) || Math.floor(totalQty / 2);
+          const batchLimit = isCompleteStage
+            ? (Number(lead.stockTaskData?.batchQuantity) || Math.max(0, totalQty - partialQty) || totalQty)
+            : (Number(lead.stockTaskData?.batchQuantity) || partialQty);
+          const batchLabel = isCompleteStage ? "Complete" : "Partial";
+          const totalAllocated = stockTaskData.itemsStockData.reduce((s, it) => s + (Number(it.sampleDeduction) || 0), 0);
+          if (totalAllocated > batchLimit) {
+            return res.status(400).json({
+              success: false,
+              message: `Total allocated for ${batchLabel} (${totalAllocated} pcs) cannot exceed the ${batchLabel} batch limit of ${batchLimit} pcs.`,
+            });
+          }
+          if (totalAllocated !== batchLimit) {
+            return res.status(400).json({
+              success: false,
+              message: `Please allocate exactly ${batchLimit} pcs across items for this ${batchLabel} batch (currently ${totalAllocated} pcs).`,
+            });
+          }
+        }
         lead.stockTaskStage = "ready_to_pick";
         if (lead.stockApproval) lead.stockApproval.status = "Pending";
       } else if (stage === "ready_to_pick") {
@@ -1298,12 +1326,16 @@ router.patch("/:id/stock-task", async (req, res) => {
         };
 
         const isEmb = isEmbroidery(lead);
-        // If Production Room has also approved (or embroidery where stock room is the only task), advance to From Stock for Coordinator handover!
+        const normStage = (lead.orderStage || "sample").toLowerCase().trim();
+        const isSampleOrPartialOrder = normStage === "sample" || normStage === "partial";
+        // For Sample & Partial DTF, Stock Staging approval sends the order to Coordinator ("From Staging Room to Printing")
         if (isEmb) {
           lead.approvalStatus = "Approved";
           if (!lead.orderStage) lead.orderStage = "sample";
           lead.subStage = "printing";
           movedToPrinting = true;
+        } else if (isSampleOrPartialOrder) {
+          lead.stockHandoverComplete = false;
         } else if (lead.productionApproval?.status === "Approved") {
           lead.approvalStatus = "Approved";
           if (!lead.orderStage) lead.orderStage = "sample";
@@ -1476,7 +1508,7 @@ router.patch("/:id/production-task", async (req, res) => {
       const targetBatchQty = isComplete
         ? (Number(lead.productionTaskData?.batchQuantity) || remainingCompleteQty || totalStockQty)
         : isPartial
-        ? (Number(lead.productionTaskData?.batchQuantity) || partialBatchQty || Math.floor(totalStockQty / 2))
+        ? totalStockQty
         : (Number(lead.productionTaskData?.batchQuantity) || totalStockQty);
 
       if (stage === "logo_printing" && productionTaskData) {
@@ -1518,8 +1550,13 @@ router.patch("/:id/production-task", async (req, res) => {
         };
         lead.markModified("productionApproval");
 
-        // If Stock Room has also approved, advance to From Stock for Coordinator handover!
-        if (lead.stockApproval?.status === "Approved") {
+        const normStage = (lead.orderStage || "sample").toLowerCase().trim();
+        const isSampleOrPartialOrder = normStage === "sample" || normStage === "partial";
+        if (isSampleOrPartialOrder) {
+          // For Sample & Partial DTF, Logo Cutting approval sends the order to Coordinator ("From Logo Cutting to Printing")
+          lead.productionHandoverComplete = false;
+        } else if (lead.stockApproval?.status === "Approved") {
+          // If Stock Room has also approved (Complete), advance to From Stock for Coordinator handover!
           lead.approvalStatus = "Approved";
           if (!lead.orderStage) lead.orderStage = "sample";
           lead.subStage = "ready-to-pick";
@@ -1732,6 +1769,10 @@ router.patch("/:id/stage-transition", async (req, res) => {
           lead.partialPackagingData = { ...(lead.partialPackagingData || {}), ...stageData };
           lead.markModified("partialPackagingData");
         }
+        if (fromSubStage === "ready-to-pick-up" || toSubStage === "ready-to-pick-up") {
+          lead.partialReadyToPickUpData = { ...(lead.partialReadyToPickUpData || {}), ...stageData };
+          lead.markModified("partialReadyToPickUpData");
+        }
         if (fromSubStage === "staging-room" || toSubStage === "staging-room") {
           lead.partialStagingRoomData = { ...(lead.partialStagingRoomData || {}), ...stageData };
           lead.markModified("partialStagingRoomData");
@@ -1761,6 +1802,14 @@ router.patch("/:id/stage-transition", async (req, res) => {
         if (fromSubStage === "packaging" || toSubStage === "packaging") {
           lead.completePackagingData = { ...(lead.completePackagingData || {}), ...stageData };
           lead.markModified("completePackagingData");
+        }
+        if (fromSubStage === "ready-to-pick-up" || toSubStage === "ready-to-pick-up") {
+          lead.completeReadyToPickUpData = { ...(lead.completeReadyToPickUpData || {}), ...stageData };
+          lead.markModified("completeReadyToPickUpData");
+        }
+        if (fromSubStage === "staging-room" || toSubStage === "staging-room" || fromSubStage === "staging-ground" || toSubStage === "staging-ground") {
+          lead.completeStagingRoomData = { ...(lead.completeStagingRoomData || {}), ...stageData };
+          lead.markModified("completeStagingRoomData");
         }
         if (fromSubStage === "delivery-pending" || toSubStage === "delivery-pending") {
           lead.completeDeliveryPendingData = { ...(lead.completeDeliveryPendingData || {}), ...stageData };
@@ -1805,6 +1854,9 @@ router.patch("/:id/stage-transition", async (req, res) => {
 
           lead.pendingAmount = 0;
           lead.advanceAmount = recAmount;
+          lead.stockHandoverComplete = false;
+          lead.productionHandoverComplete = true;
+          lead.printingHandoverComplete = false;
 
           lead.stockApproval = {
             status: "Pending",
@@ -1828,25 +1880,23 @@ router.patch("/:id/stage-transition", async (req, res) => {
           };
 
           lead.productionApproval = {
-            status: "Pending",
-            note: comment || `Full payment received (₹${recAmount}). Complete stage logo printing: ${fullQty} pcs.`,
-            author: "Marcus Vance",
-            updatedAt: null,
+            status: "Approved",
+            note: comment || "Complete stage skips Production Room & Logo Cutting (only Stock Room clearance required).",
+            author: "System",
+            updatedAt: new Date(),
           };
-          lead.productionTaskStage = "logo_printing";
+          lead.productionTaskStage = "completed";
           lead.productionTaskData = {
             ...(lead.productionTaskData || {}),
-            printingSubmitted: false,
-            submittedToLogoCutting: false,
+            printingSubmitted: true,
+            submittedToLogoCutting: true,
+            skippedForComplete: true,
             receivedNoOfLogos: "yes",
-            logosPrinted: "",
-            logosGivenForCutting: "",
-            logosReceivedForCutting: "",
             batchQuantity: fullQty,
             paymentStatus: "fully_received",
             amountReceived: recAmount,
             balanceRemaining: 0,
-            batchNote: `Full payment received (₹${recAmount}). Print & cut logos for full order of ${fullQty} pcs.`
+            batchNote: `Full payment received (₹${recAmount}). Production Room skipped for Complete stage.`
           };
         } else {
           // Partially paid -> Move to Partial stage!
@@ -1859,12 +1909,16 @@ router.patch("/:id/stage-transition", async (req, res) => {
           lead.completeId = lead.completeId || `CMP-${rawNum}`;
           lead.currentStageId = lead.partialId;
 
-          const partialQty = Number(stageData?.partialQuantity) || Math.floor((lead.totalQuantity || 100) / 2) || 50;
+          const fullOrderQty = Number(lead.totalQuantity) || (Array.isArray(lead.items) ? lead.items.reduce((s, it) => s + (Number(it.quantity) || 0), 0) : 0) || 100;
+          const partialQty = Number(stageData?.partialQuantity) || Math.floor(fullOrderQty / 2) || 50;
           const recAmount = Number(stageData?.amountReceived) || 0;
           const balAmount = Number(stageData?.balanceRemaining) || Math.max(0, (lead.netAmount || lead.totalAmount || 0) - recAmount);
 
           lead.pendingAmount = balAmount;
           lead.advanceAmount = recAmount;
+          lead.stockHandoverComplete = false;
+          lead.productionHandoverComplete = false;
+          lead.printingHandoverComplete = false;
 
           lead.stockApproval = {
             status: "Pending",
@@ -1892,7 +1946,7 @@ router.patch("/:id/stage-transition", async (req, res) => {
 
           lead.productionApproval = {
             status: "Pending",
-            note: comment || `Partial payment received (₹${recAmount}). Partial stage logo printing: ${partialQty} pcs.`,
+            note: comment || `Partial payment received (₹${recAmount}). Full order logo printing: ${fullOrderQty} pcs.`,
             author: "Marcus Vance",
             updatedAt: null,
           };
@@ -1905,11 +1959,11 @@ router.patch("/:id/stage-transition", async (req, res) => {
             logosPrinted: "",
             logosGivenForCutting: "",
             logosReceivedForCutting: "",
-            batchQuantity: partialQty,
+            batchQuantity: fullOrderQty,
             paymentStatus: "partial_received",
             amountReceived: recAmount,
             balanceRemaining: balAmount,
-            batchNote: `Partial payment received (₹${recAmount}). Print & cut logos for partial batch of ${partialQty} pcs.`
+            batchNote: `Partial payment received (₹${recAmount}). Print & cut full order logos of ${fullOrderQty} pcs.`
           };
         }
       } else {
@@ -1942,6 +1996,9 @@ router.patch("/:id/stage-transition", async (req, res) => {
 
       lead.pendingAmount = 0;
       lead.advanceAmount = Number(lead.netAmount || lead.totalAmount || 0);
+      lead.stockHandoverComplete = false;
+      lead.productionHandoverComplete = true;
+      lead.printingHandoverComplete = false;
 
       lead.stockApproval = {
         status: "Pending",
@@ -1969,25 +2026,23 @@ router.patch("/:id/stage-transition", async (req, res) => {
       };
 
       lead.productionApproval = {
-        status: "Pending",
-        note: comment || `Remaining payment confirmed (₹${remAmount}). Complete stage logo printing: ${remainingQty} pcs.`,
-        author: "Marcus Vance",
-        updatedAt: null,
+        status: "Approved",
+        note: comment || "Logos already printed & cut in Partial stage — Production Room skipped for Complete stage.",
+        author: "System",
+        updatedAt: new Date(),
       };
-      lead.productionTaskStage = "logo_printing";
+      lead.productionTaskStage = "completed";
       lead.productionTaskData = {
         ...(lead.productionTaskData || {}),
-        printingSubmitted: false,
-        submittedToLogoCutting: false,
+        printingSubmitted: true,
+        submittedToLogoCutting: true,
+        skippedForComplete: true,
         receivedNoOfLogos: "yes",
-        logosPrinted: "",
-        logosGivenForCutting: "",
-        logosReceivedForCutting: "",
         batchQuantity: remainingQty,
         paymentStatus: "fully_received",
         amountReceived: remAmount,
         balanceRemaining: 0,
-        batchNote: `Remaining payment received (₹${remAmount}). Print & cut logos for remaining ${remainingQty} pcs (Partial delivered: ${partialQty} pcs).`
+        batchNote: `Remaining payment received (₹${remAmount}). Production Room skipped (full logos printed in Partial).`
       };
     }
 
@@ -1999,10 +2054,19 @@ router.patch("/:id/stage-transition", async (req, res) => {
       lead.isCompleted = true;
     }
 
+    // Coordinator Sample Handover Endpoint
+    // Handles: verification-to-staging, staging-to-printing, logo-cutting-to-printing
+    // (Note: printing-to-staging uses /stage-transition on ready-to-pick-up -> staging-room)
+    // See PATCH /api/leads/:id/coordinator-handover below
+
     // If referring back from printing: resets tasks for Stock & Production so corrections can be made
     if (action === "refer_back" && fromSubStage === "printing") {
+      const isCompleteOrderRef = (lead.orderStage || "").toLowerCase().trim() === "complete";
       lead.subStage = "order";
       lead.approvalStatus = "Pending";
+      lead.stockHandoverComplete = false;
+      lead.productionHandoverComplete = isCompleteOrderRef;
+      lead.printingHandoverComplete = false;
       lead.stockApproval = {
         status: "Pending",
         note: comment || `${lead.orderStage || "Order"} printing requested stock corrections`,
@@ -2010,13 +2074,25 @@ router.patch("/:id/stage-transition", async (req, res) => {
         updatedAt: new Date(),
       };
       lead.stockTaskStage = "verification";
-      lead.productionApproval = {
-        status: "Pending",
-        note: comment || `${lead.orderStage || "Order"} printing requested production corrections`,
-        author: "Production Lead",
-        updatedAt: new Date(),
-      };
-      lead.productionTaskStage = "logo_printing";
+      if (!isCompleteOrderRef) {
+        lead.productionApproval = {
+          status: "Pending",
+          note: comment || `${lead.orderStage || "Order"} printing requested production corrections`,
+          author: "Production Lead",
+          updatedAt: new Date(),
+        };
+        lead.productionTaskStage = "logo_printing";
+      }
+    }
+
+    // Track Coordinator handover completion for Sample (From Printing to Staging Room), Partial (From Packaging to Staging Room), and Complete (From Packaging to Ready to Deliver)
+    if (["sample", "partial", "complete"].includes(activeStage) && fromSubStage === "ready-to-pick-up" && action === "submit") {
+      lead.printingHandoverComplete = true;
+      lead.printingHandoverAt = new Date();
+      lead.printingHandoverBy = author || "Alex Rivera (Coordinator)";
+    }
+    if (["sample", "partial", "complete"].includes(activeStage) && (fromSubStage === "staging-room" || fromSubStage === "staging-ground") && action === "refer_back") {
+      lead.printingHandoverComplete = false;
     }
 
     if (comment && action !== "save") {
@@ -2113,6 +2189,241 @@ router.patch("/:id/stage-transition", async (req, res) => {
     res.json({ success: true, data: lead });
   } catch (err) {
     console.error("Error in stage-transition:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/leads/:id/coordinator-handover - Coordinator Sample handover actions
+router.patch("/:id/coordinator-handover", async (req, res) => {
+  try {
+    const { route, action, handoverData, comment, author, assignedTo } = req.body;
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+
+    if (action === "refer_back" && (!comment || !comment.trim())) {
+      return res.status(400).json({ success: false, message: "Correction note is mandatory when referring back." });
+    }
+
+    const actorName = author || "Alex Rivera (Coordinator)";
+    const activeStageLabel = formatStageLabel(lead.orderStage || "sample");
+    const targetAssignedTo = assignedTo !== undefined ? assignedTo : handoverData?.assignedTo;
+    if (targetAssignedTo !== undefined) {
+      lead.assignedTo = targetAssignedTo;
+    }
+
+    if (!Array.isArray(lead.activityLogs)) lead.activityLogs = [];
+    if (!Array.isArray(lead.approvalComments)) lead.approvalComments = [];
+
+    let movedToPrinting = false;
+    let logActionTitle = "";
+    let logStageLabel = `${activeStageLabel} → ${formatSubStageLabel(lead.subStage || "dtf-pending")}`;
+    let logDetails = "";
+    const logChanges = [];
+
+    if (route === "verification-to-staging") {
+      const normCoordOrderStage = (lead.orderStage || "").toLowerCase().trim();
+      const isPartialOrd = normCoordOrderStage === "partial";
+      const isCompleteOrd = normCoordOrderStage === "complete";
+      lead.stockTaskData = {
+        ...(lead.stockTaskData || {}),
+        ...(handoverData || {}),
+        ...(isPartialOrd && Array.isArray(handoverData?.readyToPickAttachments) ? { partialReadyToPickAttachments: handoverData.readyToPickAttachments } : {}),
+        ...(isCompleteOrd && Array.isArray(handoverData?.readyToPickAttachments) ? { completeReadyToPickAttachments: handoverData.readyToPickAttachments } : {}),
+        ...(targetAssignedTo !== undefined ? { assignedTo: targetAssignedTo } : {}),
+        ...(comment ? { note: comment } : {}),
+      };
+      lead.markModified("stockTaskData");
+
+      lead.stockHandoverData = {
+        ...(lead.stockHandoverData || {}),
+        verificationToStaging: {
+          ...(lead.stockHandoverData?.verificationToStaging || {}),
+          ...(handoverData || {}),
+          note: comment || handoverData?.note || "",
+          updatedAt: new Date(),
+        },
+      };
+      lead.markModified("stockHandoverData");
+
+      if (action === "submit") {
+        lead.stockTaskStage = "staging_room";
+        if (lead.stockApproval) lead.stockApproval.status = "Pending";
+        lead.stockTaskData.readyToPickSubmitted = true;
+        lead.stockTaskData.readyToPickAt = new Date();
+        lead.markModified("stockTaskData");
+
+        logActionTitle = "Coordinator Handover: From Verification to Staging Room";
+        logStageLabel = "Stock Task → Staging Room";
+        logDetails = `Coordinator (${actorName}) picked up verified stock garments and delivered to Stock Staging Room.`;
+        logChanges.push("From: Coordinator → From Verification to Staging Room");
+        logChanges.push("To: Stock Room → Staging Room");
+      } else if (action === "refer_back") {
+        lead.stockTaskStage = "verification";
+        logActionTitle = "Coordinator Referred Back to Stock Verification";
+        logStageLabel = "Stock Task → Verification";
+        logDetails = `Coordinator (${actorName}) referred order back from From Verification to Staging Room to Stock Verification.`;
+        logChanges.push("From: Coordinator → From Verification to Staging Room");
+        logChanges.push("To: Stock Room → Verification");
+      } else {
+        logActionTitle = "Coordinator Saved: From Verification to Staging Room";
+        logDetails = `Coordinator (${actorName}) saved handover draft for From Verification to Staging Room.`;
+      }
+    } else if (route === "staging-to-printing") {
+      const existingStagingHandover = lead.stockHandoverData?.stagingToPrinting || {};
+      lead.stockHandoverData = {
+        ...(lead.stockHandoverData || {}),
+        stagingToPrinting: {
+          ...existingStagingHandover,
+          ...(handoverData || {}),
+          note: comment || handoverData?.note || existingStagingHandover.note || "",
+          updatedAt: new Date(),
+        },
+      };
+      lead.markModified("stockHandoverData");
+
+      if (action === "submit") {
+        lead.stockHandoverComplete = true;
+        lead.stockHandoverAt = new Date();
+        lead.stockHandoverBy = actorName;
+
+        const isCompleteOrder = (lead.orderStage || "").toLowerCase().trim() === "complete";
+        if (lead.productionHandoverComplete === true || isCompleteOrder) {
+          if (isCompleteOrder) {
+            lead.productionHandoverComplete = true;
+          }
+          lead.approvalStatus = "Approved";
+          if (!lead.orderStage) lead.orderStage = "sample";
+          lead.subStage = "printing";
+          movedToPrinting = true;
+        }
+
+        logActionTitle = movedToPrinting
+          ? `Coordinator Handover: From Staging Room to Printing (Moved to ${activeStageLabel} → Printing)`
+          : "Coordinator Handover: From Staging Room to Printing (Awaiting Logo Cutting Handover)";
+        logStageLabel = movedToPrinting ? `${activeStageLabel} → Printing` : "Awaiting Production Logo Handover";
+        logDetails = movedToPrinting
+          ? (isCompleteOrder
+            ? `Coordinator (${actorName}) delivered stock garments from Staging Room to Printing. Production Room skipped for Complete — order moved directly to ${activeStageLabel} → Printing.`
+            : `Coordinator (${actorName}) delivered stock garments from Staging Room to Printing. Both Stock & Production handovers are complete — order moved to ${activeStageLabel} → Printing.`)
+          : `Coordinator (${actorName}) delivered stock garments from Staging Room to Printing. Order will move to ${activeStageLabel} → Printing once Logo Cutting handover is also approved.`;
+        logChanges.push("From: Coordinator → From Staging Room to Printing");
+        logChanges.push(movedToPrinting ? `To: ${activeStageLabel} → Printing` : "Status: Stock Handover Complete (Waiting for Production Logo Handover)");
+      } else if (action === "refer_back") {
+        lead.stockTaskStage = "staging_room";
+        lead.stockApproval = {
+          status: "Pending",
+          note: comment,
+          author: actorName,
+          updatedAt: new Date(),
+        };
+        lead.stockHandoverComplete = false;
+        logActionTitle = "Coordinator Referred Back to Stock Staging Room";
+        logStageLabel = "Stock Task → Staging Room";
+        logDetails = `Coordinator (${actorName}) referred order back from From Staging Room to Printing to Stock Room Staging Room.`;
+        logChanges.push("From: Coordinator → From Staging Room to Printing");
+        logChanges.push("To: Stock Room → Staging Room");
+      } else {
+        logActionTitle = "Coordinator Saved: From Staging Room to Printing";
+        logDetails = `Coordinator (${actorName}) saved handover draft for From Staging Room to Printing.`;
+      }
+    } else if (route === "logo-cutting-to-printing") {
+      lead.productionHandoverData = {
+        ...(lead.productionHandoverData || {}),
+        ...(handoverData || {}),
+        ...(targetAssignedTo !== undefined ? { assignedTo: targetAssignedTo } : {}),
+        note: comment || handoverData?.note || lead.productionHandoverData?.note || "",
+        updatedAt: new Date(),
+      };
+      lead.markModified("productionHandoverData");
+
+      if (action === "submit") {
+        lead.productionHandoverComplete = true;
+        lead.productionHandoverAt = new Date();
+        lead.productionHandoverBy = actorName;
+
+        if (lead.stockHandoverComplete === true) {
+          lead.approvalStatus = "Approved";
+          if (!lead.orderStage) lead.orderStage = "sample";
+          lead.subStage = "printing";
+          movedToPrinting = true;
+        }
+
+        logActionTitle = movedToPrinting
+          ? `Coordinator Handover: From Logo Cutting to Printing (Moved to ${activeStageLabel} → Printing)`
+          : "Coordinator Handover: From Logo Cutting to Printing (Awaiting Stock Handover)";
+        logStageLabel = movedToPrinting ? `${activeStageLabel} → Printing` : "Awaiting Stock Staging Handover";
+        logDetails = movedToPrinting
+          ? `Coordinator (${actorName}) delivered cut logos from Production Logo Cutting to Printing. Both Stock & Production handovers are complete — order moved to ${activeStageLabel} → Printing.`
+          : `Coordinator (${actorName}) delivered cut logos from Production Logo Cutting to Printing. Order will move to ${activeStageLabel} → Printing once Stock Staging handover is also approved.`;
+        logChanges.push("From: Coordinator → From Logo Cutting to Printing");
+        logChanges.push(movedToPrinting ? `To: ${activeStageLabel} → Printing` : "Status: Production Handover Complete (Waiting for Stock Staging Handover)");
+      } else if (action === "refer_back") {
+        lead.productionTaskStage = "logo_cutting";
+        lead.productionApproval = {
+          status: "Pending",
+          note: comment,
+          author: actorName,
+          updatedAt: new Date(),
+        };
+        lead.productionHandoverComplete = false;
+        logActionTitle = "Coordinator Referred Back to Production Logo Cutting";
+        logStageLabel = "Production Task → Logo Cutting";
+        logDetails = `Coordinator (${actorName}) referred order back from From Logo Cutting to Printing to Production Logo Cutting.`;
+        logChanges.push("From: Coordinator → From Logo Cutting to Printing");
+        logChanges.push("To: Production Room → Logo Cutting");
+      } else {
+        logActionTitle = "Coordinator Saved: From Logo Cutting to Printing";
+        logDetails = `Coordinator (${actorName}) saved handover draft for From Logo Cutting to Printing.`;
+      }
+    } else {
+      return res.status(400).json({ success: false, message: `Unsupported coordinator handover route: ${route}` });
+    }
+
+    if (comment) logChanges.push(`Note: "${comment}"`);
+    if (targetAssignedTo) logChanges.push(`Assigned To: ${targetAssignedTo}`);
+
+    if (comment && action !== "save") {
+      lead.approvalComments.push({
+        author: actorName,
+        role: "Coordinator",
+        comment,
+        status: action === "submit" ? "Approved" : "Referred Back",
+        createdAt: new Date(),
+      });
+    }
+
+    lead.activityLogs.push({
+      action: logActionTitle,
+      stage: logStageLabel,
+      performedBy: actorName,
+      role: "Coordinator",
+      loginId: "coordinator",
+      details: logDetails,
+      changes: logChanges,
+      timestamp: new Date(),
+    });
+
+    await lead.save();
+
+    try {
+      const Task = require("../models/Task");
+      const orderIdStr = lead.orderId || lead._id.toString().slice(-6).toUpperCase();
+      const taskIdStr = `TSK-${orderIdStr}`;
+      await Task.findOneAndUpdate(
+        { $or: [{ leadId: lead._id }, { taskId: taskIdStr }] },
+        {
+          orderStage: lead.orderStage || "sample",
+          subStage: lead.subStage || "",
+          ...(lead.assignedTo ? { assignedTo: lead.assignedTo } : {}),
+        }
+      );
+    } catch (e) {
+      console.warn("Could not sync Task model on coordinator-handover:", e.message);
+    }
+
+    res.json({ success: true, data: lead, movedToPrinting });
+  } catch (err) {
+    console.error("Error in coordinator-handover:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });

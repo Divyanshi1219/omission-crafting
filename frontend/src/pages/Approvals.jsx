@@ -245,7 +245,6 @@ export default function Approvals({ defaultTab = "all" }) {
     subStage: false,
     logoName: false,
     totalQuantity: false,
-    pricePerPiece: false,
     totalAmount: false,
     gst: false,
     netAmount: false,
@@ -278,7 +277,6 @@ export default function Approvals({ defaultTab = "all" }) {
     { key: "subStage", label: "Sub Stage" },
     { key: "logoName", label: "Logo Name" },
     { key: "totalQuantity", label: "Total Quantity" },
-    { key: "pricePerPiece", label: "Price Per Piece" },
     { key: "totalAmount", label: "Total Amount" },
     { key: "gst", label: "GST (%)" },
     { key: "netAmount", label: "Net Amount" },
@@ -298,7 +296,7 @@ export default function Approvals({ defaultTab = "all" }) {
     EXTRA_COLUMN_DEFS.filter((col) => extraColumns[col.key]).map((col) => {
       let val = order[col.key];
       if (col.key === "totalQuantity") val = val ? `${val} pcs` : "—";
-      else if (["pricePerPiece", "totalAmount", "netAmount", "advanceAmount", "pendingAmount"].includes(col.key))
+      else if (["totalAmount", "netAmount", "advanceAmount", "pendingAmount"].includes(col.key))
         val = val !== undefined && val !== "" ? `₹${val}` : "—";
       else if (col.key === "gst") val = val ? `${val}%` : "—";
       else if (col.key === "deliveryDate")
@@ -374,12 +372,12 @@ export default function Approvals({ defaultTab = "all" }) {
       const isSubmitted = Boolean(prevData.printingSubmitted);
       const isPartial = selectedOrder.orderStage === "partial";
       const isComplete = selectedOrder.orderStage === "complete";
-      const defaultBatchQty = selectedOrder.productionTaskData?.batchQuantity ||
-        (isPartial
-          ? (Number(selectedOrder.customerApprovalData?.partialQuantity) || Math.floor((selectedOrder.totalQuantity || 100) / 2))
-          : isComplete
-          ? Math.max(0, (selectedOrder.totalQuantity || 100) - (Number(selectedOrder.customerApprovalData?.partialQuantity) || 0))
-          : (selectedOrder.totalQuantity || 100));
+      const totalOrderQty = selectedOrder.totalQuantity || selectedOrder.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 100;
+      const defaultBatchQty = isPartial
+        ? totalOrderQty
+        : isComplete
+        ? Math.max(0, totalOrderQty - (Number(selectedOrder.customerApprovalData?.partialQuantity) || 0))
+        : (selectedOrder.productionTaskData?.batchQuantity || totalOrderQty);
 
       const printed = (isSubmitted && prevData.logosPrinted !== undefined && prevData.logosPrinted !== null && prevData.logosPrinted !== "")
         ? prevData.logosPrinted
@@ -665,57 +663,79 @@ export default function Approvals({ defaultTab = "all" }) {
 
       setItemsStockData(initializedItemsData);
 
-      // Ready to Pick state
-      setReadyToPickReceived(selectedOrder.stockTaskData?.readyToPickReceived === false ? "no" : "yes");
+      const coordRouteParam = searchParams.get("route");
+      const isCoordStagingToPrint = isCoordinator && coordRouteParam === "staging-to-printing";
 
-      let initialReadyAttachments = [];
-      if (isPartial) {
-        const sampleNames = new Set([
-          "bestseller-banne.png",
-          "bestseller-banner.png",
-          ...(selectedOrder.stockTaskData?.sampleReadyToPickAttachments || []).map(a => a?.name || a?.filename || String(a))
-        ]);
-
-        const rawPartial = Array.isArray(selectedOrder.stockTaskData?.partialReadyToPickAttachments)
-          ? selectedOrder.stockTaskData.partialReadyToPickAttachments
-          : [];
-
-        // Exclude sample files so stock room manager gets a clean upload state for the partial order
-        initialReadyAttachments = rawPartial.filter(a => {
-          const name = (a?.name || a?.filename || String(a)).toLowerCase();
-          return !sampleNames.has(name) && !name.includes("bestseller");
-        });
-      } else if (isComplete) {
-        const prevNames = new Set([
-          "bestseller-banne.png",
-          "bestseller-banner.png",
-          ...(selectedOrder.stockTaskData?.sampleReadyToPickAttachments || []).map(a => a?.name || a?.filename || String(a)),
-          ...(selectedOrder.stockTaskData?.partialReadyToPickAttachments || []).map(a => a?.name || a?.filename || String(a))
-        ]);
-
-        const rawComplete = Array.isArray(selectedOrder.stockTaskData?.completeReadyToPickAttachments)
-          ? selectedOrder.stockTaskData.completeReadyToPickAttachments
-          : [];
-
-        initialReadyAttachments = rawComplete.filter(a => {
-          const name = (a?.name || a?.filename || String(a)).toLowerCase();
-          return !prevNames.has(name) && !name.includes("bestseller");
-        });
+      if (isCoordStagingToPrint) {
+        const stagingData = selectedOrder.stockHandoverData?.stagingToPrinting || {};
+        const fallbackAttachments = isPartial
+          ? (selectedOrder.stockTaskData?.partialReadyToPickAttachments || selectedOrder.stockTaskData?.readyToPickAttachments || [])
+          : isComplete
+          ? (selectedOrder.stockTaskData?.completeReadyToPickAttachments || selectedOrder.stockTaskData?.readyToPickAttachments || [])
+          : (selectedOrder.stockTaskData?.readyToPickAttachments || []);
+        setReadyToPickReceived(stagingData.receivedFromStaging === false ? "no" : "yes");
+        setReadyToPickAttachments(
+          Array.isArray(stagingData.attachments) && stagingData.attachments.length > 0
+            ? stagingData.attachments
+            : fallbackAttachments
+        );
+        setReadyToPickNotReceivedCount(stagingData.notReceivedCount || "");
+        setStagingSampleCorrect(selectedOrder.stockTaskData?.stagingSampleCorrect === false ? "no" : "yes");
+        setStagingNotReceivedCount(selectedOrder.stockTaskData?.stagingNotReceivedCount || "");
+        setStockNote(stagingData.note || "");
       } else {
-        initialReadyAttachments = selectedOrder.stockTaskData?.readyToPickAttachments || [];
+        // Ready to Pick state
+        setReadyToPickReceived(selectedOrder.stockTaskData?.readyToPickReceived === false ? "no" : "yes");
+
+        let initialReadyAttachments = [];
+        if (isPartial) {
+          const sampleNames = new Set([
+            "bestseller-banne.png",
+            "bestseller-banner.png",
+            ...(selectedOrder.stockTaskData?.sampleReadyToPickAttachments || []).map(a => a?.name || a?.filename || String(a))
+          ]);
+
+          const rawPartial = Array.isArray(selectedOrder.stockTaskData?.partialReadyToPickAttachments)
+            ? selectedOrder.stockTaskData.partialReadyToPickAttachments
+            : [];
+
+          // Exclude sample files so stock room manager gets a clean upload state for the partial order
+          initialReadyAttachments = rawPartial.filter(a => {
+            const name = (a?.name || a?.filename || String(a)).toLowerCase();
+            return !sampleNames.has(name) && !name.includes("bestseller");
+          });
+        } else if (isComplete) {
+          const prevNames = new Set([
+            "bestseller-banne.png",
+            "bestseller-banner.png",
+            ...(selectedOrder.stockTaskData?.sampleReadyToPickAttachments || []).map(a => a?.name || a?.filename || String(a)),
+            ...(selectedOrder.stockTaskData?.partialReadyToPickAttachments || []).map(a => a?.name || a?.filename || String(a))
+          ]);
+
+          const rawComplete = Array.isArray(selectedOrder.stockTaskData?.completeReadyToPickAttachments)
+            ? selectedOrder.stockTaskData.completeReadyToPickAttachments
+            : [];
+
+          initialReadyAttachments = rawComplete.filter(a => {
+            const name = (a?.name || a?.filename || String(a)).toLowerCase();
+            return !prevNames.has(name) && !name.includes("bestseller");
+          });
+        } else {
+          initialReadyAttachments = selectedOrder.stockTaskData?.readyToPickAttachments || [];
+        }
+
+        setReadyToPickAttachments(initialReadyAttachments);
+        setReadyToPickNotReceivedCount(selectedOrder.stockTaskData?.readyToPickNotReceivedCount || "");
+
+        // Staging Room state
+        setStagingSampleCorrect(selectedOrder.stockTaskData?.stagingSampleCorrect === false ? "no" : "yes");
+        setStagingNotReceivedCount(selectedOrder.stockTaskData?.stagingNotReceivedCount || "");
+
+        // Reset stockNote
+        setStockNote("");
       }
-
-      setReadyToPickAttachments(initialReadyAttachments);
-      setReadyToPickNotReceivedCount(selectedOrder.stockTaskData?.readyToPickNotReceivedCount || "");
-
-      // Staging Room state
-      setStagingSampleCorrect(selectedOrder.stockTaskData?.stagingSampleCorrect === false ? "no" : "yes");
-      setStagingNotReceivedCount(selectedOrder.stockTaskData?.stagingNotReceivedCount || "");
-
-      // Reset stockNote
-      setStockNote("");
     }
-  }, [selectedOrder]);
+  }, [selectedOrder, isCoordinator, searchParams]);
 
   const handleItemStockChange = (idx, field, value) => {
     setItemsStockData((prev) => {
@@ -1002,7 +1022,7 @@ export default function Approvals({ defaultTab = "all" }) {
       const targetBatchLimit = isCompleteStage
         ? (Number(selectedOrder?.productionTaskData?.batchQuantity) || remainingCompleteQty || totalStockQty)
         : isPartialStage
-        ? (Number(selectedOrder?.productionTaskData?.batchQuantity) || partialBatchQty || Math.floor(totalStockQty / 2))
+        ? totalStockQty
         : (Number(selectedOrder?.productionTaskData?.batchQuantity) || totalStockQty);
 
       if (actionType === "submit" && activeProdStage === "logo_printing") {
@@ -1104,6 +1124,102 @@ export default function Approvals({ defaultTab = "all" }) {
       return;
     }
 
+    // For Coordinator Sample Handovers (From Verification to Staging Room / From Staging Room to Printing):
+    if (isCoordinator) {
+      const resolvedCoordRoute = searchParams.get("route") || coordHandoverInfo.route || "verification-to-staging";
+      if (actionType === "submit" && readyToPickReceived === "no") {
+        alert(
+          resolvedCoordRoute === "staging-to-printing"
+            ? "Sample is marked as not received from Staging Room. Please refer back to Staging Room or mark sample as received before delivering to Printing."
+            : "Sample is marked as not received. Please refer back to Verification or mark sample as received before submitting to Staging Room."
+        );
+        return;
+      }
+      if (actionType === "refer_back" && !stockNote.trim()) {
+        alert(
+          resolvedCoordRoute === "staging-to-printing"
+            ? "Please provide correction notes explaining why this order is being referred back to Stock Staging Room."
+            : "Please provide correction notes explaining why this order is being referred back to Stock Verification."
+        );
+        return;
+      }
+
+      setSubmittingAction(true);
+      try {
+        const handoverData =
+          resolvedCoordRoute === "staging-to-printing"
+            ? {
+                receivedFromStaging: readyToPickReceived === "yes",
+                attachments: readyToPickReceived === "yes" ? readyToPickAttachments : [],
+                notReceivedCount: readyToPickReceived === "no" ? (Number(readyToPickNotReceivedCount) || 0) : 0,
+                note: stockNote.trim(),
+                assignedTo: stockAssignedTo || selectedOrder?.assignedTo || "",
+              }
+            : {
+                readyToPickReceived: readyToPickReceived === "yes",
+                readyToPickAttachments: readyToPickReceived === "yes" ? readyToPickAttachments : [],
+                readyToPickNotReceivedCount: readyToPickReceived === "no" ? (Number(readyToPickNotReceivedCount) || 0) : 0,
+                note: stockNote.trim(),
+                assignedTo: stockAssignedTo || selectedOrder?.assignedTo || "",
+              };
+
+        const res = await api.patch(`/api/leads/${orderId}/coordinator-handover`, {
+          route: resolvedCoordRoute,
+          action: actionType,
+          comment: stockNote.trim(),
+          author: currentUser?.name || "Alex Rivera (Coordinator)",
+          assignedTo: stockAssignedTo || selectedOrder?.assignedTo || "",
+          handoverData,
+        });
+
+        if (res.data?.success) {
+          if (actionType === "save") {
+            showToast(`Order #${selectedOrder.orderId || "Order"} handover draft saved!`);
+            if (res.data.data) setSelectedOrder(res.data.data);
+            fetchOrders();
+            return;
+          }
+
+          if (resolvedCoordRoute === "staging-to-printing") {
+            const normCoordStage = (selectedOrder.orderStage || "sample").toLowerCase().trim();
+            const stageTitle = normCoordStage === "partial" ? "Partial" : normCoordStage === "complete" ? "Complete" : "Sample";
+            showToast(
+              actionType === "submit"
+                ? (res.data.movedToPrinting
+                  ? (normCoordStage === "complete"
+                    ? `Order #${selectedOrder.orderId || "Order"} delivered to Printing! Moved directly to Complete → Printing.`
+                    : `Order #${selectedOrder.orderId || "Order"} delivered to Printing! Both Stock & Production handovers complete — moved to ${stageTitle} → Printing.`)
+                  : `Order #${selectedOrder.orderId || "Order"} delivered from Staging Room! Waiting for Logo Cutting handover to enter ${stageTitle} → Printing.`)
+                : `Order #${selectedOrder.orderId || "Order"} referred back to Stock Staging Room.`
+            );
+          } else {
+            showToast(
+              actionType === "submit"
+                ? `Order #${selectedOrder.orderId || "Order"} handed over to Stock Staging Room!`
+                : `Order #${selectedOrder.orderId || "Order"} referred back to Stock Verification.`
+            );
+          }
+
+          setSelectedOrder(null);
+          const fromParam = searchParams.get("from");
+          if (fromParam) {
+            navigate(fromParam);
+          } else {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("id");
+            setSearchParams(nextParams);
+          }
+          fetchOrders();
+        }
+      } catch (err) {
+        console.error("Error executing coordinator handover:", err);
+        showToast(err.response?.data?.message || "Failed to update coordinator handover", "error");
+      } finally {
+        setSubmittingAction(false);
+      }
+      return;
+    }
+
     // For stock room:
     if (roleView === "stock" || isStockProfile) {
       if (currentTaskTab === "all") {
@@ -1135,6 +1251,28 @@ export default function Approvals({ defaultTab = "all" }) {
           const allAvailable = itemsStockData.every(it => it.isStockAvailable !== false);
           const totalRem = Math.max(0, totalQty - totalDeficit - totalSample);
           const overallDeprec = `${totalRem} pcs`;
+
+          const normOrderStage = (selectedOrder?.orderStage || "").toLowerCase().trim();
+          const currStageIdStr = String(selectedOrder?.currentStageId || selectedOrder?.stageId || "");
+          const isPartialOrder = normOrderStage === "partial" || currStageIdStr.startsWith("PRT");
+          const isCompleteOrder = normOrderStage === "complete" || currStageIdStr.startsWith("CMP");
+          if (actionType === "submit" && (isPartialOrder || isCompleteOrder)) {
+            const partialQty = Number(selectedOrder?.customerApprovalData?.partialQuantity) || Math.floor(totalQty / 2);
+            const batchTargetLimit = isCompleteOrder
+              ? (Number(selectedOrder?.stockTaskData?.batchQuantity) || Math.max(0, totalQty - partialQty) || totalQty)
+              : (Number(selectedOrder?.stockTaskData?.batchQuantity) || partialQty);
+            const batchLabel = isCompleteOrder ? "Complete" : "Partial";
+            if (totalSample > batchTargetLimit) {
+              alert(`Total allocated for ${batchLabel} (${totalSample} pcs) cannot exceed the ${batchLabel} batch limit of ${batchTargetLimit} pcs.`);
+              setSubmittingAction(false);
+              return;
+            }
+            if (totalSample !== batchTargetLimit) {
+              alert(`Please allocate exactly ${batchTargetLimit} pcs across the items for this ${batchLabel} batch (currently ${totalSample} pcs allocated).`);
+              setSubmittingAction(false);
+              return;
+            }
+          }
 
           payload = {
             action: actionType,
@@ -1344,7 +1482,7 @@ export default function Approvals({ defaultTab = "all" }) {
           const mTargetQty = mIsComplete
             ? (Number(order.productionTaskData?.batchQuantity) || mRemainingQty || mTotalQty)
             : mIsPartial
-            ? (Number(order.productionTaskData?.batchQuantity) || mPartialQty || Math.floor(mTotalQty / 2))
+            ? mTotalQty
             : (Number(order.productionTaskData?.batchQuantity) || mTotalQty);
 
           if (Number(logosPrinted) > mTargetQty) {
@@ -1624,12 +1762,14 @@ export default function Approvals({ defaultTab = "all" }) {
   const handleSelectOrder = async (order) => {
     if (currentTaskTab === "logo-printing" || currentTaskTab === "logo-cutting" || isProdProfile) {
       setRoleView("production");
-    } else if (currentTaskTab === "verification" || currentTaskTab === "ready-to-pick" || currentTaskTab === "staging-room" || isStockProfile) {
+    } else if (currentTaskTab === "verification" || currentTaskTab === "ready-to-pick" || currentTaskTab === "staging-room" || isStockProfile || isCoordinator) {
       setRoleView("stock");
     }
     setSelectedOrder(order);
     setManagerComment("");
-    setSearchParams({ id: order._id || order.id });
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("id", order._id || order.id);
+    setSearchParams(nextParams);
     try {
       const res = await api.get(`/api/leads/${order._id || order.id}`);
       if (res.data?.data) {
@@ -1647,7 +1787,9 @@ export default function Approvals({ defaultTab = "all" }) {
     }
     setSelectedOrder(null);
     setManagerComment("");
-    setSearchParams({});
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("id");
+    setSearchParams(nextParams);
     fetchOrders();
   };
 
@@ -1737,6 +1879,13 @@ export default function Approvals({ defaultTab = "all" }) {
       roleView === "stock" ||
       isStockProfile
     ) {
+      if (isCoordinator) {
+        const cRoute = searchParams.get("route");
+        if (cRoute === "staging-to-printing") {
+          return order.stockHandoverComplete ? "Submitted" : "Pending";
+        }
+        return order.stockTaskStage === "staging_room" || order.stockTaskStage === "completed" ? "Submitted" : "Pending";
+      }
       if (order.stockApproval?.status === "Referred Back") return "Referred Back";
       // Stock is ONLY approved once stockTaskStage is completed or stockApproval is Approved
       if (order.stockApproval?.status === "Approved" || order.stockTaskStage === "completed") return "Approved";
@@ -1795,8 +1944,43 @@ export default function Approvals({ defaultTab = "all" }) {
         // DTF Verification
         if (isOrderEmbroidery(order) || getStockStage(order) !== "verification") return false;
       } else if (currentTaskTab === "ready-to-pick") {
-        // DTF Ready to Pick
-        if (isOrderEmbroidery(order) || getStockStage(order) === "verification") return false;
+        // Coordinator Sample, Partial & Complete tile routes
+        const cStage = (searchParams.get("stage") || "").toLowerCase().trim();
+        if (isCoordinator && (cStage === "sample" || cStage === "partial" || cStage === "complete")) {
+          if (isOrderEmbroidery(order)) return false;
+          const oStage = (order.orderStage || "sample").toLowerCase().trim();
+          if (oStage !== cStage) return false;
+          const cRoute = searchParams.get("route");
+          if (cRoute === "verification-to-staging") {
+            if (getStockStage(order) !== "ready_to_pick") return false;
+          } else if (cRoute === "staging-to-printing") {
+            const sub = (order.subStage || "").toLowerCase().trim().replace(/\s+/g, "-");
+            const isAlreadyPastPrePrinting = [
+              "printing",
+              "quality-check",
+              "packaging",
+              "ready-to-pick-up",
+              "staging-room",
+              "staging-ground",
+              "customer-approval-awaiting",
+              "payment-confirmation",
+              "delivery-pending",
+              "delivered",
+              "customer-support",
+            ].includes(sub);
+            if (
+              isAlreadyPastPrePrinting ||
+              !(getStockStage(order) === "completed" && order.stockApproval?.status === "Approved" && !order.stockHandoverComplete)
+            ) {
+              return false;
+            }
+          } else {
+            if (getStockStage(order) === "verification") return false;
+          }
+        } else {
+          // DTF Ready to Pick (Stock Room Manager)
+          if (isOrderEmbroidery(order) || getStockStage(order) === "verification") return false;
+        }
       } else if (currentTaskTab === "staging-room") {
         // DTF Staging Room
         if (isOrderEmbroidery(order)) return false;
@@ -1902,9 +2086,40 @@ export default function Approvals({ defaultTab = "all" }) {
       {/* VIEW MODE 1: LIST VIEW */}
       {!selectedOrder ? (
         <div className="approvals-container">
-          {/* Top Bar with Search & Column Settings */}
-          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "16px", position: "relative" }} ref={columnSettingsRef}>
+          {/* Top Bar with Back (for Coordinator), Search & Column Settings */}
+          <div style={{ display: "flex", justifyContent: isCoordinator ? "space-between" : "flex-end", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "16px", position: "relative" }} ref={columnSettingsRef}>
+            {isCoordinator && (
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <button
+                  type="button"
+                  onClick={() => navigate("/")}
+                  title="Back to Coordinator Dashboard"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "7px 14px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#334155",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <ArrowLeft size={15} />
+                  <span>Back</span>
+                </button>
+                <span style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
+                  {searchParams.get("route") === "staging-to-printing"
+                    ? "From Staging Room to Printing"
+                    : "From Verification to Staging Room"}
+                </span>
+              </div>
+            )}
 
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
             <div className="search-box" style={{ width: "320px", maxWidth: "100%" }}>
               <Search size={16} className="search-icon" />
               <input
@@ -1997,6 +2212,7 @@ export default function Approvals({ defaultTab = "all" }) {
                 </div>
               </div>
             )}
+            </div>
           </div>
 
           {/* Orders Table */}
@@ -2264,7 +2480,10 @@ export default function Approvals({ defaultTab = "all" }) {
                          ========================================================================= */
                       if (currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick") {
                         const isAvail = order.stockTaskData?.isStockAvailable !== false;
-                        const isReadyToPickSubmitted = order.stockTaskStage === "staging_room" || order.stockTaskStage === "completed" || order.stockTaskData?.readyToPickSubmitted || order.stockApproval?.status === "Approved";
+                        const isCoordStagingRoute = isCoordinator && searchParams.get("route") === "staging-to-printing";
+                        const isReadyToPickSubmitted = isCoordStagingRoute
+                          ? Boolean(order.stockHandoverComplete)
+                          : (order.stockTaskStage === "staging_room" || order.stockTaskStage === "completed" || order.stockTaskData?.readyToPickSubmitted || order.stockApproval?.status === "Approved");
                         const isPartialOrComplete = order.orderStage === "partial" || order.orderStage === "complete";
                         const targetBatch = order.stockTaskData?.batchQuantity ||
                           (order.orderStage === "partial"
@@ -3106,9 +3325,13 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                     </span>
                   )}
                   {roleView === "stock" && (
-                    (currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick")
-                      ? (selectedOrder.stockTaskStage === "staging_room" || selectedOrder.stockTaskStage === "completed" || selectedOrder.stockApproval?.status === "Approved")
-                      : (selectedOrder.stockApproval?.status === "Approved" || selectedOrder.stockTaskStage === "completed")
+                    isCoordinator
+                      ? (searchParams.get("route") === "staging-to-printing"
+                        ? Boolean(selectedOrder.stockHandoverComplete)
+                        : (selectedOrder.stockTaskStage === "staging_room" || selectedOrder.stockTaskStage === "completed" || selectedOrder.stockApproval?.status === "Approved"))
+                      : ((currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick")
+                        ? (selectedOrder.stockTaskStage === "staging_room" || selectedOrder.stockTaskStage === "completed" || selectedOrder.stockApproval?.status === "Approved")
+                        : (selectedOrder.stockApproval?.status === "Approved" || selectedOrder.stockTaskStage === "completed"))
                   ) && (
                     <span className="status-pill approved" style={{ padding: "6px 14px", fontSize: "13px" }}>
                       <span className="status-dot"></span>
@@ -3131,6 +3354,28 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                       }}
                     >
                       <Eye size={15} color="#64748b" /> View Only ({roleView === "production" ? getProductionStageBadgeInfo(selectedOrder).label : getStageBadgeInfo(selectedOrder).label})
+                    </span>
+                  ) : (!isCoordinator && isStockProfile && currentTaskTab === "ready-to-pick" && ["sample", "partial"].includes((selectedOrder.orderStage || "sample").toLowerCase())) ? (
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        color: "#7e22ce",
+                        fontWeight: 600,
+                        padding: "7px 14px",
+                        background: "#faf5ff",
+                        border: "1px solid #d8b4fe",
+                        borderRadius: "8px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <Clock size={15} color="#7e22ce" />
+                      {getStockStage(selectedOrder) === "ready_to_pick"
+                        ? "Awaiting Coordinator Handover (Verification → Staging Room)"
+                        : getStockStage(selectedOrder) === "staging_room"
+                        ? "Moved to Staging Room by Coordinator"
+                        : "Handed Over to Printing"}
                     </span>
                   ) : (
                     <>
@@ -3187,7 +3432,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                         const targetBatchLimit = isCompleteStage
                           ? (Number(selectedOrder?.productionTaskData?.batchQuantity) || remainingCompleteQty || totalStockQty)
                           : isPartialStage
-                          ? (Number(selectedOrder?.productionTaskData?.batchQuantity) || partialBatchQty || Math.floor(totalStockQty / 2))
+                          ? totalStockQty
                           : (Number(selectedOrder?.productionTaskData?.batchQuantity) || totalStockQty);
 
                         const isPrintedExceeded =
@@ -3216,9 +3461,20 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                           prodForm.sampleLogosCount !== "" &&
                           Number(prodForm.sampleLogosCount) > targetBatchLimit;
 
+                        const stockBatchTarget = isCompleteStage
+                          ? (Number(selectedOrder?.stockTaskData?.batchQuantity) || remainingCompleteQty || totalStockQty)
+                          : (Number(selectedOrder?.stockTaskData?.batchQuantity) || partialBatchQty);
+                        const stockBatchLabel = isCompleteStage ? "Complete" : "Partial";
+                        const totalAllocatedStockBatch = itemsStockData.reduce((s, it) => s + (Number(it.sampleDeduction) || 0), 0);
+                        const isPartialStockAllocationMismatch =
+                          roleView === "stock" &&
+                          (currentTaskTab === "verification" || getStockStage(selectedOrder) === "verification") &&
+                          (isPartialStage || isCompleteStage) &&
+                          totalAllocatedStockBatch !== stockBatchTarget;
+
                         const isSubmitBlocked =
                           Boolean(
-                            (roleView === "stock" && (isReadyToPickNotReceived || isStagingNotCorrect)) ||
+                            (roleView === "stock" && (isReadyToPickNotReceived || isStagingNotCorrect || isPartialStockAllocationMismatch)) ||
                             (roleView === "production" && (
                               isLogoCuttingNotReceived ||
                               isPrintedExceeded ||
@@ -3259,6 +3515,10 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                                   ? `Logos count cannot exceed the batch limit of ${targetBatchLimit} pcs. Submit is disabled.`
                                   : isReadyToPickNotReceived || isStagingNotCorrect || isLogoCuttingNotReceived
                                   ? "Sample/Logos marked as not received or incorrect. Submit is not clickable; only Save and Refer Back are available."
+                                  : isPartialStockAllocationMismatch
+                                  ? (totalAllocatedStockBatch > stockBatchTarget
+                                      ? `Allocated ${stockBatchLabel} stock (${totalAllocatedStockBatch} pcs) exceeds the ${stockBatchLabel} batch limit of ${stockBatchTarget} pcs. Submit is disabled.`
+                                      : `Total allocated ${stockBatchLabel} stock (${totalAllocatedStockBatch} pcs) must equal ${stockBatchTarget} pcs. Submit is disabled.`)
                                   : "Cannot submit with current entries."
                                 : undefined
                             }
@@ -3365,7 +3625,19 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                     : currentTaskTab === "ready-to-pick" || currentTaskTab === "embroidery-ready-to-pick"
                     ? "ready_to_pick"
                     : "staging_room");
-                const isViewOnlyStock = currentTaskTab === "all" || getStockStage(selectedOrder) === "completed";
+                const isSampleStockFromStockLocked =
+                  !isCoordinator &&
+                  isStockProfile &&
+                  currentTaskTab === "ready-to-pick" &&
+                  ["sample", "partial"].includes((selectedOrder?.orderStage || "sample").toLowerCase());
+                const isViewOnlyStock =
+                  currentTaskTab === "all" ||
+                  isSampleStockFromStockLocked ||
+                  (isCoordinator
+                    ? (searchParams.get("route") === "staging-to-printing"
+                        ? Boolean(selectedOrder?.stockHandoverComplete)
+                        : getStockStage(selectedOrder) === "completed")
+                    : getStockStage(selectedOrder) === "completed");
                 const stageBadge = getStageBadgeInfo(selectedOrder);
                 const isPartial = selectedOrder?.orderStage === "partial" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("PRT");
                 const isComplete = selectedOrder?.orderStage === "complete" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("CMP");
@@ -3574,7 +3846,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                               {isPartial ? "Partial Batch Garment Allocation:" : "Remaining Complete Batch Garment Allocation:"}
                             </span>
                             <span style={{ fontSize: "13px", marginLeft: "8px", color: "#334155" }}>
-                              Target: <strong>{targetBatchQty} pcs</strong> (matching Logo Printing &amp; Cutting) &nbsp;|&nbsp;
+                              Target: <strong>{targetBatchQty} pcs</strong> {isPartial ? "(Partial Batch Limit)" : "(Remaining Complete Batch)"} &nbsp;|&nbsp;
                               Currently Allocated: <strong style={{ color: allocationDiff === 0 ? "#15803d" : allocationDiff > 0 ? "#b45309" : "#dc2626" }}>{totalAllocatedBatch} pcs</strong>
                             </span>
                           </div>
@@ -3675,7 +3947,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                             const isYetToBeCompleted = isComplete
                               ? (remainingToComplete > 0 || samplePcs > 0)
                               : isPartial
-                              ? (samplePcs > 0)
+                              ? (activeStockStage === "verification" ? true : samplePcs > 0)
                               : true;
 
                             const rem = isAvail ? Math.max(0, (Number(it.quantity) || 0) - samplePcs) : Math.max(0, (Number(it.quantity) || 0) - deficitNum - samplePcs);
@@ -3712,13 +3984,13 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                                     )
                                   )}
                                   {isPartial && (
-                                    isYetToBeCompleted ? (
+                                    samplePcs > 0 ? (
                                       <span style={{ marginLeft: "8px", display: "inline-block", padding: "2px 7px", borderRadius: "4px", background: "#dcfce7", border: "1px solid #86efac", color: "#15803d", fontSize: "11px", fontWeight: 700 }}>
                                         ● For Partial ({samplePcs} pcs)
                                       </span>
                                     ) : (
-                                      <span style={{ marginLeft: "8px", display: "inline-block", padding: "2px 7px", borderRadius: "4px", background: "#f1f5f9", border: "1px solid #cbd5e1", color: "#94a3b8", fontSize: "11px", fontWeight: 500 }}>
-                                        0 pcs (In Complete Stage)
+                                      <span style={{ marginLeft: "8px", display: "inline-block", padding: "2px 7px", borderRadius: "4px", background: "#f1f5f9", border: "1px solid #cbd5e1", color: "#64748b", fontSize: "11px", fontWeight: 500 }}>
+                                        {activeStockStage === "verification" ? "0 pcs allocated" : "0 pcs (In Complete Stage)"}
                                       </span>
                                     )
                                   )}
@@ -4019,6 +4291,69 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                           borderTop: "1px solid #e2e8f0"
                         }}
                       >
+
+                        {/* STAGING ROOM INFORMATION CARD (Shown in Coordinator's From Staging Room to Printing) */}
+                        {isCoordinator && (searchParams.get("route") === "staging-to-printing" || coordHandoverInfo.route === "staging-to-printing") && (
+                          <div
+                            style={{
+                              background: "#f8fafc",
+                              border: "1px solid #cbd5e1",
+                              borderRadius: "10px",
+                              padding: "14px 16px",
+                              marginBottom: "16px",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 700, color: "#1e293b" }}>
+                                <Boxes size={16} color="#047857" />
+                                <span>Staging Room Information (Verified by Stock Room)</span>
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: "11.5px",
+                                  fontWeight: 700,
+                                  padding: "3px 9px",
+                                  borderRadius: "6px",
+                                  background: selectedOrder.stockTaskData?.stagingSampleCorrect === false ? "#fef2f2" : "#dcfce7",
+                                  color: selectedOrder.stockTaskData?.stagingSampleCorrect === false ? "#dc2626" : "#15803d",
+                                  border: `1px solid ${selectedOrder.stockTaskData?.stagingSampleCorrect === false ? "#fecaca" : "#86efac"}`,
+                                }}
+                              >
+                                {selectedOrder.stockTaskData?.stagingSampleCorrect === false
+                                  ? `Deficit (${selectedOrder.stockTaskData?.stagingNotReceivedCount || 0} pcs)`
+                                  : "✓ Staging Room Cleared"}
+                              </span>
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "12px", fontSize: "13px", color: "#334155" }}>
+                              <div>
+                                Sample Received Correct?:{" "}
+                                <strong style={{ color: selectedOrder.stockTaskData?.stagingSampleCorrect === false ? "#dc2626" : "#15803d" }}>
+                                  {selectedOrder.stockTaskData?.stagingSampleCorrect === false
+                                    ? `No (Deficit: ${selectedOrder.stockTaskData?.stagingNotReceivedCount || 0} pcs)`
+                                    : "Yes"}
+                                </strong>
+                              </div>
+                              <div>
+                                Approved By: <strong>{selectedOrder.stockApproval?.author || "Elena Rostova"}</strong>
+                              </div>
+                              <div>
+                                Staging Approved Date:{" "}
+                                <strong>
+                                  {selectedOrder.stockApproval?.updatedAt
+                                    ? formatLeadDate(selectedOrder.stockApproval.updatedAt)
+                                    : (selectedOrder.stockTaskData?.stagingApprovedAt ? formatLeadDate(selectedOrder.stockTaskData.stagingApprovedAt) : "Recently Cleared")}
+                                </strong>
+                              </div>
+                            </div>
+
+                            {(selectedOrder.stockApproval?.note || selectedOrder.stockTaskData?.note) && (
+                              <div style={{ marginTop: "10px", fontSize: "12.5px", color: "#334155", background: "#ffffff", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                <strong>Staging Room Remarks:</strong> &ldquo;{selectedOrder.stockApproval?.note || selectedOrder.stockTaskData?.note}&rdquo;
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Directional Pickup & Handover Route Banner */}
                         <div
@@ -4627,13 +4962,11 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                 const isComplete = selectedOrder?.orderStage === "complete" || String(selectedOrder?.currentStageId || selectedOrder?.stageId || "").startsWith("CMP");
                 const totalStockQty = selectedOrder?.totalQuantity || selectedOrder?.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 0;
                 const explicitBatchQty = Number(selectedOrder?.productionTaskData?.batchQuantity) || Number(selectedOrder?.customerApprovalData?.partialQuantity);
-                const targetBatchQty = explicitBatchQty > 0
-                  ? explicitBatchQty
-                  : isPartial
-                  ? Math.floor(totalStockQty / 2)
+                const targetBatchQty = isPartial
+                  ? totalStockQty
                   : isComplete
-                  ? Math.max(0, totalStockQty - (Number(selectedOrder?.customerApprovalData?.partialQuantity) || 0))
-                  : totalStockQty;
+                  ? (Number(selectedOrder?.productionTaskData?.batchQuantity) || Math.max(0, totalStockQty - (Number(selectedOrder?.customerApprovalData?.partialQuantity) || 0)) || totalStockQty)
+                  : (explicitBatchQty > 0 ? explicitBatchQty : totalStockQty);
 
                 const logoDesignFile = selectedOrder.logoDesign || selectedOrder.attachment;
                 const logoDesignName = selectedOrder.logoDesignName || selectedOrder.attachmentName || "Logo Design";
@@ -4881,7 +5214,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                         {/* Logo Needs by Client */}
                         <div className="form-field">
                           <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                            {isPartial ? "Logos Needed (Partial Batch)" : isComplete ? "Logos Needed (Remaining Batch)" : "Logos Needed"}
+                            {isPartial ? "Logos Needed (Full Order)" : isComplete ? "Logos Needed (Remaining Batch)" : "Logos Needed"}
                           </label>
                           <input
                             type="text"
@@ -5055,7 +5388,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                           {/* How many logo received for cutting */}
                           <div className="form-field">
                             <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                              {isPartial ? "Received for Cutting (Partial Batch)" : isComplete ? "Received for Cutting (Remaining Batch)" : "Received for Cutting (pcs)"}
+                              {isPartial ? "Received for Cutting (Full Order)" : isComplete ? "Received for Cutting (Remaining Batch)" : "Received for Cutting (pcs)"}
                             </label>
                             {isViewOnlyProd || activeProdStage !== "logo_cutting" ? (
                               <input
@@ -5104,7 +5437,7 @@ if (currentTaskTab === "staging-room" || currentTaskTab === "embroidery-staging-
                           {/* How many giving for sample / batch */}
                           <div className="form-field">
                             <label style={{ fontSize: "13px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                              {isPartial ? "For Partial Batch (pcs)" : isComplete ? "For Complete Batch (pcs)" : "For Sample (pcs)"}
+                              {isPartial ? "Logos Cut (Full Order) (pcs)" : isComplete ? "For Complete Batch (pcs)" : "For Sample (pcs)"}
                             </label>
                             {isViewOnlyProd || activeProdStage !== "logo_cutting" ? (
                               <input

@@ -790,7 +790,6 @@ function OrderManagement() {
     attachmentName: '',
     logoName: '',
     totalQuantity: '',
-    pricePerPiece: '',
     totalAmount: '',
     gst: '',
     netAmount: '',
@@ -869,7 +868,6 @@ function OrderManagement() {
     repeatedOrder: false,
     additionalNote: false,
     logoName: false,
-    pricePerPiece: false,
     totalAmount: false,
     gst: false,
     netAmount: false,
@@ -897,7 +895,6 @@ function OrderManagement() {
     repeatedOrder: false,
     additionalNote: false,
     logoName: false,
-    pricePerPiece: false,
     totalAmount: false,
     gst: false,
     netAmount: false,
@@ -1148,7 +1145,6 @@ function OrderManagement() {
         attachmentName: d.attachmentName || d.logoDesignName || '',
         logoName: d.logoName || '',
         totalQuantity: d.totalQuantity || '',
-        pricePerPiece: d.pricePerPiece || '',
         totalAmount: d.totalAmount || '',
         gst: d.gst || '',
         netAmount: d.netAmount || '',
@@ -1263,7 +1259,6 @@ function OrderManagement() {
       }
 
       if (
-        formData.pricePerPiece === '' ||
         formData.totalAmount === '' ||
         formData.netAmount === '' ||
         formData.advanceAmount === '' ||
@@ -1271,7 +1266,7 @@ function OrderManagement() {
         !(formData.urgency || '').trim() ||
         !(formData.deliveryDate || '').trim()
       ) {
-        alert('Please fill in all mandatory Order Information fields (Price Per Piece, Total Amount, Net Amount, Advance Amount, Pending Amount, Urgency, and Delivery Date).');
+        alert('Please fill in all mandatory Order Information fields (Total Amount, Net Amount, Advance Amount, Pending Amount, Urgency, and Delivery Date).');
         return;
       }
 
@@ -1292,33 +1287,7 @@ function OrderManagement() {
         return;
       }
 
-      if (items.length === 0) {
-        alert('Please add at least one item using "Add Item".');
-        return;
-      }
-
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        const itemVal = (it.item || it.enterItem || '').trim();
-        const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
-        const isTee = isTshirt(it);
-        const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
-        const hasSize = !isTee || (it.size || '').trim().length > 0;
-        if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
-          const reqFields = isTee
-            ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
-            : 'Item, Quantity, Price Per Piece, and Color';
-          alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
-          return;
-        }
-      }
-
-      if (itemsTotalQty > totalQty) {
-        alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) cannot be greater than Total Quantity (${totalQty} pcs). Sum of items must equal Total Quantity (${totalQty} === ${totalQty}).`);
-        return;
-      }
-      if (itemsTotalQty !== totalQty) {
-        alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) must equal Total Quantity (${totalQty} pcs). (${totalQty} === ${itemsTotalQty})`);
+      if (!validateOrderItems(items)) {
         return;
       }
     }
@@ -1441,10 +1410,6 @@ function OrderManagement() {
       alert('Failed to update: ' + (err.response?.data?.message || err.message));
     }
   };
-
-  // Quantities for validation
-  const itemsTotalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-  const orderTotalQty = Number(formData.totalQuantity) || 0;
 
   const getLeadApproval = () => {
     if (orderApprovalData?.leadApproval?.status) {
@@ -1891,7 +1856,6 @@ function OrderManagement() {
                 attachmentName: d.attachmentName || d.logoDesignName || '',
                 logoName: d.logoName || '',
                 totalQuantity: d.totalQuantity || '',
-                pricePerPiece: d.pricePerPiece || '',
                 totalAmount: d.totalAmount || '',
                 gst: d.gst || '',
                 netAmount: d.netAmount || '',
@@ -1953,7 +1917,6 @@ function OrderManagement() {
           attachmentName: '',
           logoName: '',
           totalQuantity: '',
-          pricePerPiece: '',
           totalAmount: '',
           gst: '',
           netAmount: '',
@@ -1999,20 +1962,47 @@ function OrderManagement() {
     }
   }, [location.pathname, searchParams, editId]);
 
-  // Auto-calculate Total Amount = Total Quantity * Price Per Piece
+  // Auto-calculate Total Quantity and Total Amount from Add Item rows
   useEffect(() => {
-    if (formData.totalQuantity !== '' && formData.pricePerPiece !== '') {
-      const qty = parseFloat(formData.totalQuantity);
-      const price = parseFloat(formData.pricePerPiece);
-      if (!isNaN(qty) && !isNaN(price)) {
-        const calculated = Math.round(qty * price * 100) / 100;
-        setFormData((prev) => {
-          if (Number(prev.totalAmount) === calculated && prev.totalAmount !== '') return prev;
-          return { ...prev, totalAmount: calculated };
-        });
-      }
+    const isOrder = (query || '').toLowerCase().trim() === 'order';
+    if (!isOrder && items.length === 0) return;
+
+    const hasAnyItemPrice = items.some(
+      (it) => it.pricePerPiece !== undefined && it.pricePerPiece !== '' && Number(it.pricePerPiece) > 0
+    );
+    if (editId && !isEditing && !isEditingItems && !hasAnyItemPrice) {
+      return;
     }
-  }, [formData.totalQuantity, formData.pricePerPiece]);
+
+    if (items.length === 0) {
+      setFormData((prev) => {
+        if (prev.totalQuantity === '' && prev.totalAmount === '') return prev;
+        return { ...prev, totalQuantity: '', totalAmount: '' };
+      });
+      return;
+    }
+
+    const calculatedQty = items.reduce((sum, it) => sum + (parseFloat(it.quantity) || 0), 0);
+    const calculatedTotal = Math.round(
+      items.reduce((sum, it) => sum + ((parseFloat(it.quantity) || 0) * (parseFloat(it.pricePerPiece) || 0)), 0) * 100
+    ) / 100;
+
+    setFormData((prev) => {
+      if (
+        Number(prev.totalQuantity) === calculatedQty &&
+        prev.totalQuantity !== '' &&
+        Number(prev.totalAmount) === calculatedTotal &&
+        prev.totalAmount !== ''
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        totalQuantity: calculatedQty,
+        totalAmount: calculatedTotal,
+      };
+    });
+  }, [items, query, editId, isEditing, isEditingItems]);
 
   // Auto-calculate Net Amount = Total Amount + (Total Amount * (GST / 100))
   useEffect(() => {
@@ -2026,6 +2016,8 @@ function OrderManagement() {
           return { ...prev, netAmount: calculatedNet };
         });
       }
+    } else {
+      setFormData((prev) => (prev.netAmount === '' ? prev : { ...prev, netAmount: '' }));
     }
   }, [formData.totalAmount, formData.gst]);
 
@@ -2055,6 +2047,8 @@ function OrderManagement() {
         if (Number(prev.pendingAmount) === calculatedPending && prev.pendingAmount !== '') return prev;
         return { ...prev, pendingAmount: calculatedPending };
       });
+    } else {
+      setFormData((prev) => (prev.pendingAmount === '' ? prev : { ...prev, pendingAmount: '' }));
     }
   }, [formData.totalAmount, formData.netAmount, formData.gst, formData.advanceAmount]);
 
@@ -2239,7 +2233,6 @@ function OrderManagement() {
       attachment: '',
       attachmentName: '',
       logoName: '',
-      pricePerPiece: '',
       totalAmount: '',
       gst: '',
       netAmount: '',
@@ -2365,23 +2358,6 @@ function OrderManagement() {
     } else if (action === 'submit') {
       const isLeadQuery = (query || 'lead').toLowerCase().trim() === 'lead';
       if (isLeadQuery) {
-        if (items.length > 0) {
-          for (let i = 0; i < items.length; i++) {
-            const it = items[i];
-            const itemVal = (it.item || it.enterItem || '').trim();
-            const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
-            const isTee = isTshirt(it);
-            const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
-            const hasSize = !isTee || (it.size || '').trim().length > 0;
-            if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
-              const reqFields = isTee
-                ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
-                : 'Item, Quantity, Price Per Piece, and Color';
-              alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
-              return;
-            }
-          }
-        }
         try {
           const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
           const actorInfo = getActorInfo(currentEmpName);
@@ -2485,7 +2461,6 @@ function OrderManagement() {
     }
 
     if (
-      formData.pricePerPiece === '' ||
       formData.totalAmount === '' ||
       formData.netAmount === '' ||
       formData.advanceAmount === '' ||
@@ -2493,7 +2468,7 @@ function OrderManagement() {
       !(formData.urgency || '').trim() ||
       !(formData.deliveryDate || '').trim()
     ) {
-      alert('Please fill in all mandatory Order Information fields (Price Per Piece, Total Amount, Net Amount, Advance Amount, Pending Amount, Urgency, and Delivery Date).');
+      alert('Please fill in all mandatory Order Information fields (Total Amount, Net Amount, Advance Amount, Pending Amount, Urgency, and Delivery Date).');
       return;
     }
 
@@ -2514,33 +2489,7 @@ function OrderManagement() {
       return;
     }
 
-    if (items.length === 0) {
-      alert('Please add at least one item using "Add Item".');
-      return;
-    }
-
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      const itemVal = (it.item || it.enterItem || '').trim();
-      const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
-      const isTee = isTshirt(it);
-      const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
-      const hasSize = !isTee || (it.size || '').trim().length > 0;
-      if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
-        const reqFields = isTee
-          ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
-          : 'Item, Quantity, Price Per Piece, and Color';
-        alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
-        return;
-      }
-    }
-
-    if (itemsTotalQty > totalQty) {
-      alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) cannot be greater than Total Quantity (${totalQty} pcs). Sum of items must equal Total Quantity (${totalQty} === ${totalQty}).`);
-      return;
-    }
-    if (itemsTotalQty !== totalQty) {
-      alert(`Validation Error: Total quantity in "Add Item" (${itemsTotalQty} pcs) must equal Total Quantity (${totalQty} pcs). (${totalQty} === ${itemsTotalQty})`);
+    if (!validateOrderItems(items)) {
       return;
     }
     try {
@@ -2641,13 +2590,51 @@ function OrderManagement() {
     return s;
   };
 
+  const validateOrderItems = (itemsList) => {
+    if (!itemsList || itemsList.length === 0) {
+      alert('Please add at least one item using "Add Item".');
+      return false;
+    }
+
+    for (let i = 0; i < itemsList.length; i++) {
+      const it = itemsList[i];
+      const itemVal = (it.item || it.enterItem || '').trim();
+      const hasQty = it.quantity !== undefined && it.quantity !== '' && !isNaN(Number(it.quantity)) && Number(it.quantity) > 0;
+      const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
+      const hasColor = (it.color || '').trim().length > 0;
+
+      if (isTshirt(it)) {
+        const hasPrintingType = (it.printingType || '').trim().length > 0;
+        const needsSubOption = (it.printingType || '').trim() === 'Sublimation';
+        const hasSubOption = !needsSubOption || (it.sublimationOption || '').trim().length > 0;
+        const hasNeckType = (it.neckType || '').trim().length > 0;
+        const hasFabric = (it.fabric || '').trim().length > 0;
+        const hasSize = (it.size || '').trim().length > 0;
+
+        if (!itemVal || !hasPrintingType || !hasSubOption || !hasNeckType || !hasFabric || !hasQty || !hasPrice || !hasSize || !hasColor) {
+          const reqFields = needsSubOption
+            ? 'Item, Printing Type, Option, Necktype, Fabric, Quantity, Price Per Piece, Size, and Color'
+            : 'Item, Printing Type, Necktype, Fabric, Quantity, Price Per Piece, Size, and Color';
+          alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
+          return false;
+        }
+      } else {
+        if (!itemVal || !hasQty || !hasPrice || !hasColor) {
+          alert(`Please fill in all mandatory fields for Item #${i + 1} (Item, Quantity, Price Per Piece, and Color).`);
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
   const handleAddItem = () => {
     setItems([...items, { id: Date.now(), itemType: '', item: '', enterItem: '', neckType: '', pricePerPiece: '', fabric: '', quantity: '', size: '', color: '', printingType: '', sublimationOption: '' }]);
   };
 
   const handleItemChange = (id, fieldOrUpdates, value) => {
     setItems(items.map(item => {
-      if (item.id === id) {
+      if ((item.id ?? item._id) === id) {
         if (typeof fieldOrUpdates === 'object') {
           return { ...item, ...fieldOrUpdates };
         }
@@ -2658,7 +2645,7 @@ function OrderManagement() {
   };
 
   const handleRemoveItem = (id) => {
-    setItems(items.filter(item => item.id !== id));
+    setItems(items.filter(item => (item.id ?? item._id) !== id));
   };
 
   const handleStartEditItems = () => {
@@ -2670,38 +2657,22 @@ function OrderManagement() {
     if (itemsBackup && Array.isArray(itemsBackup)) {
       setItems(itemsBackup);
     }
+    if (orderApprovalData) {
+      setFormData((prev) => ({
+        ...prev,
+        totalQuantity: orderApprovalData.totalQuantity || '',
+        totalAmount: orderApprovalData.totalAmount || '',
+        netAmount: orderApprovalData.netAmount || '',
+        pendingAmount: orderApprovalData.pendingAmount || '',
+      }));
+    }
     setIsEditingItems(false);
   };
 
   const handleSaveItems = async () => {
     if (!editId || isSavingItems) return;
 
-    if (!items || items.length === 0) {
-      alert('Please add at least one item using "Add Item".');
-      return;
-    }
-
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      const itemVal = (it.item || it.enterItem || '').trim();
-      const hasPrice = it.pricePerPiece !== undefined && it.pricePerPiece !== '' && !isNaN(Number(it.pricePerPiece)) && Number(it.pricePerPiece) > 0;
-      const isTee = isTshirt(it);
-      const hasFabric = !isTee || (it.fabric || '').trim().length > 0;
-      const hasSize = !isTee || (it.size || '').trim().length > 0;
-      if (!itemVal || !hasFabric || !it.quantity || Number(it.quantity) <= 0 || !hasSize || !(it.color || '').trim() || !hasPrice) {
-        const reqFields = isTee
-          ? 'Item, Fabric, Quantity, Price Per Piece, Size, and Color'
-          : 'Item, Quantity, Price Per Piece, and Color';
-        alert(`Please fill in all mandatory fields for Item #${i + 1} (${reqFields}).`);
-        return;
-      }
-    }
-
-    const currentItemsTotalQty = items.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0);
-    const targetOrderTotalQty = Number(formData.totalQuantity || orderApprovalData?.totalQuantity || 0);
-
-    if (targetOrderTotalQty > 0 && currentItemsTotalQty !== targetOrderTotalQty) {
-      alert(`Validation Error: Total quantity in "Add Item" (${currentItemsTotalQty} pcs) must equal Total Quantity (${targetOrderTotalQty} pcs).`);
+    if (!validateOrderItems(items)) {
       return;
     }
 
@@ -2734,8 +2705,21 @@ function OrderManagement() {
         return itemObj;
       });
 
+      const newTotalQuantity = cleanItems.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+      const newTotalAmount = Math.round(
+        cleanItems.reduce((sum, it) => sum + ((Number(it.quantity) || 0) * (Number(it.pricePerPiece) || 0)), 0) * 100
+      ) / 100;
+      const gstPercent = parseFloat(formData.gst !== '' ? formData.gst : orderApprovalData?.gst) || 0;
+      const newNetAmount = Math.round((newTotalAmount + (newTotalAmount * (gstPercent / 100))) * 100) / 100;
+      const advance = parseFloat(formData.advanceAmount !== '' ? formData.advanceAmount : orderApprovalData?.advanceAmount) || 0;
+      const newPendingAmount = Math.round((newNetAmount - advance) * 100) / 100;
+
       const payload = {
         items: cleanItems,
+        totalQuantity: newTotalQuantity,
+        totalAmount: newTotalAmount,
+        netAmount: newNetAmount,
+        pendingAmount: newPendingAmount,
         performedBy: actorName,
         performedByRole: actorRole,
         performedById: actorId,
@@ -2749,6 +2733,13 @@ function OrderManagement() {
         if (Array.isArray(res.data.data?.items)) {
           setItems(res.data.data.items);
         }
+        setFormData((prev) => ({
+          ...prev,
+          totalQuantity: res.data.data?.totalQuantity ?? newTotalQuantity,
+          totalAmount: res.data.data?.totalAmount ?? newTotalAmount,
+          netAmount: res.data.data?.netAmount ?? newNetAmount,
+          pendingAmount: res.data.data?.pendingAmount ?? newPendingAmount,
+        }));
         setIsEditingItems(false);
         setActiveActivityTab('application');
         const successNotice = 'Items updated successfully! Changes saved and recorded in Activity Log.';
@@ -7688,19 +7679,6 @@ function OrderManagement() {
                               <Plus size={16} /> Add Item *
                             </button>
                           )}
-                          {orderTotalQty > 0 && (
-                            <span style={{
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              background: itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#dcfce7' : itemsTotalQty > orderTotalQty ? '#fee2e2' : '#fef3c7',
-                              color: itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#15803d' : itemsTotalQty > orderTotalQty ? '#b91c1c' : '#b45309',
-                              border: `1px solid ${itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '#86efac' : itemsTotalQty > orderTotalQty ? '#fca5a5' : '#fde68a'}`
-                            }}>
-                              Items Total: {itemsTotalQty} / {orderTotalQty} pcs {itemsTotalQty === orderTotalQty && itemsTotalQty > 0 ? '✓' : ''}
-                            </span>
-                          )}
                         </div>
 
                         {/* Top Right Action Button: Lead Manager can edit Add Item section */}
@@ -7807,20 +7785,21 @@ function OrderManagement() {
                                   value={item.itemType || (isTshirt(item) ? 't-shirt' : (item.item ? 'others' : ''))}
                                   onChange={(e) => {
                                     const selected = e.target.value;
+                                    const rowKey = item.id ?? item._id;
                                     if (selected === 't-shirt') {
-                                      handleItemChange(item.id, {
+                                      handleItemChange(rowKey, {
                                         itemType: 't-shirt',
                                         item: 'T-Shirt',
                                       });
                                     } else if (selected === 'others') {
-                                      handleItemChange(item.id, {
+                                      handleItemChange(rowKey, {
                                         itemType: 'others',
                                         item: item.enterItem || '',
                                         printingType: '',
                                         sublimationOption: '',
                                       });
                                     } else {
-                                      handleItemChange(item.id, {
+                                      handleItemChange(rowKey, {
                                         itemType: '',
                                         item: '',
                                         printingType: '',
@@ -7845,7 +7824,7 @@ function OrderManagement() {
                                     disabled={isItemsReadOnly}
                                     placeholder="Enter item..."
                                     value={item.enterItem || (item.item !== 'T-Shirt' && item.item !== 'others' ? item.item : '')}
-                                    onChange={(e) => handleItemChange(item.id, {
+                                    onChange={(e) => handleItemChange(item.id ?? item._id, {
                                       enterItem: e.target.value,
                                       item: e.target.value,
                                     })}
@@ -7856,13 +7835,14 @@ function OrderManagement() {
 
                               {isTshirt(item) && (
                                 <div style={{ flex: '1.2 1 125px', minWidth: '115px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Printing Type</label>
+                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Printing Type *</label>
                                   <select
+                                    required={isTshirt(item)}
                                     disabled={isItemsReadOnly}
                                     value={item.printingType || ''}
                                     onChange={(e) => {
                                       const val = e.target.value;
-                                      handleItemChange(item.id, {
+                                      handleItemChange(item.id ?? item._id, {
                                         printingType: val,
                                         ...(val !== 'Sublimation' ? { sublimationOption: '', sublimation: '' } : {})
                                       });
@@ -7879,11 +7859,12 @@ function OrderManagement() {
 
                               {isTshirt(item) && (item.printingType || '') === 'Sublimation' && (
                                 <div style={{ flex: '0.8 1 80px', minWidth: '75px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Option</label>
+                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Option *</label>
                                   <select
+                                    required={isTshirt(item) && (item.printingType || '') === 'Sublimation'}
                                     disabled={isItemsReadOnly}
                                     value={item.sublimationOption || ''}
-                                    onChange={(e) => handleItemChange(item.id, 'sublimationOption', e.target.value)}
+                                    onChange={(e) => handleItemChange(item.id ?? item._id, 'sublimationOption', e.target.value)}
                                     style={{ padding: '8px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                   >
                                     <option value="">Select...</option>
@@ -7895,15 +7876,16 @@ function OrderManagement() {
 
                               {isTshirt(item) && (
                                 <div style={{ flex: '1.1 1 115px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>NECKTYPE</label>
+                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>NECKTYPE *</label>
                                   <select
+                                    required={isTshirt(item)}
                                     disabled={isItemsReadOnly}
                                     value={
                                       item.neckType
                                         ? (item.neckType.toUpperCase() === 'ROUND NECK' ? 'ROUND NECK' : item.neckType.toUpperCase() === 'COLLAR NECK' ? 'COLLAR NECK' : item.neckType)
                                         : ''
                                     }
-                                    onChange={(e) => handleItemChange(item.id, 'neckType', e.target.value)}
+                                    onChange={(e) => handleItemChange(item.id ?? item._id, 'neckType', e.target.value)}
                                     style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                   >
                                     <option value="">Select...</option>
@@ -7925,7 +7907,7 @@ function OrderManagement() {
                                   required={isTshirt(item)}
                                   disabled={isItemsReadOnly}
                                   value={item.fabric || ''}
-                                  onChange={(e) => handleItemChange(item.id, 'fabric', e.target.value)}
+                                  onChange={(e) => handleItemChange(item.id ?? item._id, 'fabric', e.target.value)}
                                   style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </div>
@@ -7936,7 +7918,7 @@ function OrderManagement() {
                                   required
                                   disabled={isItemsReadOnly}
                                   value={item.quantity || ''}
-                                  onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
+                                  onChange={(e) => handleItemChange(item.id ?? item._id, 'quantity', e.target.value)}
                                   style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </div>
@@ -7949,7 +7931,7 @@ function OrderManagement() {
                                   disabled={isItemsReadOnly}
                                   placeholder="0.00"
                                   value={item.pricePerPiece ?? ''}
-                                  onChange={(e) => handleItemChange(item.id, 'pricePerPiece', e.target.value)}
+                                  onChange={(e) => handleItemChange(item.id ?? item._id, 'pricePerPiece', e.target.value)}
                                   style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </div>
@@ -7961,7 +7943,7 @@ function OrderManagement() {
                                   required={isTshirt(item)}
                                   disabled={isItemsReadOnly}
                                   value={item.size || ''}
-                                  onChange={(e) => handleItemChange(item.id, 'size', e.target.value)}
+                                  onChange={(e) => handleItemChange(item.id ?? item._id, 'size', e.target.value)}
                                   style={{ padding: '8px 6px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 >
                                   <option value="">Select...</option>
@@ -7983,14 +7965,14 @@ function OrderManagement() {
                                   required
                                   disabled={isItemsReadOnly}
                                   value={item.color || ''}
-                                  onChange={(e) => handleItemChange(item.id, 'color', e.target.value)}
+                                  onChange={(e) => handleItemChange(item.id ?? item._id, 'color', e.target.value)}
                                   style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
                                 />
                               </div>
                               {!isItemsReadOnly && (
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoveItem(item.id)}
+                                  onClick={() => handleRemoveItem(item.id ?? item._id)}
                                   title="Remove item"
                                   style={{
                                     flex: '0 0 auto',
@@ -8018,54 +8000,19 @@ function OrderManagement() {
 
                       <div className="form-group">
                         <label>Total Quantity (pcs) *</label>
-                        <div>
-                          <input
-                            type="number"
-                            required
-                            disabled={isReadOnly}
-                            value={formData.totalQuantity}
-                            onChange={(e) => setFormData({ ...formData, totalQuantity: e.target.value })}
-                            style={{
-                              width: '100%',
-                              borderColor:
-                                items.length > 0 && orderTotalQty > 0
-                                  ? itemsTotalQty === orderTotalQty
-                                    ? '#22c55e'
-                                    : itemsTotalQty > orderTotalQty
-                                      ? '#ef4444'
-                                      : '#f59e0b'
-                                  : undefined,
-                            }}
-                          />
-                          {items.length > 0 && orderTotalQty > 0 && (
-                            <div style={{ marginTop: '5px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              {itemsTotalQty === orderTotalQty ? (
-                                <span style={{ color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <CheckCircle2 size={13} /> Matches Add Item total ({itemsTotalQty}/{orderTotalQty} pcs)
-                                </span>
-                              ) : itemsTotalQty > orderTotalQty ? (
-                                <span style={{ color: '#dc2626', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <AlertCircle size={13} /> Items total ({itemsTotalQty} pcs) exceeds Total Quantity ({orderTotalQty} pcs). Must equal ({orderTotalQty} === {orderTotalQty}).
-                                </span>
-                              ) : (
-                                <span style={{ color: '#d97706', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <AlertCircle size={13} /> Items total: {itemsTotalQty} / {orderTotalQty} pcs ({orderTotalQty - itemsTotalQty} pcs remaining to match)
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Price Per Piece *</label>
                         <input
                           type="number"
-                          step="0.01"
                           required
-                          disabled={isReadOnly}
-                          value={formData.pricePerPiece}
-                          onChange={(e) => setFormData({ ...formData, pricePerPiece: e.target.value })}
+                          readOnly
+                          disabled
+                          value={formData.totalQuantity}
+                          style={{
+                            width: '100%',
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            cursor: 'not-allowed',
+                          }}
                         />
                       </div>
 
@@ -8074,9 +8021,15 @@ function OrderManagement() {
                         <input
                           type="number"
                           required
-                          disabled={isReadOnly}
+                          readOnly
+                          disabled
                           value={formData.totalAmount}
-                          onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            cursor: 'not-allowed',
+                          }}
                         />
                       </div>
 
@@ -8096,9 +8049,15 @@ function OrderManagement() {
                         <input
                           type="number"
                           required
-                          disabled={isReadOnly}
+                          readOnly
+                          disabled
                           value={formData.netAmount}
-                          onChange={(e) => setFormData({ ...formData, netAmount: e.target.value })}
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            cursor: 'not-allowed',
+                          }}
                         />
                       </div>
 
@@ -8118,9 +8077,15 @@ function OrderManagement() {
                         <input
                           type="number"
                           required
-                          disabled={isReadOnly}
+                          readOnly
+                          disabled
                           value={formData.pendingAmount}
-                          onChange={(e) => setFormData({ ...formData, pendingAmount: e.target.value })}
+                          style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            color: '#334155',
+                            fontWeight: 600,
+                            cursor: 'not-allowed',
+                          }}
                         />
                       </div>
 
@@ -9220,7 +9185,6 @@ function OrderManagement() {
     { key: 'repeatedOrder', label: 'Repeated Order' },
     { key: 'additionalNote', label: 'Additional Note' },
     { key: 'logoName', label: 'Logo Name' },
-    { key: 'pricePerPiece', label: 'Price Per Piece' },
     { key: 'totalAmount', label: 'Total Amount' },
     { key: 'gst', label: 'GST (%)' },
     { key: 'netAmount', label: 'Net Amount' },
@@ -9247,7 +9211,6 @@ function OrderManagement() {
     { key: 'repeatedOrder', label: 'Repeated Order' },
     { key: 'additionalNote', label: 'Additional Note' },
     { key: 'logoName', label: 'Logo Name' },
-    { key: 'pricePerPiece', label: 'Price Per Piece' },
     { key: 'totalAmount', label: 'Total Amount' },
     { key: 'gst', label: 'GST (%)' },
     { key: 'netAmount', label: 'Net Amount' },
@@ -9694,7 +9657,6 @@ function OrderManagement() {
                       {leadVisibleColumns.repeatedOrder && <th style={{ padding: '10px 12px' }}>Repeated Order</th>}
                       {leadVisibleColumns.additionalNote && <th style={{ padding: '10px 12px' }}>Additional Note</th>}
                       {leadVisibleColumns.logoName && <th style={{ padding: '10px 12px' }}>Logo Name</th>}
-                      {leadVisibleColumns.pricePerPiece && <th style={{ padding: '10px 12px' }}>Price Per Piece</th>}
                       {leadVisibleColumns.totalAmount && <th style={{ padding: '10px 12px' }}>Total Amount</th>}
                       {leadVisibleColumns.gst && <th style={{ padding: '10px 12px' }}>GST (%)</th>}
                       {leadVisibleColumns.netAmount && <th style={{ padding: '10px 12px' }}>Net Amount</th>}
@@ -9727,7 +9689,6 @@ function OrderManagement() {
                       {visibleColumns.repeatedOrder && <th style={{ padding: '10px 12px' }}>Repeated Order</th>}
                       {visibleColumns.additionalNote && <th style={{ padding: '10px 12px' }}>Additional Note</th>}
                       {visibleColumns.logoName && <th style={{ padding: '10px 12px' }}>Logo Name</th>}
-                      {visibleColumns.pricePerPiece && <th style={{ padding: '10px 12px' }}>Price Per Piece</th>}
                       {visibleColumns.totalAmount && <th style={{ padding: '10px 12px' }}>Total Amount</th>}
                       {visibleColumns.gst && <th style={{ padding: '10px 12px' }}>GST (%)</th>}
                       {visibleColumns.netAmount && <th style={{ padding: '10px 12px' }}>Net Amount</th>}
@@ -9839,11 +9800,6 @@ function OrderManagement() {
                           {leadVisibleColumns.logoName && (
                             <td style={{ padding: '12px', color: '#475569' }}>
                               {item.logoName || '—'}
-                            </td>
-                          )}
-                          {leadVisibleColumns.pricePerPiece && (
-                            <td style={{ padding: '12px', color: '#475569' }}>
-                              {item.pricePerPiece ? `₹${item.pricePerPiece}` : '—'}
                             </td>
                           )}
                           {leadVisibleColumns.totalAmount && (
@@ -10071,11 +10027,6 @@ function OrderManagement() {
                       {visibleColumns.logoName && (
                         <td style={{ padding: '12px', color: '#475569' }}>
                           {item.logoName || '—'}
-                        </td>
-                      )}
-                      {visibleColumns.pricePerPiece && (
-                        <td style={{ padding: '12px', color: '#475569' }}>
-                          {item.pricePerPiece ? `₹${item.pricePerPiece}` : '—'}
                         </td>
                       )}
                       {visibleColumns.totalAmount && (

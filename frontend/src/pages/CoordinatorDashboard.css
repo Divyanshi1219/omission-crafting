@@ -76,11 +76,16 @@
   width: 100%;
 }
 
+.coordinator-tiles-grid.no-logo-cutting .coordinator-tile.tile-printing {
+  grid-column: 3 / span 2;
+}
+
 @media (max-width: 1200px) {
   .coordinator-tiles-grid {
     grid-template-columns: 1fr 1fr;
   }
-  .coordinator-tile.tile-compound {
+  .coordinator-tile.tile-compound,
+  .coordinator-tiles-grid.no-logo-cutting .coordinator-tile.tile-printing {
     grid-column: span 2;
   }
 }
@@ -89,7 +94,8 @@
   .coordinator-tiles-grid {
     grid-template-columns: 1fr;
   }
-  .coordinator-tile.tile-compound {
+  .coordinator-tile.tile-compound,
+  .coordinator-tiles-grid.no-logo-cutting .coordinator-tile.tile-printing {
     grid-column: span 1;
   }
   .coord-subtiles-container {

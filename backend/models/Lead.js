@@ -276,6 +276,22 @@ const leadSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    stockHandoverComplete: {
+      type: Boolean,
+      default: false,
+    },
+    stockHandoverAt: {
+      type: Date,
+      default: null,
+    },
+    stockHandoverBy: {
+      type: String,
+      default: "",
+    },
+    stockHandoverData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
     productionTaskStage: {
       type: String,
       default: "logo_printing", // "logo_printing", "logo_cutting", "completed"
@@ -283,6 +299,34 @@ const leadSchema = new mongoose.Schema(
     productionTaskData: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
+    },
+    productionHandoverComplete: {
+      type: Boolean,
+      default: false,
+    },
+    productionHandoverAt: {
+      type: Date,
+      default: null,
+    },
+    productionHandoverBy: {
+      type: String,
+      default: "",
+    },
+    productionHandoverData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    printingHandoverComplete: {
+      type: Boolean,
+      default: false,
+    },
+    printingHandoverAt: {
+      type: Date,
+      default: null,
+    },
+    printingHandoverBy: {
+      type: String,
+      default: "",
     },
     printingStageData: {
       type: mongoose.Schema.Types.Mixed,
@@ -316,6 +360,10 @@ const leadSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    partialReadyToPickUpData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
     partialStagingRoomData: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
@@ -337,6 +385,14 @@ const leadSchema = new mongoose.Schema(
       default: {},
     },
     completePackagingData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    completeReadyToPickUpData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    completeStagingRoomData: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
