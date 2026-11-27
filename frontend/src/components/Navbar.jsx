@@ -12,7 +12,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import logoImg from "../assets/logo.png";
-import { useAuth } from "../context/AuthContext";
+import { useAuth, getUserInitials } from "../context/AuthContext";
 import { usePermissions } from "../context/PermissionContext";
 
 function Navbar({ darkMode, setDarkMode }) {
@@ -161,7 +161,7 @@ function Navbar({ darkMode, setDarkMode }) {
                 color: currentUser.avatarColor,
               }}
             >
-              {currentUser.initials}
+              {getUserInitials(currentUser.name) || currentUser.initials}
             </div>
 
             <div className="user-details">
@@ -186,7 +186,7 @@ function Navbar({ darkMode, setDarkMode }) {
                     color: currentUser.avatarColor,
                   }}
                 >
-                  {currentUser.initials}
+                  {getUserInitials(currentUser.name) || currentUser.initials}
                 </div>
                 <div className="dropdown-user-info">
                   <div className="dropdown-user-name">{currentUser.name}</div>
@@ -252,7 +252,7 @@ function Navbar({ darkMode, setDarkMode }) {
                               color: prof.avatarColor,
                             }}
                           >
-                            {prof.initials}
+                            {getUserInitials(prof.name) || prof.initials}
                           </div>
                           <div className="dropdown-profile-meta">
                             <h5>{prof.name}</h5>

@@ -1,6 +1,13 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import api from "../api";
 
+export const getUserInitials = (name = "") => {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "US";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+};
+
 export const PROFILES = {
   admin: {
     id: "admin",
@@ -26,7 +33,7 @@ export const PROFILES = {
     department: "Production Lead Manager",
     subtitle: "Production Lead Manager",
     email: "production@omissioncrafting.com",
-    initials: "PR",
+    initials: "MV",
     avatarBg: "#e0e7ff",
     avatarColor: "#3730a3",
     badge: "Production Floor",
@@ -43,7 +50,7 @@ export const PROFILES = {
     department: "Stock Room Manager",
     subtitle: "Inventory & Material Intake",
     email: "stockroom@omissioncrafting.com",
-    initials: "SM",
+    initials: "ER",
     avatarBg: "#ecfdf5",
     avatarColor: "#065f46",
     badge: "Stock & Warehouse",
@@ -60,7 +67,7 @@ export const PROFILES = {
     department: "Sales Executive",
     subtitle: "Client Relations & Sales Pipeline",
     email: "divyanshi.sales@omissioncrafting.com",
-    initials: "DS",
+    initials: "DI",
     avatarBg: "#fdf2f8",
     avatarColor: "#be185d",
     badge: "Sales & Accounts",
@@ -77,7 +84,7 @@ export const PROFILES = {
     department: "Sales Executive",
     subtitle: "Client Relations & Sales Pipeline",
     email: "karan.sales@omissioncrafting.com",
-    initials: "KS",
+    initials: "KA",
     avatarBg: "#e0f2fe",
     avatarColor: "#0369a1",
     badge: "Sales & Accounts",
@@ -94,7 +101,7 @@ export const PROFILES = {
     department: "Lead Manager",
     subtitle: "Sales Lead & Order Approvals",
     email: "leadmanager@omissioncrafting.com",
-    initials: "LM",
+    initials: "SJ",
     avatarBg: "#fef3c7",
     avatarColor: "#b45309",
     badge: "Lead & Approvals",
@@ -138,13 +145,7 @@ const PRE_COLORS = ["#2563eb", "#7c3aed", "#db2777", "#059669", "#d97706", "#028
 SALES_EMPLOYEE_NAMES.forEach((name) => {
   const key = "sales_" + name.toLowerCase().replace(/[^a-z0-9]/g, "_");
   const fName = name.split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
-  const initials = name
-    .split(" ")
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const initials = getUserInitials(name);
   const bg = PRE_COLORS[(name.charCodeAt(0) || 0) % PRE_COLORS.length];
 
   if (!PROFILES[key]) {
@@ -185,8 +186,10 @@ export function AuthProvider({ children }) {
         if (PROFILES[saved]) return PROFILES[saved];
         try {
           const parsed = JSON.parse(saved);
-          if (parsed && parsed.id && PROFILES[parsed.id]) return PROFILES[parsed.id];
-          if (parsed && parsed.name) return parsed;
+          if (parsed && parsed.name) {
+            const base = parsed.id && PROFILES[parsed.id] ? PROFILES[parsed.id] : parsed;
+            return { ...base, ...parsed, initials: getUserInitials(parsed.name) };
+          }
         } catch (_) {}
       }
     } catch (_) {}
@@ -215,14 +218,7 @@ export function AuthProvider({ children }) {
             const isCoreManager = Object.values(PROFILES).some((p) => (p.name || "").toLowerCase() === name.toLowerCase());
             if (isCoreManager) return;
 
-            const initials =
-              name
-                .split(" ")
-                .filter(Boolean)
-                .map((w) => w[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase() || "EM";
+            const initials = getUserInitials(name);
 
             merged[id] = {
               id,

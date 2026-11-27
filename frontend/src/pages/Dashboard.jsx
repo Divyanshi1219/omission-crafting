@@ -51,7 +51,7 @@ import InventoryManagement from "./InventoryManagement";
 import StockRoom from "./StockRoom/StockRoom";
 import DeliveryDashboard from "./DeliveryDashboard";
 import ComplianceDashboard from "./ComplianceDashboard";
-import { useAuth } from "../context/AuthContext";
+import { useAuth, getUserInitials } from "../context/AuthContext";
 
 const defaultEmployees = [
   { id: 1, name: "Noah Castell", initials: "NC", role: "Project Lead", department: "Management", openTasks: 0, completedTasks: 48, workload: 64, avatarBg: "#ffedd5", status: "online" },
@@ -1145,7 +1145,9 @@ function Dashboard() {
       const dStr = l.createdAt || l.deliveryDate || l.date;
       const d = dStr ? new Date(dStr) : null;
       const dayName = (d && !isNaN(d.getTime())) ? dayNames[d.getDay()] : "Mon";
-      const isUrgent = (l.priority || "").toLowerCase().trim() === "urgent" ||
+      const isUrgent = (l.urgency || "").toLowerCase().trim() === "yes" ||
+                       (l.urgency || "").toLowerCase().trim() === "urgent" ||
+                       (l.priority || "").toLowerCase().trim() === "urgent" ||
                        (l.orderType || "").toLowerCase().trim() === "urgent" ||
                        Boolean(l.isUrgent);
       if (dayMap[dayName]) {
@@ -1227,7 +1229,7 @@ function Dashboard() {
   const normalizedEmployees = useMemo(() => {
     return employeesList.map((emp, idx) => {
       const displayName = emp.displayName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || emp.name || 'Staff Member';
-      const initials = emp.initials || displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'EM';
+      const initials = emp.initials || getUserInitials(displayName);
       const role = emp.jobTitle || emp.role || 'Team Member';
       const department = emp.department || 'Operations';
       const avatarColors = ['#ffedd5', '#e2e8f0', '#d1fae5', '#e0e7ff', '#fef08a'];
@@ -1769,7 +1771,7 @@ function Dashboard() {
                     {selectedOverviewEmployee === "all" ? (
                       <Users size={13} />
                     ) : (
-                      selectedEmpObj?.name?.slice(0, 2).toUpperCase() || "EM"
+                      getUserInitials(selectedEmpObj?.name) || "EM"
                     )}
                   </div>
                   <div
@@ -1951,7 +1953,7 @@ function Dashboard() {
                     {filteredOverviewEmployeeOptions.length > 0 ? (
                       filteredOverviewEmployeeOptions.map((emp) => {
                         const isSelected = selectedOverviewEmployee.toLowerCase() === emp.name.toLowerCase();
-                        const initials = emp.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "EM";
+                        const initials = getUserInitials(emp.name);
                         return (
                           <div
                             key={emp.id}
@@ -2104,7 +2106,12 @@ function Dashboard() {
       {activeTab === "overview" && (
         <div className="overview-container">
           {/* Top Metric Tiles */}
-          <div className="overview-tiles-grid">
+          <div
+            className="overview-tiles-grid"
+            style={selectedOverviewEmployee !== "all" ? { gridTemplateColumns: "1fr" } : undefined}
+          >
+            {selectedOverviewEmployee === "all" && (
+              <>
             {/* Tile 1: Active Employees */}
             <div 
               className="overview-tile tile-active" 
@@ -2175,6 +2182,9 @@ function Dashboard() {
                 <div className="tile-capacity-fill orange" style={{ width: `${totalEmployees > 0 ? (leaveEmployees / totalEmployees) * 100 : 0}%` }}></div>
               </div>
             </div>
+
+              </>
+            )}
 
             {/* Tile 4: Pending Payment (Minimal & Super Clean: Final + Total Pending) */}
             {(() => {
@@ -2967,6 +2977,7 @@ function Dashboard() {
             </div>
 
           {/* Pure Graphical Single Inventory Chart */}
+          {selectedOverviewEmployee === "all" && (
           <div className="overview-inventory-section">
             <div className="ov-card inv-pure-graph-card">
               {/* Ultra-Clean Header: minimal text */}
@@ -3235,6 +3246,7 @@ function Dashboard() {
 
             </div>
           </div>
+          )}
 
           {/* Repeat Customer Details Modal */}
           {showRepeatDetailsModal && (

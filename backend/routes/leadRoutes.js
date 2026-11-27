@@ -22,8 +22,15 @@ router.use((req, res, next) => {
 // GET /api/leads - Fetch leads (optional filter by query, orderStage, subStage)
 router.get("/", async (req, res) => {
   try {
+    const reqCacheCtrl = String(req.headers["cache-control"] || "").toLowerCase();
+    const bypassCache =
+      Boolean(req.query._t) ||
+      Boolean(req.query.fresh) ||
+      reqCacheCtrl.includes("no-cache") ||
+      reqCacheCtrl.includes("no-store");
+
     const cacheKey = req.originalUrl || JSON.stringify(req.query);
-    const cached = leadsCache.get(cacheKey);
+    const cached = !bypassCache ? leadsCache.get(cacheKey) : null;
     if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
       return res.json(cached.data);
     }

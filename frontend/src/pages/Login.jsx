@@ -10,7 +10,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import logoImg from "../assets/logo.png";
-import { useAuth } from "../context/AuthContext";
+import { useAuth, getUserInitials } from "../context/AuthContext";
 import "./Login.css";
 
 function Login({ darkMode, setDarkMode }) {
@@ -165,7 +165,7 @@ function Login({ darkMode, setDarkMode }) {
                       color: prof.avatarColor,
                     }}
                   >
-                    {prof.initials}
+                    {getUserInitials(prof.name) || prof.initials}
                   </div>
                   <span className="login-chip-name">{prof.name}</span>
                   <span className="login-chip-role">
