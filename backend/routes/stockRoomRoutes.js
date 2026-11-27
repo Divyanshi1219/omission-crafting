@@ -889,6 +889,30 @@ router.get("/all-reservations", async (req, res) => {
 
     all.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
+    // Enrich reservations with matching Lead/Order details (leadId, employeeName, companyName, clientName)
+    const uniqueOrderIds = [...new Set(all.map((x) => x.orderId).filter(Boolean))];
+    if (uniqueOrderIds.length > 0) {
+      const Lead = require("../models/Lead");
+      const matchedLeads = await Lead.find({ orderId: { $in: uniqueOrderIds } })
+        .select("_id orderId employeeName companyName clientName query orderStage subStage")
+        .lean();
+      const leadMap = new Map(matchedLeads.map((l) => [String(l.orderId).trim(), l]));
+      all.forEach((item) => {
+        const matched = leadMap.get(String(item.orderId || "").trim());
+        if (matched) {
+          item.leadId = matched._id;
+          item.employeeName = matched.employeeName || "";
+          item.companyName = matched.companyName || "";
+          if (!item.clientName && matched.clientName) {
+            item.clientName = matched.clientName;
+          }
+          item.orderStage = matched.orderStage || "";
+          item.subStage = matched.subStage || "";
+          item.query = matched.query || "";
+        }
+      });
+    }
+
     res.json({
       success: true,
       count: all.length,

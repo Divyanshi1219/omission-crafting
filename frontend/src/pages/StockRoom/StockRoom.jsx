@@ -1253,13 +1253,55 @@ export default function StockRoom({ isEmbedded = false, isTableViewOnly = false 
                       <tr key={r._id || idx}>
                         <td style={{ textAlign: "center", color: "#94a3b8", fontSize: "12.5px" }}>{idx + 1}</td>
                         {resvVisibleColumns.orderId && (
-                          <td style={{ fontWeight: 700, color: "#2563eb", fontSize: "13px" }}>
-                            {r.orderId}
+                          <td style={{ fontWeight: 700, fontSize: "13px" }}>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const fromUrl = encodeURIComponent(window.location.pathname + window.location.search);
+                                if (r.leadId) {
+                                  navigate(`/order/create-lead?id=${r.leadId}&from=${fromUrl}`);
+                                  return;
+                                }
+                                try {
+                                  const res = await api.get(`/api/leads?search=${encodeURIComponent(r.orderId || "")}`);
+                                  const found = (res.data?.data || []).find(
+                                    (l) => String(l.orderId || "").trim().toLowerCase() === String(r.orderId || "").trim().toLowerCase()
+                                  );
+                                  if (found?._id) {
+                                    navigate(`/order/create-lead?id=${found._id}&from=${fromUrl}`);
+                                  } else {
+                                    showToast(`Order details not found for ${r.orderId}`);
+                                  }
+                                } catch (_) {
+                                  showToast(`Could not load details for ${r.orderId}`);
+                                }
+                              }}
+                              title="Click to open full order details"
+                              style={{
+                                background: "none",
+                                border: "none",
+                                padding: 0,
+                                color: "#2563eb",
+                                fontWeight: 700,
+                                fontSize: "13px",
+                                cursor: "pointer",
+                                textDecoration: "underline",
+                                textUnderlineOffset: "3px",
+                              }}
+                            >
+                              {r.orderId}
+                            </button>
                           </td>
                         )}
                         {resvVisibleColumns.client && (
                           <td style={{ fontSize: "13px", color: "#1e293b" }}>
-                            {r.clientName || "—"}
+                            <div style={{ fontWeight: 600, color: "#0f172a" }}>{r.clientName || r.companyName || "—"}</div>
+                            {r.companyName && r.clientName && r.companyName !== r.clientName && (
+                              <div style={{ fontSize: "11.5px", color: "#64748b" }}>{r.companyName}</div>
+                            )}
+                            {r.employeeName && (
+                              <div style={{ fontSize: "11px", color: "#475569" }}>By: {r.employeeName}</div>
+                            )}
                           </td>
                         )}
                         {resvVisibleColumns.variant && (

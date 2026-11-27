@@ -7777,61 +7777,88 @@ function OrderManagement() {
                                 overflowX: 'auto',
                               }}
                             >
-                              <div style={{ flex: '1.1 1 115px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Item *</label>
-                                <select
-                                  required
-                                  disabled={isItemsReadOnly}
-                                  value={item.itemType || (isTshirt(item) ? 't-shirt' : (item.item ? 'others' : ''))}
-                                  onChange={(e) => {
-                                    const selected = e.target.value;
-                                    const rowKey = item.id ?? item._id;
-                                    if (selected === 't-shirt') {
-                                      handleItemChange(rowKey, {
-                                        itemType: 't-shirt',
-                                        item: 'T-Shirt',
-                                      });
-                                    } else if (selected === 'others') {
-                                      handleItemChange(rowKey, {
-                                        itemType: 'others',
-                                        item: item.enterItem || '',
-                                        printingType: '',
-                                        sublimationOption: '',
-                                      });
-                                    } else {
-                                      handleItemChange(rowKey, {
-                                        itemType: '',
-                                        item: '',
-                                        printingType: '',
-                                        sublimationOption: '',
-                                      });
-                                    }
-                                  }}
-                                  style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
-                                >
-                                  <option value="">Select...</option>
-                                  <option value="t-shirt">T-Shirt</option>
-                                  <option value="others">Others</option>
-                                </select>
-                              </div>
+                              {(() => {
+                                const activeMasterItems = (masterItems || []).filter((m) => m && m.name && m.isActive !== false);
+                                const matchedMasterItem = item.item
+                                  ? activeMasterItems.find((m) => m.name.toLowerCase().trim() === String(item.item).toLowerCase().trim())
+                                  : null;
+                                const selectValue =
+                                  item.itemType === 'others'
+                                    ? 'others'
+                                    : matchedMasterItem
+                                    ? matchedMasterItem.name
+                                    : isTshirt(item)
+                                    ? (activeMasterItems.find((m) => ['t-shirt', 't shirt', 'tshirt'].includes(m.name.toLowerCase().trim()))?.name || 'T-Shirt')
+                                    : item.item
+                                    ? 'others'
+                                    : '';
 
-                              {(item.itemType === 'others' || (!isTshirt(item) && item.item && item.item !== '')) && (
-                                <div style={{ flex: '1.2 1 120px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Enter Item *</label>
-                                  <input
-                                    type="text"
-                                    required
-                                    disabled={isItemsReadOnly}
-                                    placeholder="Enter item..."
-                                    value={item.enterItem || (item.item !== 'T-Shirt' && item.item !== 'others' ? item.item : '')}
-                                    onChange={(e) => handleItemChange(item.id ?? item._id, {
-                                      enterItem: e.target.value,
-                                      item: e.target.value,
-                                    })}
-                                    style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
-                                  />
-                                </div>
-                              )}
+                                return (
+                                  <>
+                                    <div style={{ flex: '1.1 1 115px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                      <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Item *</label>
+                                      <select
+                                        required
+                                        disabled={isItemsReadOnly}
+                                        value={selectValue}
+                                        onChange={(e) => {
+                                          const selected = e.target.value;
+                                          const rowKey = item.id ?? item._id;
+                                          if (!selected) {
+                                            handleItemChange(rowKey, {
+                                              itemType: '',
+                                              item: '',
+                                              enterItem: '',
+                                              printingType: '',
+                                              sublimationOption: '',
+                                            });
+                                          } else if (selected === 'others') {
+                                            handleItemChange(rowKey, {
+                                              itemType: 'others',
+                                              item: item.enterItem || '',
+                                              printingType: '',
+                                              sublimationOption: '',
+                                            });
+                                          } else {
+                                            const isTshirtSelected = ['t-shirt', 't shirt', 'tshirt'].includes(selected.toLowerCase().trim());
+                                            handleItemChange(rowKey, {
+                                              itemType: isTshirtSelected ? 't-shirt' : selected,
+                                              item: selected,
+                                              enterItem: '',
+                                              ...(!isTshirtSelected ? { printingType: '', sublimationOption: '' } : {}),
+                                            });
+                                          }
+                                        }}
+                                        style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: 'white', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                                      >
+                                        <option value="">Select...</option>
+                                        {activeMasterItems.map((m) => (
+                                          <option key={m._id || m.name} value={m.name}>{m.name}</option>
+                                        ))}
+                                        <option value="others">Others</option>
+                                      </select>
+                                    </div>
+
+                                    {selectValue === 'others' && (
+                                      <div style={{ flex: '1.2 1 120px', minWidth: '105px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>Enter Item *</label>
+                                        <input
+                                          type="text"
+                                          required
+                                          disabled={isItemsReadOnly}
+                                          placeholder="Enter item..."
+                                          value={item.enterItem || (item.item !== 'T-Shirt' && item.item !== 'others' ? item.item : '')}
+                                          onChange={(e) => handleItemChange(item.id ?? item._id, {
+                                            enterItem: e.target.value,
+                                            item: e.target.value,
+                                          })}
+                                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '13px', width: '100%', boxSizing: 'border-box' }}
+                                        />
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
 
                               {isTshirt(item) && (
                                 <div style={{ flex: '1.2 1 125px', minWidth: '115px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
