@@ -893,6 +893,39 @@ router.post("/", async (req, res) => {
       return res.json({ success: true, message: "Lead updated successfully", data: updated });
     }
 
+    // Prevent duplicate records with the same orderId when creating a new Lead/Order
+    if (leadData.orderId) {
+      const existingByOrderId = await Lead.findOne({ orderId: leadData.orderId });
+      if (existingByOrderId) {
+        const sameCompany =
+          (existingByOrderId.companyName || "").trim().toLowerCase() ===
+          (leadData.companyName || "").trim().toLowerCase();
+        const samePhone =
+          (existingByOrderId.phoneNumber || "").trim() ===
+          (leadData.phoneNumber || "").trim();
+        if (sameCompany || samePhone) {
+          return res.status(200).json({
+            success: true,
+            message: "Record already saved with this Order ID",
+            data: existingByOrderId,
+          });
+        }
+        // Different client/company collided on next-order-id: assign a fresh unique orderId
+        leadData.orderId = await getNextOrderId();
+        const freshNum = leadData.orderId.replace(/^ORD-?/i, "");
+        leadData.taskId = `TSK-${freshNum}`;
+        leadData.sampleId = `SMP-${freshNum}`;
+        leadData.partialId = `PRT-${freshNum}`;
+        leadData.completeId = `CMP-${freshNum}`;
+        leadData.currentStageId =
+          leadData.orderStage === "complete"
+            ? leadData.completeId
+            : leadData.orderStage === "partial"
+            ? leadData.partialId
+            : leadData.sampleId;
+      }
+    }
+
     const isOrder = (leadData.query || "lead").toLowerCase().trim() === "order";
     const initialStageStr = isOrder
       ? `${formatStageLabel(leadData.orderStage || "sample")} → ${formatSubStageLabel(leadData.subStage || "order")}`

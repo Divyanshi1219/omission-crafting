@@ -717,6 +717,8 @@ function OrderManagement() {
   const [isEditingItems, setIsEditingItems] = useState(false);
   const [itemsBackup, setItemsBackup] = useState([]);
   const [isSavingItems, setIsSavingItems] = useState(false);
+  const [isFormSaving, setIsFormSaving] = useState(false);
+  const isFormSavingRef = useRef(false);
 
   const [masterItems, setMasterItems] = useState([
     { name: 'T-Shirt' },
@@ -1180,6 +1182,7 @@ function OrderManagement() {
   };
 
   const handleSaveExistingOrder = async (explicitAction) => {
+    if (isFormSavingRef.current) return;
     if (isLeadManager) {
       alert('Lead Manager cannot edit order forms.');
       return;
@@ -1248,6 +1251,8 @@ function OrderManagement() {
     }
 
     try {
+      isFormSavingRef.current = true;
+      setIsFormSaving(true);
       const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
       const wasLeadBefore = (orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order';
       const prevStage = (orderApprovalData?.orderStage || 'sample').toLowerCase();
@@ -1359,6 +1364,9 @@ function OrderManagement() {
     } catch (err) {
       console.error('Error updating order:', err);
       alert('Failed to update: ' + (err.response?.data?.message || err.message));
+    } finally {
+      isFormSavingRef.current = false;
+      setIsFormSaving(false);
     }
   };
 
@@ -2304,6 +2312,7 @@ function OrderManagement() {
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    if (isFormSavingRef.current) return;
     if (isLeadManager && editId) {
       alert('Lead Manager cannot edit order forms.');
       return;
@@ -2317,6 +2326,8 @@ function OrderManagement() {
     const action = e.nativeEvent?.submitter?.name;
     if (action === 'save') {
       try {
+        isFormSavingRef.current = true;
+        setIsFormSaving(true);
         const isLeadQuery = (query || 'lead').toLowerCase().trim() === 'lead';
         const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
         const payload = {
@@ -2356,11 +2367,16 @@ function OrderManagement() {
       } catch (err) {
         console.error('Error saving lead:', err);
         alert('Failed to save lead: ' + (err.response?.data?.message || err.message));
+      } finally {
+        isFormSavingRef.current = false;
+        setIsFormSaving(false);
       }
     } else if (action === 'submit') {
       const isLeadQuery = (query || 'lead').toLowerCase().trim() === 'lead';
       if (isLeadQuery) {
         try {
+          isFormSavingRef.current = true;
+          setIsFormSaving(true);
           const currentEmpName = formData.employeeName || (editId && orderApprovalData?.employeeName ? orderApprovalData.employeeName : (currentUser?.name || 'Sales Executive'));
           const payload = {
             employeeName: currentEmpName,
@@ -2386,6 +2402,9 @@ function OrderManagement() {
         } catch (err) {
           console.error('Error saving lead:', err);
           alert('Failed to save lead: ' + (err.response?.data?.message || err.message));
+        } finally {
+          isFormSavingRef.current = false;
+          setIsFormSaving(false);
         }
         return;
       }
@@ -2433,6 +2452,7 @@ function OrderManagement() {
   };
 
   const handleOrderSubmit = async () => {
+    if (isFormSavingRef.current) return;
     if (editId) {
       await handleSaveExistingOrder('submit');
       return;
@@ -2494,6 +2514,8 @@ function OrderManagement() {
       return;
     }
     try {
+      isFormSavingRef.current = true;
+      setIsFormSaving(true);
       let finalOrderId = formData.orderId;
       if (!finalOrderId) {
         try {
@@ -2549,6 +2571,9 @@ function OrderManagement() {
     } catch (err) {
       console.error('Error submitting order:', err);
       alert('Failed to submit order: ' + (err.response?.data?.message || err.message));
+    } finally {
+      isFormSavingRef.current = false;
+      setIsFormSaving(false);
     }
   };
 
@@ -7286,6 +7311,7 @@ function OrderManagement() {
                       </button>
                       <button
                         type="button"
+                        disabled={isFormSaving}
                         onClick={() => handleSaveExistingOrder('save')}
                         className="btn-primary"
                         style={{
@@ -7296,11 +7322,12 @@ function OrderManagement() {
                           borderRadius: '8px',
                           fontSize: '13px',
                           fontWeight: 600,
-                          cursor: 'pointer',
+                          opacity: isFormSaving ? 0.5 : 1,
+                          cursor: isFormSaving ? 'not-allowed' : 'pointer',
                         }}
                       >
                         <Check size={15} />
-                        <span>Save Changes</span>
+                        <span>{isFormSaving ? 'Saving...' : 'Save Changes'}</span>
                       </button>
                     </>
                   )
@@ -7823,17 +7850,23 @@ function OrderManagement() {
 
                   {!isSubmitted && !isLeadManager && !isApprovalReview && (!editId || (!isReadOnly && (orderApprovalData?.query || 'lead').toLowerCase().trim() === 'lead')) && (
                     <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '32px' }}>
-                      <button type="submit" name="save" className="btn-secondary" style={{ padding: '10px 24px' }}>
-                        Save
+                      <button
+                        type="submit"
+                        name="save"
+                        className="btn-secondary"
+                        disabled={isFormSaving}
+                        style={{ padding: '10px 24px', opacity: isFormSaving ? 0.5 : 1, cursor: isFormSaving ? 'not-allowed' : 'pointer' }}
+                      >
+                        {isFormSaving ? 'Saving...' : 'Save'}
                       </button>
                       <button
                         type="submit"
                         name="submit"
                         className="btn-primary"
-                        disabled={!canSubmit}
-                        style={{ padding: '10px 24px', opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
+                        disabled={!canSubmit || isFormSaving}
+                        style={{ padding: '10px 24px', opacity: (canSubmit && !isFormSaving) ? 1 : 0.5, cursor: (canSubmit && !isFormSaving) ? 'pointer' : 'not-allowed' }}
                       >
-                        Submit
+                        {isFormSaving ? 'Submitting...' : 'Submit'}
                       </button>
                     </div>
                   )}
@@ -8632,19 +8665,22 @@ function OrderManagement() {
                             </button>
                             <button
                               type="button"
+                              disabled={isFormSaving}
                               onClick={() => {
                                 const isLeadToOrder = (orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order' && (query || '').toLowerCase().trim() === 'order';
                                 const isDraft = orderApprovalData?.approvalStatus === 'Draft' || orderApprovalData?.leadApproval?.status === 'Draft' || orderApprovalData?.isDraft;
                                 handleSaveExistingOrder((isLeadToOrder || isDraft) ? 'submit' : 'save');
                               }}
                               className="btn-primary"
-                              style={{ padding: '10px 32px' }}
+                              style={{ padding: '10px 32px', opacity: isFormSaving ? 0.5 : 1, cursor: isFormSaving ? 'not-allowed' : 'pointer' }}
                             >
-                              {(orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order' && (query || '').toLowerCase().trim() === 'order'
-                                ? 'Submit'
-                                : (orderApprovalData?.approvalStatus === 'Draft' || orderApprovalData?.leadApproval?.status === 'Draft' || orderApprovalData?.isDraft)
-                                ? 'Submit Order'
-                                : 'Save Changes'}
+                              {isFormSaving
+                                ? 'Saving...'
+                                : ((orderApprovalData?.query || 'lead').toLowerCase().trim() !== 'order' && (query || '').toLowerCase().trim() === 'order'
+                                  ? 'Submit'
+                                  : (orderApprovalData?.approvalStatus === 'Draft' || orderApprovalData?.leadApproval?.status === 'Draft' || orderApprovalData?.isDraft)
+                                  ? 'Submit Order'
+                                  : 'Save Changes')}
                             </button>
                           </>
                         )}
@@ -8652,11 +8688,12 @@ function OrderManagement() {
                         {!editId && (
                           <button
                             type="button"
+                            disabled={isFormSaving}
                             onClick={handleOrderSubmit}
                             className="btn-primary"
-                            style={{ padding: '10px 32px' }}
+                            style={{ padding: '10px 32px', opacity: isFormSaving ? 0.5 : 1, cursor: isFormSaving ? 'not-allowed' : 'pointer' }}
                           >
-                            Submit
+                            {isFormSaving ? 'Submitting...' : 'Submit'}
                           </button>
                         )}
                       </div>
